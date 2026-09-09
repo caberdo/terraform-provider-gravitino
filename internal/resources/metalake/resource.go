@@ -3,7 +3,6 @@ package metalake
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -30,14 +29,7 @@ type MetalakeResourceModel struct {
 	Name       types.String `tfsdk:"name"`
 	Comment    types.String `tfsdk:"comment"`
 	Properties types.Map    `tfsdk:"properties"`
-	Audit      *AuditModel  `tfsdk:"audit"`
-}
-
-type AuditModel struct {
-	Creator          types.String `tfsdk:"creator"`
-	CreateTime       types.String `tfsdk:"create_time"`
-	LastModifier     types.String `tfsdk:"last_modifier"`
-	LastModifiedTime types.String `tfsdk:"last_modified_time"`
+	Audit      types.Object `tfsdk:"audit"`
 }
 
 func NewMetalakeResource() resource.Resource {
@@ -72,23 +64,9 @@ func (r *MetalakeResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Optional:    true,
 				ElementType: types.StringType,
 			},
-		},
-		Blocks: map[string]schema.Block{
-			"audit": schema.SingleNestedBlock{
-				Attributes: map[string]schema.Attribute{
-					"creator": schema.StringAttribute{
-						Computed: true,
-					},
-					"create_time": schema.StringAttribute{
-						Computed: true,
-					},
-					"last_modifier": schema.StringAttribute{
-						Computed: true,
-					},
-					"last_modified_time": schema.StringAttribute{
-						Computed: true,
-					},
-				},
+			"audit": schema.ObjectAttribute{
+				Computed:       true,
+				AttributeTypes: models.AuditAttrTypes,
 			},
 		},
 	}
@@ -283,26 +261,12 @@ func propertiesToMap(ctx context.Context, props map[string]string, diags *diag.D
 	return result
 }
 
-func timeToString(t *time.Time) types.String {
-	if t == nil {
-		return types.StringNull()
-	}
-	return types.StringValue(t.Format(time.RFC3339))
-}
-
 func metalakeToState(m *models.Metalake, state *MetalakeResourceModel, diags *diag.Diagnostics) {
 	state.Name = types.StringValue(m.Name)
 	state.Comment = types.StringValue(m.Comment)
 	state.Properties = propertiesToMap(context.Background(), m.Properties, diags)
 
-	if m.Audit != nil {
-		state.Audit = &AuditModel{
-			Creator:          types.StringValue(m.Audit.Creator),
-			CreateTime:       timeToString(m.Audit.CreateTime),
-			LastModifier:     types.StringValue(m.Audit.LastModifier),
-			LastModifiedTime: timeToString(m.Audit.LastModifiedTime),
-		}
-	} else {
-		state.Audit = nil
-	}
+	auditObj, d := models.AuditToObjectValue(context.Background(), m.Audit)
+	diags.Append(d...)
+	state.Audit = auditObj
 }

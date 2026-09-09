@@ -62,7 +62,7 @@ func TestMetalakeResource_Create(t *testing.T) {
 		Name:       types.StringValue("test_ml"),
 		Comment:    types.StringValue("test comment"),
 		Properties: propsMap,
-		Audit:      nil,
+		Audit:      types.ObjectNull(models.AuditAttrTypes),
 	}
 
 	planObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), planModel)
@@ -121,7 +121,7 @@ func TestMetalakeResource_Delete(t *testing.T) {
 		ID:         types.StringValue("test_ml"),
 		Name:       types.StringValue("test_ml"),
 		Properties: types.MapNull(types.StringType),
-		Audit:      nil,
+		Audit:      types.ObjectNull(models.AuditAttrTypes),
 	}
 
 	stateObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), stateModel)
@@ -165,7 +165,7 @@ func TestMetalakeResource_Import(t *testing.T) {
 	nullModel := res.MetalakeResourceModel{
 		Name:       types.StringNull(),
 		Properties: types.MapNull(types.StringType),
-		Audit:      nil,
+		Audit:      types.ObjectNull(models.AuditAttrTypes),
 	}
 	nullObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), nullModel)
 	if diags.HasError() {

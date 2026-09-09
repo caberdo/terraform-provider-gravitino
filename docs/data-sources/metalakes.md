@@ -27,12 +27,12 @@ data "gravitino_metalakes" "all" {}
 
 Read-Only:
 
-- `audit` (Block, Read-only) (see [below for nested schema](#nestedblock--metalakes--audit))
+- `audit` (Object) (see [below for nested schema](#nestedatt--metalakes--audit))
 - `comment` (String)
 - `name` (String)
 - `properties` (Map of String)
 
-<a id="nestedblock--metalakes--audit"></a>
+<a id="nestedatt--metalakes--audit"></a>
 ### Nested Schema for `metalakes.audit`
 
 Read-Only:

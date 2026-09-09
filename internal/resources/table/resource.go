@@ -90,16 +90,12 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"id": schema.StringAttribute{
 				Computed: true,
 			},
+			"audit": schema.ObjectAttribute{
+				Computed:       true,
+				AttributeTypes: models.AuditAttrTypes,
+			},
 		},
 		Blocks: map[string]schema.Block{
-			"audit": schema.SingleNestedBlock{
-				Attributes: map[string]schema.Attribute{
-					"creator":            schema.StringAttribute{Computed: true},
-					"create_time":        schema.StringAttribute{Computed: true},
-					"last_modifier":      schema.StringAttribute{Computed: true},
-					"last_modified_time": schema.StringAttribute{Computed: true},
-				},
-			},
 			"column": schema.ListNestedBlock{
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
@@ -648,25 +644,9 @@ func mapTableResponseToState(ctx context.Context, resp *models.TableResponse, st
 		state.Name.ValueString(),
 	))
 
-	if t.Audit != nil {
-		audit := &models.AuditTFSDK{
-			Creator:      types.StringValue(t.Audit.Creator),
-			LastModifier: types.StringValue(t.Audit.LastModifier),
-		}
-		if t.Audit.CreateTime != nil {
-			audit.CreateTime = types.StringValue(t.Audit.CreateTime.String())
-		} else {
-			audit.CreateTime = types.StringNull()
-		}
-		if t.Audit.LastModifiedTime != nil {
-			audit.LastModifiedTime = types.StringValue(t.Audit.LastModifiedTime.String())
-		} else {
-			audit.LastModifiedTime = types.StringNull()
-		}
-		state.Audit = audit
-	} else {
-		state.Audit = nil
-	}
+	auditObj, d := models.AuditToObjectValue(ctx, t.Audit)
+	diags.Append(d...)
+	state.Audit = auditObj
 
 	state.Columns = mapColumnsToState(ctx, t.Columns, &diags)
 	state.SortOrders = mapSortOrdersToState(ctx, t.SortOrders, &diags)
@@ -683,25 +663,27 @@ func mapColumnsToState(ctx context.Context, cols []models.Column, diags *diag.Di
 		m := models.ColumnTFSDK{
 			Name:          types.StringValue(col.Name),
 			Type:          types.StringValue(columnTypeToString(col.Type)),
-			Comment:       types.StringValue(col.Comment),
 			Nullable:      types.BoolValue(col.Nullable),
 			AutoIncrement: types.BoolValue(col.AutoIncrement),
 		}
 
+		if col.Comment != "" {
+			m.Comment = types.StringValue(col.Comment)
+		} else {
+			m.Comment = types.StringNull()
+		}
+
+		m.Length = types.Int64Value(0)
 		if col.Type.Length != nil {
 			m.Length = types.Int64Value(*col.Type.Length)
-		} else {
-			m.Length = types.Int64Null()
 		}
+		m.Precision = types.Int64Value(0)
 		if col.Type.Precision != nil {
 			m.Precision = types.Int64Value(*col.Type.Precision)
-		} else {
-			m.Precision = types.Int64Null()
 		}
+		m.Scale = types.Int64Value(0)
 		if col.Type.Scale != nil {
 			m.Scale = types.Int64Value(*col.Type.Scale)
-		} else {
-			m.Scale = types.Int64Null()
 		}
 
 		if col.DefaultValue != nil {
@@ -756,6 +738,10 @@ func mapDistributionToState(ctx context.Context, dist *models.Distribution, diag
 		Number:   types.Int64Value(int64(dist.Number)),
 	}
 
+	if len(dist.FuncArgs) == 0 {
+		m.FuncArgs = types.ListNull(types.StringType)
+		return m
+	}
 	funcArgVals := make([]attr.Value, 0, len(dist.FuncArgs))
 	for _, expr := range dist.FuncArgs {
 		funcArgVals = append(funcArgVals, types.StringValue(strings.Join(expr.FieldName, ".")))

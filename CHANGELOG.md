@@ -1,3 +1,26 @@
+## 0.4.1 (2026-09-09)
+
+FIXES:
+- **Fix "Provider produced inconsistent result after apply: .audit was absent,
+  but now present"** for `gravitino_metalake` and `gravitino_table`. The `audit`
+  attribute was declared as a `SingleNestedBlock` (which cannot be marked
+  `Computed`), so Terraform rejected the server-populated audit object in state.
+  It is now a `Computed` object attribute, matching every other resource.
+- **Centralized audit conversion:** New shared `AuditAttrTypes` and
+  `AuditToObjectValue` helpers in `internal/models/audit.go`, replacing
+  per-package duplication and the root cause of the drift.
+- **Consistent table column/distribution state:** `column` length/precision/scale
+  and `comment` now produce state values matching their schema defaults instead
+  of `null`, and `distribution.func_args` emits `null` instead of an empty list,
+  eliminating further "inconsistent result after apply" errors.
+- **Metalake data sources** (`gravitino_metalake`, `gravitino_metalakes`) now use
+  the same `Computed` object `audit` attribute for consistency.
+
+ENHANCEMENTS:
+- Acceptance tests that reproduce and guard against the "inconsistent result
+  after apply" bug: `TestAccMetalakeResource_CreateWithAudit` and
+  `TestAccTableResource_CreateWithAudit`.
+
 ## 0.4.0 (2026-09-02)
 
 BREAKING CHANGES:

@@ -90,7 +90,7 @@ resource "gravitino_table" "sorted" {
 
 ### Read-Only
 
-- `audit` (Block, Read-only) (see [below for nested schema](#nestedblock--audit))
+- `audit` (Object) (see [below for nested schema](#nestedatt--audit))
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--column"></a>
@@ -168,7 +168,7 @@ Optional:
 - `null_ordering` (String)
 
 
-<a id="nestedblock--audit"></a>
+<a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`
 
 Read-Only:

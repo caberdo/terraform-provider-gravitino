@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -25,7 +26,7 @@ type MetalakeItemModel struct {
 	Name       types.String `tfsdk:"name"`
 	Comment    types.String `tfsdk:"comment"`
 	Properties types.Map    `tfsdk:"properties"`
-	Audit      *AuditModel  `tfsdk:"audit"`
+	Audit      types.Object `tfsdk:"audit"`
 }
 
 func NewMetalakesDataSource() datasource.DataSource {
@@ -52,23 +53,9 @@ func (d *MetalakesDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 							Computed:    true,
 							ElementType: types.StringType,
 						},
-					},
-					Blocks: map[string]schema.Block{
-						"audit": schema.SingleNestedBlock{
-							Attributes: map[string]schema.Attribute{
-								"creator": schema.StringAttribute{
-									Computed: true,
-								},
-								"create_time": schema.StringAttribute{
-									Computed: true,
-								},
-								"last_modifier": schema.StringAttribute{
-									Computed: true,
-								},
-								"last_modified_time": schema.StringAttribute{
-									Computed: true,
-								},
-							},
+						"audit": schema.ObjectAttribute{
+							Computed:       true,
+							AttributeTypes: models.AuditAttrTypes,
 						},
 					},
 				},
@@ -109,14 +96,9 @@ func (d *MetalakesDataSource) Read(ctx context.Context, req datasource.ReadReque
 			Comment:    types.StringValue(ml.Comment),
 			Properties: propertiesToMapDS(ctx, ml.Properties, &resp.Diagnostics),
 		}
-		if ml.Audit != nil {
-			item.Audit = &AuditModel{
-				Creator:          types.StringValue(ml.Audit.Creator),
-				CreateTime:       timeToStringDS(ml.Audit.CreateTime),
-				LastModifier:     types.StringValue(ml.Audit.LastModifier),
-				LastModifiedTime: timeToStringDS(ml.Audit.LastModifiedTime),
-			}
-		}
+		auditObj, d := models.AuditToObjectValue(ctx, ml.Audit)
+		resp.Diagnostics.Append(d...)
+		item.Audit = auditObj
 		state.Metalakes = append(state.Metalakes, item)
 	}
 

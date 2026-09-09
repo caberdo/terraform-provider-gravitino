@@ -10,7 +10,7 @@ type TableResourceModel struct {
 	Comment      types.String        `tfsdk:"comment"`
 	Properties   types.Map           `tfsdk:"properties"`
 	ID           types.String        `tfsdk:"id"`
-	Audit        *AuditTFSDK         `tfsdk:"audit"`
+	Audit        types.Object        `tfsdk:"audit"`
 	Columns      []ColumnTFSDK       `tfsdk:"column"`
 	SortOrders   []SortOrderTFSDK    `tfsdk:"sort_order"`
 	Distribution *DistributionTFSDK  `tfsdk:"distribution"`

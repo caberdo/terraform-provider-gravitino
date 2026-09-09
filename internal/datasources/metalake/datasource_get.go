@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -21,7 +22,7 @@ type MetalakeDataSourceModel struct {
 	Name       types.String `tfsdk:"name"`
 	Comment    types.String `tfsdk:"comment"`
 	Properties types.Map    `tfsdk:"properties"`
-	Audit      *AuditModel  `tfsdk:"audit"`
+	Audit      types.Object `tfsdk:"audit"`
 }
 
 func NewMetalakeDataSource() datasource.DataSource {
@@ -45,23 +46,9 @@ func (d *MetalakeDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 				Computed:    true,
 				ElementType: types.StringType,
 			},
-		},
-		Blocks: map[string]schema.Block{
-			"audit": schema.SingleNestedBlock{
-				Attributes: map[string]schema.Attribute{
-					"creator": schema.StringAttribute{
-						Computed: true,
-					},
-					"create_time": schema.StringAttribute{
-						Computed: true,
-					},
-					"last_modifier": schema.StringAttribute{
-						Computed: true,
-					},
-					"last_modified_time": schema.StringAttribute{
-						Computed: true,
-					},
-				},
+			"audit": schema.ObjectAttribute{
+				Computed:       true,
+				AttributeTypes: models.AuditAttrTypes,
 			},
 		},
 	}
@@ -101,14 +88,9 @@ func (d *MetalakeDataSource) Read(ctx context.Context, req datasource.ReadReques
 	state.Comment = types.StringValue(result.Metalake.Comment)
 	state.Properties = propertiesToMapDS(ctx, result.Metalake.Properties, &resp.Diagnostics)
 
-	if result.Metalake.Audit != nil {
-		state.Audit = &AuditModel{
-			Creator:          types.StringValue(result.Metalake.Audit.Creator),
-			CreateTime:       timeToStringDS(result.Metalake.Audit.CreateTime),
-			LastModifier:     types.StringValue(result.Metalake.Audit.LastModifier),
-			LastModifiedTime: timeToStringDS(result.Metalake.Audit.LastModifiedTime),
-		}
-	}
+	auditObj, adiags := models.AuditToObjectValue(ctx, result.Metalake.Audit)
+	resp.Diagnostics.Append(adiags...)
+	state.Audit = auditObj
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
