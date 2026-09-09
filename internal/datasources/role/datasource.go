@@ -3,16 +3,17 @@ package role
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 )
 
 var _ datasource.DataSource = &RolesDataSource{}
@@ -75,13 +76,13 @@ func (d *RolesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Required:    true,
 				Description: "The metalake name.",
 			},
-		"resource_type": schema.StringAttribute{
-			Required:    true,
-			Description: "The resource type (e.g. catalogs, schemas, tables).",
-			Validators: []validator.String{
-				stringvalidator.OneOf(models.AllObjectTypes...),
+			"resource_type": schema.StringAttribute{
+				Required:    true,
+				Description: "The resource type (e.g. catalogs, schemas, tables).",
+				Validators: []validator.String{
+					stringvalidator.OneOf(models.AllObjectTypes...),
+				},
 			},
-		},
 			"resource": schema.StringAttribute{
 				Required:    true,
 				Description: "The resource name.",
@@ -166,7 +167,7 @@ func roleToItemModel(ctx context.Context, r *models.Role) *roleItemModel {
 	if r.Privileges != nil {
 		privileges := make([]attr.Value, 0, len(r.Privileges))
 		for _, p := range r.Privileges {
-			privileges = append(privileges, types.StringValue(p))
+			privileges = append(privileges, types.StringValue(strings.ToUpper(p)))
 		}
 		privList, d := types.ListValue(types.StringType, privileges)
 		if d.HasError() {

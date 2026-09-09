@@ -8,6 +8,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -17,7 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -128,32 +128,32 @@ func (r *RoleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 							Required:    true,
 							Description: "The full name of the securable object.",
 						},
-					"type": schema.StringAttribute{
-						Required:    true,
-						Description: "The type of the securable object.",
-						Validators: []validator.String{
-							stringvalidator.OneOf(models.AllObjectTypes...),
+						"type": schema.StringAttribute{
+							Required:    true,
+							Description: "The type of the securable object.",
+							Validators: []validator.String{
+								stringvalidator.OneOf(models.AllObjectTypes...),
+							},
 						},
-					},
 						"privileges": schema.ListNestedAttribute{
 							Required:    true,
 							Description: "The privileges for the securable object.",
 							NestedObject: schema.NestedAttributeObject{
 								Attributes: map[string]schema.Attribute{
-								"name": schema.StringAttribute{
-									Required:    true,
-									Description: "The privilege name.",
-									Validators: []validator.String{
-										stringvalidator.OneOf(models.AllPrivileges...),
+									"name": schema.StringAttribute{
+										Required:    true,
+										Description: "The privilege name.",
+										Validators: []validator.String{
+											stringvalidator.OneOf(models.AllPrivileges...),
+										},
 									},
-								},
-								"condition": schema.StringAttribute{
-									Required:    true,
-									Description: "The privilege condition.",
-									Validators: []validator.String{
-										stringvalidator.OneOf(models.PrivilegeConditionAllow, models.PrivilegeConditionDeny),
+									"condition": schema.StringAttribute{
+										Required:    true,
+										Description: "The privilege condition.",
+										Validators: []validator.String{
+											stringvalidator.OneOf(models.PrivilegeConditionAllow, models.PrivilegeConditionDeny),
+										},
 									},
-								},
 								},
 							},
 						},
@@ -396,8 +396,8 @@ func securableObjectsToTF(ctx context.Context, objects []models.SecurableObject)
 		for _, priv := range o.Privileges {
 			p := priv
 			privAttrs := map[string]attr.Value{
-				"name":      types.StringValue(p.Name),
-				"condition": types.StringValue(p.Condition),
+				"name":      types.StringValue(strings.ToUpper(p.Name)),
+				"condition": types.StringValue(strings.ToUpper(p.Condition)),
 			}
 			privObj, d := types.ObjectValue(PrivilegeAttrTypes, privAttrs)
 			diags.Append(d...)
@@ -415,7 +415,7 @@ func securableObjectsToTF(ctx context.Context, objects []models.SecurableObject)
 
 		soAttrs := map[string]attr.Value{
 			"full_name":  types.StringValue(o.FullName),
-			"type":       types.StringValue(o.Type),
+			"type":       types.StringValue(strings.ToUpper(o.Type)),
 			"privileges": privList,
 		}
 		soObj, d := types.ObjectValue(SecurableObjectAttrTypes, soAttrs)

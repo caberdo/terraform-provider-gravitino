@@ -1,3 +1,19 @@
+## 0.4.6 (2026-09-09)
+
+FIXES:
+- **Fix "inconsistent result after apply" for `gravitino_role` securable objects.**
+  Gravitino returns privilege names, conditions, and securable object types in
+  lowercase (`create_catalog`, `allow`, `metalake`) even though the API accepts
+  and the config uses uppercase (`CREATE_CATALOG`, `ALLOW`, `METALAKE`). The
+  provider now normalizes these values to uppercase when reading them into state,
+  matching the configured values and preventing drift.
+- Applied the same normalization to the role data sources for consistency.
+
+ENHANCEMENTS:
+- Acceptance test `TestAccRoleResource_CreateWithLowercaseServerValues` and unit
+  test `TestSecurableObjectsToTF_NormalizesToUppercase` guarding against the
+  case-mismatch regression.
+
 ## 0.4.5 (2026-09-09)
 
 FIXES:

@@ -3,6 +3,7 @@ package role
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -191,8 +192,8 @@ func securableObjectsToTFForDS(ctx context.Context, objects []models.SecurableOb
 		for _, priv := range o.Privileges {
 			p := priv
 			privAttrs := map[string]attr.Value{
-				"name":      types.StringValue(p.Name),
-				"condition": types.StringValue(p.Condition),
+				"name":      types.StringValue(strings.ToUpper(p.Name)),
+				"condition": types.StringValue(strings.ToUpper(p.Condition)),
 			}
 			privObj, d := types.ObjectValue(RolePrivilegeAttrTypes, privAttrs)
 			diags.Append(d...)
@@ -210,7 +211,7 @@ func securableObjectsToTFForDS(ctx context.Context, objects []models.SecurableOb
 
 		soAttrs := map[string]attr.Value{
 			"full_name":  types.StringValue(o.FullName),
-			"type":       types.StringValue(o.Type),
+			"type":       types.StringValue(strings.ToUpper(o.Type)),
 			"privileges": privList,
 		}
 		soObj, d := types.ObjectValue(RoleSecurableObjectAttrTypes, soAttrs)
