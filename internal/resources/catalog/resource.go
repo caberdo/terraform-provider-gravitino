@@ -289,11 +289,7 @@ func setStateFromCatalog(ctx context.Context, diags *diag.Diagnostics, metalake 
 		model.Comment = types.StringValue(catalog.Comment)
 		model.ID = types.StringValue(metalake + "." + catalog.Name)
 
-		props, d := types.MapValueFrom(ctx, types.StringType, catalog.Properties)
-		diags.Append(d...)
-		if !diags.HasError() {
-			model.Properties = props
-		}
+		mergeCatalogProperties(ctx, diags, model, catalog.Properties)
 
 		if catalog.Audit != nil {
 			auditObj, d := auditToObjectValue(ctx, catalog.Audit)
@@ -304,9 +300,48 @@ func setStateFromCatalog(ctx context.Context, diags *diag.Diagnostics, metalake 
 		}
 	} else {
 		model.ID = types.StringValue(metalake + "." + model.Name.ValueString())
+		mergeCatalogProperties(ctx, diags, model, nil)
 	}
 
 	model.Metalake = types.StringValue(metalake)
+}
+
+var reservedCatalogProperties = map[string]bool{
+	"in-use": true,
+}
+
+func mergeCatalogProperties(ctx context.Context, diags *diag.Diagnostics, model *CatalogResourceModel, serverProps map[string]string) {
+	wasNull := model.Properties.IsNull() || model.Properties.IsUnknown()
+
+	base := make(map[string]string)
+	if !wasNull {
+		diags.Append(model.Properties.ElementsAs(ctx, &base, false)...)
+	}
+
+	merged := make(map[string]string)
+	for k, v := range base {
+		if !reservedCatalogProperties[k] {
+			merged[k] = v
+		}
+	}
+	for k, v := range serverProps {
+		if reservedCatalogProperties[k] {
+			continue
+		}
+		if _, ok := merged[k]; ok {
+			merged[k] = v
+		}
+	}
+
+	if len(merged) > 0 {
+		props, d := types.MapValueFrom(ctx, types.StringType, merged)
+		diags.Append(d...)
+		if !diags.HasError() {
+			model.Properties = props
+		}
+	} else if wasNull {
+		model.Properties = types.MapNull(types.StringType)
+	}
 }
 
 func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {

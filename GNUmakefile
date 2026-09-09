@@ -38,7 +38,7 @@ testacc-live:
 testacc-live-filter:
 	@test -n "$(F)" || (echo "usage: make testacc-live-filter F=TestLiveAccMetalakeResource"; exit 1)
 	podman compose up -d gravitino
-	GO_TEST_FILTER="$(F)" podman compose run --rm acc
+	podman compose run --rm -e GO_TEST_FILTER="$(F)" acc
 
 generate:
 	go generate ./...
