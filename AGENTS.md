@@ -118,6 +118,7 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 - **Build**: `go build ./...`
 - **Test (unit)**: `go test -v -cover ./internal/...`
 - **Test (acceptance via Docker)**: `make testacc-docker`
+- **Live acceptance (real server via podman)**: `make testacc-live` / `make testacc-live-filter F=<TestLiveAcc...>`
 - **Lint**: `golangci-lint run --config .github/golangci.yml ./...`
 - **Lint fix**: `make lint-fix`
 - **Docs**: `go generate ./...` (uses `github.com/hashicorp/terraform-plugin-docs`)
@@ -136,6 +137,11 @@ docker compose run --rm test
 # Or filter by pattern:
 TEST_PATTERN=TestAccCatalog docker compose run --rm -e TEST_PATTERN=TestAccCatalog test
 ```
+
+**Live acceptance tests (real server, not mocks):** `TestLiveAcc*` tests (see
+`internal/resources/*/live_test.go`, `internal/datasources/*/live_test.go`) only run against a
+real Gravitino via `make testacc-live` (podman) — the `acceptance.LivePreCheck` gate skips them
+unless `GRAVITINO_URI` answers `/api/version`. They never start their own HTTP mock.
 
 ### Logging
 

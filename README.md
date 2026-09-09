@@ -260,6 +260,31 @@ data "gravitino_metalake" "example" {
 |---------------------------|--------------------------------|
 | `gravitino_principal`     | Get the current principal.     |
 
+## Testing
+
+Unit and mock-based tests:
+
+```sh
+make test
+```
+
+### Live acceptance tests against a real Gravitino (podman)
+
+The repository contains `TestLiveAcc*` acceptance tests that run against a **real**
+Gravitino server (image `apache/gravitino:1.3.0`) and prove the responses are not mocks:
+`acceptance.LivePreCheck` refuses to run unless `GRAVITINO_URI` answers `GET /api/version`
+with a matching Gravitino version.
+
+Run them with podman (needs a running `podman machine` and `podman-compose`):
+
+```bash
+make testacc-live                # all live acceptance tests
+make testacc-live-filter F=TestLiveAccMetalakeResource  # one test
+```
+
+Unlike the mock-based `TestAcc*` tests (which spin up an `httptest` server), these tests
+target `http://gravitino:8090` inside the podman-compose network.
+
 ## Building the Provider
 
 ```sh

@@ -1,3 +1,22 @@
+## Unreleased
+
+FIXES:
+- **Fix `gravitino_principal` decode against real Gravitino.** `GET /api/authn/me`
+  returns `principal` as a plain string (e.g. `"anonymous"`), not an object with
+  `name`/`roles`; the data source now decodes the real response shape.
+- **Fix property drift on `gravitino_catalog`.** Real Gravitino adds reserved/derived
+  catalog properties (`in-use`, `gravitino.bypass.*`) that are absent from the
+  config. The resource now keeps only configured/known properties in state, so
+  apply no longer fails with `.properties: new element "in-use" has appeared`.
+
+ENHANCEMENTS:
+- Live acceptance tests (`TestLiveAcc*`) that run against a **real** Gravitino
+  server via podman (`make testacc-live` / `make testacc-live-filter F=<test>`),
+  covering metalake, catalog, tag, and the health/principal/metalake data sources.
+  `acceptance.LivePreCheck` requires `GRAVITINO_URI` to answer `GET /api/version`
+  so the tests never silently pass against a mock.
+- `client.GetVersion()` and `models.VersionResponse` for server-version verification.
+
 ## 0.4.6 (2026-09-09)
 
 FIXES:
