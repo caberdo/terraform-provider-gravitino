@@ -6,6 +6,10 @@ FIXES:
   attribute was declared as a `SingleNestedBlock` (which cannot be marked
   `Computed`), so Terraform rejected the server-populated audit object in state.
   It is now a `Computed` object attribute, matching every other resource.
+- **Fix "inconsistent result: .properties was cty.MapValEmpty, but now null"**
+  for `gravitino_metalake` and `gravitino_table`. When `properties = {}` is
+  configured (or the server returns no properties), the provider no longer
+  overwrites the planned empty map with `null` in state.
 - **Centralized audit conversion:** New shared `AuditAttrTypes` and
   `AuditToObjectValue` helpers in `internal/models/audit.go`, replacing
   per-package duplication and the root cause of the drift.
@@ -18,7 +22,8 @@ FIXES:
 
 ENHANCEMENTS:
 - Acceptance tests that reproduce and guard against the "inconsistent result
-  after apply" bug: `TestAccMetalakeResource_CreateWithAudit` and
+  after apply" bug: `TestAccMetalakeResource_CreateWithAudit`,
+  `TestAccMetalakeResource_CreateWithEmptyProperties`, and
   `TestAccTableResource_CreateWithAudit`.
 
 ## 0.4.0 (2026-09-02)

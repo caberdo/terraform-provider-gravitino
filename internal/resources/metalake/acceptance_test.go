@@ -88,6 +88,58 @@ resource "gravitino_metalake" "this" {
 	})
 }
 
+func TestAccMetalakeResource_CreateWithEmptyProperties(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/metalakes":
+			var req models.MetalakeCreateRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name:       req.Name,
+					Comment:    req.Comment,
+					Properties: req.Properties,
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/metalakes/props_ml":
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name:    "props_ml",
+					Comment: "empty props",
+				},
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/metalakes/props_ml":
+			json.NewEncoder(w).Encode(models.DropResponse{Code: 0, Dropped: true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_metalake" "this" {
+  name       = "props_ml"
+  comment    = "empty props"
+  properties = {}
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "name", "props_ml"),
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.%", "0"),
+				),
+			},
+		},
+	})
+}
+
 func timePtr(s string) *time.Time {
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {

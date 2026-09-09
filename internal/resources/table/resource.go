@@ -629,12 +629,10 @@ func mapTableResponseToState(ctx context.Context, resp *models.TableResponse, st
 	state.Name = types.StringValue(t.Name)
 	state.Comment = types.StringValue(t.Comment)
 
-	if t.Properties != nil {
+	if len(t.Properties) > 0 {
 		props, d := types.MapValueFrom(ctx, types.StringType, t.Properties)
 		diags.Append(d...)
 		state.Properties = props
-	} else {
-		state.Properties = types.MapNull(types.StringType)
 	}
 
 	state.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s",

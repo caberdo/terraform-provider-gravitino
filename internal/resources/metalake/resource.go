@@ -264,7 +264,10 @@ func propertiesToMap(ctx context.Context, props map[string]string, diags *diag.D
 func metalakeToState(m *models.Metalake, state *MetalakeResourceModel, diags *diag.Diagnostics) {
 	state.Name = types.StringValue(m.Name)
 	state.Comment = types.StringValue(m.Comment)
-	state.Properties = propertiesToMap(context.Background(), m.Properties, diags)
+
+	if len(m.Properties) > 0 {
+		state.Properties = propertiesToMap(context.Background(), m.Properties, diags)
+	}
 
 	auditObj, d := models.AuditToObjectValue(context.Background(), m.Audit)
 	diags.Append(d...)
