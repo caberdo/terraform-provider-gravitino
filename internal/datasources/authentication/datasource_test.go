@@ -34,11 +34,8 @@ func TestPrincipalDataSource_Read(t *testing.T) {
 		}
 
 		resp := models.PrincipalResponse{
-			Code: 0,
-			Principal: models.Principal{
-				Name:  "admin",
-				Roles: []string{"admin"},
-			},
+			Code:      0,
+			Principal: "admin",
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))

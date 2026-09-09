@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
-	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -81,21 +80,7 @@ func (d *PrincipalDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	setPrincipalState(ctx, &result.Principal, &config)
+	config.Name = types.StringValue(result.Principal)
+	config.Roles = types.ListValueMust(types.StringType, []attr.Value{})
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
-}
-
-func setPrincipalState(ctx context.Context, principal *models.Principal, model *PrincipalDataSourceModel) {
-	model.Name = types.StringValue(principal.Name)
-
-	roles := make([]attr.Value, 0, len(principal.Roles))
-	for _, r := range principal.Roles {
-		roles = append(roles, types.StringValue(r))
-	}
-	rolesList, d := types.ListValue(types.StringType, roles)
-	if d.HasError() {
-		model.Roles = types.ListNull(types.StringType)
-		return
-	}
-	model.Roles = rolesList
 }
