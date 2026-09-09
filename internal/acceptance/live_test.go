@@ -14,7 +14,9 @@ func TestUniqueNameFormat(t *testing.T) {
 }
 
 func TestUniqueNameDistinct(t *testing.T) {
-	if UniqueName("live") == UniqueName("live") {
+	a := UniqueName("live")
+	b := UniqueName("live")
+	if a == b {
 		t.Fatal("UniqueName returned the same value twice")
 	}
 }
