@@ -240,6 +240,64 @@ resource "gravitino_metalake" "this" {
 	})
 }
 
+func TestAccMetalakeResource_ImportWithServerOnlyProperties(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/metalakes":
+			var req models.MetalakeCreateRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name:    req.Name,
+					Comment: req.Comment,
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/metalakes/srvprops_ml":
+			// Server returns a server-managed (reserved) property that is absent
+			// from the config/state; Read must merge without panicking on a nil map.
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name:       "srvprops_ml",
+					Comment:    "server props",
+					Properties: map[string]string{"in-use": "true"},
+				},
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/metalakes/srvprops_ml":
+			json.NewEncoder(w).Encode(models.DropResponse{Code: 0, Dropped: true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_metalake" "this" {
+  name    = "srvprops_ml"
+  comment = "server props"
+}
+`,
+			},
+			{
+				ImportState:       true,
+				ResourceName:      "gravitino_metalake.this",
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"comment",
+					"properties",
+				},
+			},
+		},
+	})
+}
+
 func timePtr(s string) *time.Time {
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {

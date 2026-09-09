@@ -271,15 +271,18 @@ func metalakeToState(m *models.Metalake, state *MetalakeResourceModel, diags *di
 	// Merge configured properties with server-returned ones so that keys the
 	// server does not echo back (e.g. the reserved "in-use" property) are not
 	// dropped from state, which would otherwise cause perpetual drift.
-	if state.Properties.IsNull() || state.Properties.IsUnknown() {
-		state.Properties = types.MapNull(types.StringType)
+	wasNull := state.Properties.IsNull() || state.Properties.IsUnknown()
+	merged := make(map[string]string)
+	if !wasNull {
+		diags.Append(state.Properties.ElementsAs(context.Background(), &merged, false)...)
 	}
-	merged := mapToProperties(context.Background(), state.Properties, diags)
 	for k, v := range m.Properties {
 		merged[k] = v
 	}
 	if len(merged) > 0 {
 		state.Properties = propertiesToMap(context.Background(), merged, diags)
+	} else if wasNull {
+		state.Properties = types.MapNull(types.StringType)
 	}
 
 	auditObj, d := models.AuditToObjectValue(context.Background(), m.Audit)

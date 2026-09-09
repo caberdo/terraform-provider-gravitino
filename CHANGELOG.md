@@ -1,3 +1,16 @@
+## 0.4.4 (2026-09-09)
+
+FIXES:
+- **Fix provider panic "assignment to entry in nil map"** in `gravitino_metalake`
+  Read. When the metalake had no configured properties (or was imported) and the
+  server returned properties, the state merge wrote to a nil map. The merge now
+  starts from an initialized map.
+
+ENHANCEMENTS:
+- Unit tests covering the nil-map case for `metalakeToState` and
+  `mapTableResponseToState`, plus an import acceptance test with server-only
+  properties.
+
 ## 0.4.3 (2026-09-09)
 
 FIXES:

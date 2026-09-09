@@ -95,6 +95,79 @@ func TestMetalakeResource_Create(t *testing.T) {
 	}
 }
 
+func TestMetalakeResource_ReadWithServerOnlyProperties(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.Method == http.MethodGet && r.URL.Path == "/api/metalakes/test_ml" {
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name:       "test_ml",
+					Comment:    "test comment",
+					Properties: map[string]string{"in-use": "true"},
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.NewMetalakeResource()
+	r.(*res.MetalakeResource).SetClient(c)
+
+	ctx := context.Background()
+	schemaResp := &resource.SchemaResponse{}
+	r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
+	schemaObj := schemaResp.Schema
+
+	stateModel := res.MetalakeResourceModel{
+		ID:         types.StringValue("test_ml"),
+		Name:       types.StringValue("test_ml"),
+		Properties: types.MapNull(types.StringType),
+		Audit:      types.ObjectNull(models.AuditAttrTypes),
+	}
+
+	stateObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), stateModel)
+	if diags.HasError() {
+		t.Fatalf("failed to create state object: %v", diags)
+	}
+	tfVal, err := stateObj.ToTerraformValue(ctx)
+	if err != nil {
+		t.Fatalf("failed to convert: %v", err)
+	}
+
+	req := resource.ReadRequest{
+		State: tfsdk.State{Schema: schemaObj, Raw: tfVal},
+	}
+	respVal := &resource.ReadResponse{
+		State: tfsdk.State{Schema: schemaObj},
+	}
+
+	r.Read(ctx, req, respVal)
+
+	if respVal.Diagnostics.HasError() {
+		for _, d := range respVal.Diagnostics.Errors() {
+			t.Logf("diag error: %s: %s", d.Summary(), d.Detail())
+		}
+		t.Fatal("unexpected diagnostics errors")
+	}
+
+	var got res.MetalakeResourceModel
+	respVal.State.Get(ctx, &got)
+	if got.Properties.IsNull() || got.Properties.IsUnknown() {
+		t.Fatalf("expected properties to be set, got null/unknown")
+	}
+	props := make(map[string]string)
+	if d := got.Properties.ElementsAs(ctx, &props, false); d.HasError() {
+		t.Fatalf("failed to read properties: %v", d)
+	}
+	if props["in-use"] != "true" {
+		t.Fatalf("expected in-use=true, got %#v", props)
+	}
+}
+
 func TestMetalakeResource_Delete(t *testing.T) {
 	var deleteCalled bool
 
