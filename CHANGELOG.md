@@ -1,3 +1,19 @@
+## 0.4.5 (2026-09-09)
+
+FIXES:
+- **Fix update failure "Property in-use is immutable or reserved, cannot be
+  deleted"** for `gravitino_metalake` (and `gravitino_table`). Gravitino treats
+  `in-use` as a reserved property managed via a dedicated endpoint; sending it as
+  a regular `removeProperty`/`setProperty` update is rejected. The provider now
+  filters reserved properties (`in-use`) out of create requests, state mapping,
+  and update diffs so they are never touched as normal properties.
+
+ENHANCEMENTS:
+- Unit and acceptance tests covering reserved-property filtering and ensuring
+  updates never emit `removeProperty("in-use")`.
+- Documentation notes that the reserved `in-use` property is managed by
+  Gravitino and filtered out.
+
 ## 0.4.4 (2026-09-09)
 
 FIXES:

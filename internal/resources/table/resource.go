@@ -87,6 +87,7 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Optional:    true,
 				Computed:    true,
 				ElementType: types.StringType,
+				Description: "A map of key-value properties. The reserved 'in-use' property is managed by Gravitino and is filtered out.",
 			},
 			"id": schema.StringAttribute{
 				Computed: true,
@@ -262,7 +263,7 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		createReq.Properties = props
+		createReq.Properties = filterReservedProperties(props)
 	}
 
 	createReq.Columns = r.buildColumns(ctx, plan.Columns, &resp.Diagnostics)
@@ -388,12 +389,18 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 
 	for k, v := range newProps {
+		if reservedProperties[k] {
+			continue
+		}
 		oldV, exists := oldProps[k]
 		if !exists || oldV != v {
 			updates = append(updates, models.NewSetTablePropertyRequest(k, v))
 		}
 	}
 	for k := range oldProps {
+		if reservedProperties[k] {
+			continue
+		}
 		if _, exists := newProps[k]; !exists {
 			updates = append(updates, models.NewRemoveTablePropertyRequest(k))
 		}
@@ -640,8 +647,12 @@ func mapTableResponseToState(ctx context.Context, resp *models.TableResponse, st
 		diags.Append(state.Properties.ElementsAs(ctx, &merged, false)...)
 	}
 	for k, v := range t.Properties {
+		if reservedProperties[k] {
+			continue
+		}
 		merged[k] = v
 	}
+	merged = filterReservedProperties(merged)
 	if len(merged) > 0 {
 		props, d := types.MapValueFrom(ctx, types.StringType, merged)
 		diags.Append(d...)

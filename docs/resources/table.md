@@ -85,7 +85,7 @@ resource "gravitino_table" "sorted" {
 - `distribution` (Block, Optional) (see [below for nested schema](#nestedblock--distribution))
 - `index` (Block List) (see [below for nested schema](#nestedblock--index))
 - `partitioning` (Block List) (see [below for nested schema](#nestedblock--partitioning))
-- `properties` (Map of String)
+- `properties` (Map of String) A map of key-value properties. The reserved 'in-use' property is managed by Gravitino and is filtered out.
 - `sort_order` (Block List) (see [below for nested schema](#nestedblock--sort_order))
 
 ### Read-Only

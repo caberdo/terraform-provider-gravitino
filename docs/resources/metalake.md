@@ -35,7 +35,7 @@ resource "gravitino_metalake" "example" {
 ### Optional
 
 - `comment` (String)
-- `properties` (Map of String)
+- `properties` (Map of String) A map of key-value properties. The reserved 'in-use' property is managed by Gravitino and is filtered out.
 
 ### Read-Only
 

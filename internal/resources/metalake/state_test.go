@@ -17,7 +17,7 @@ func TestMetalakeToState_NullPropertiesWithServerProperties(t *testing.T) {
 
 	metalakeToState(&models.Metalake{
 		Name:       "ml",
-		Properties: map[string]string{"in-use": "true"},
+		Properties: map[string]string{"env": "dev"},
 	}, &state, nil)
 
 	if state.Properties.IsNull() || state.Properties.IsUnknown() {
@@ -27,7 +27,7 @@ func TestMetalakeToState_NullPropertiesWithServerProperties(t *testing.T) {
 	if d := state.Properties.ElementsAs(context.Background(), &props, false); d.HasError() {
 		t.Fatalf("failed to read properties: %v", d)
 	}
-	if props["in-use"] != "true" {
-		t.Fatalf("expected in-use=true, got %#v", props)
+	if props["env"] != "dev" {
+		t.Fatalf("expected env=dev, got %#v", props)
 	}
 }

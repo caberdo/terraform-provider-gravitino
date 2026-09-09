@@ -104,7 +104,7 @@ func TestMetalakeResource_ReadWithServerOnlyProperties(t *testing.T) {
 				Metalake: models.Metalake{
 					Name:       "test_ml",
 					Comment:    "test comment",
-					Properties: map[string]string{"in-use": "true"},
+					Properties: map[string]string{"env": "dev"},
 				},
 			})
 			return
@@ -163,8 +163,8 @@ func TestMetalakeResource_ReadWithServerOnlyProperties(t *testing.T) {
 	if d := got.Properties.ElementsAs(ctx, &props, false); d.HasError() {
 		t.Fatalf("failed to read properties: %v", d)
 	}
-	if props["in-use"] != "true" {
-		t.Fatalf("expected in-use=true, got %#v", props)
+	if props["env"] != "dev" {
+		t.Fatalf("expected env=dev, got %#v", props)
 	}
 }
 

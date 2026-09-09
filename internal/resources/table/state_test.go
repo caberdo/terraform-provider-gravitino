@@ -18,7 +18,7 @@ func TestMapTableResponseToState_NullPropertiesWithServerProperties(t *testing.T
 	diags := mapTableResponseToState(context.Background(), &models.TableResponse{
 		Table: models.Table{
 			Name:       "tbl",
-			Properties: map[string]string{"in-use": "true"},
+			Properties: map[string]string{"env": "dev"},
 		},
 	}, &state)
 
@@ -32,8 +32,8 @@ func TestMapTableResponseToState_NullPropertiesWithServerProperties(t *testing.T
 	if d := state.Properties.ElementsAs(context.Background(), &props, false); d.HasError() {
 		t.Fatalf("failed to read properties: %v", d)
 	}
-	if props["in-use"] != "true" {
-		t.Fatalf("expected in-use=true, got %#v", props)
+	if props["env"] != "dev" {
+		t.Fatalf("expected env=dev, got %#v", props)
 	}
 }
 
@@ -55,5 +55,33 @@ func TestMapTableResponseToState_EmptyConfigProperties(t *testing.T) {
 	}
 	if state.Properties.IsNull() {
 		t.Fatalf("expected empty map to be preserved, got null")
+	}
+}
+
+func TestMapTableResponseToState_FiltersReservedProperties(t *testing.T) {
+	state := models.TableResourceModel{
+		Name:       types.StringValue("tbl"),
+		Properties: types.MapNull(types.StringType),
+	}
+
+	diags := mapTableResponseToState(context.Background(), &models.TableResponse{
+		Table: models.Table{
+			Name:       "tbl",
+			Properties: map[string]string{"in-use": "true", "env": "dev"},
+		},
+	}, &state)
+
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	props := make(map[string]string)
+	if d := state.Properties.ElementsAs(context.Background(), &props, false); d.HasError() {
+		t.Fatalf("failed to read properties: %v", d)
+	}
+	if _, ok := props["in-use"]; ok {
+		t.Fatalf("reserved property 'in-use' must not appear in state, got %#v", props)
+	}
+	if props["env"] != "dev" {
+		t.Fatalf("expected env=dev preserved, got %#v", props)
 	}
 }

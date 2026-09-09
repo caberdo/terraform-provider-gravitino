@@ -137,7 +137,7 @@ resource "gravitino_table" "this" {
   catalog    = "cat"
   schema     = "sch"
   name       = "tbl2"
-  properties = { "in-use" = "true", "env" = "dev" }
+  properties = { "env" = "dev", "region" = "eu" }
 
   column {
     name = "id"
@@ -152,8 +152,8 @@ resource "gravitino_table" "this" {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("gravitino_table.this", "name", "tbl2"),
 					resource.TestCheckResourceAttr("gravitino_table.this", "properties.%", "2"),
-					resource.TestCheckResourceAttr("gravitino_table.this", "properties.in-use", "true"),
 					resource.TestCheckResourceAttr("gravitino_table.this", "properties.env", "dev"),
+					resource.TestCheckResourceAttr("gravitino_table.this", "properties.region", "eu"),
 				),
 			},
 		},

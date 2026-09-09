@@ -32,6 +32,23 @@ type MetalakeResourceModel struct {
 	Audit      types.Object `tfsdk:"audit"`
 }
 
+// reservedProperties are managed by Gravitino through dedicated endpoints
+// (e.g. "in-use" via PATCH /metalakes/{name}) and must never be sent as
+// regular setProperty/removeProperty updates or surfaced as drift.
+var reservedProperties = map[string]bool{
+	"in-use": true,
+}
+
+func filterReservedProperties(props map[string]string) map[string]string {
+	filtered := make(map[string]string)
+	for k, v := range props {
+		if !reservedProperties[k] {
+			filtered[k] = v
+		}
+	}
+	return filtered
+}
+
 func NewMetalakeResource() resource.Resource {
 	return &MetalakeResource{}
 }
@@ -64,6 +81,7 @@ func (r *MetalakeResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Optional:    true,
 				Computed:    true,
 				ElementType: types.StringType,
+				Description: "A map of key-value properties. The reserved 'in-use' property is managed by Gravitino and is filtered out.",
 			},
 			"audit": schema.ObjectAttribute{
 				Computed:       true,
@@ -103,6 +121,7 @@ func (r *MetalakeResource) Create(ctx context.Context, req resource.CreateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	props = filterReservedProperties(props)
 
 	createReq := &models.MetalakeCreateRequest{
 		Name:       plan.Name.ValueString(),
@@ -182,20 +201,7 @@ func (r *MetalakeResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	for key, oldVal := range oldProps {
-		newVal, exists := newProps[key]
-		if !exists {
-			updates = append(updates, models.NewRemoveMetalakePropertyRequest(key))
-		} else if oldVal != newVal {
-			updates = append(updates, models.NewSetMetalakePropertyRequest(key, newVal))
-		}
-	}
-
-	for key, newVal := range newProps {
-		if _, exists := oldProps[key]; !exists {
-			updates = append(updates, models.NewSetMetalakePropertyRequest(key, newVal))
-		}
-	}
+	updates = append(updates, r.propertyUpdates(oldProps, newProps)...)
 
 	result, err := r.client.UpdateMetalake(state.Name.ValueString(), updates)
 	if err != nil {
@@ -279,6 +285,7 @@ func metalakeToState(m *models.Metalake, state *MetalakeResourceModel, diags *di
 	for k, v := range m.Properties {
 		merged[k] = v
 	}
+	merged = filterReservedProperties(merged)
 	if len(merged) > 0 {
 		state.Properties = propertiesToMap(context.Background(), merged, diags)
 	} else if wasNull {
@@ -288,4 +295,29 @@ func metalakeToState(m *models.Metalake, state *MetalakeResourceModel, diags *di
 	auditObj, d := models.AuditToObjectValue(context.Background(), m.Audit)
 	diags.Append(d...)
 	state.Audit = auditObj
+}
+
+func (r *MetalakeResource) propertyUpdates(oldProps, newProps map[string]string) []interface{} {
+	var updates []interface{}
+	for key, oldVal := range oldProps {
+		if reservedProperties[key] {
+			continue
+		}
+		newVal, exists := newProps[key]
+		if !exists {
+			updates = append(updates, models.NewRemoveMetalakePropertyRequest(key))
+		} else if oldVal != newVal {
+			updates = append(updates, models.NewSetMetalakePropertyRequest(key, newVal))
+		}
+	}
+
+	for key, newVal := range newProps {
+		if reservedProperties[key] {
+			continue
+		}
+		if _, exists := oldProps[key]; !exists {
+			updates = append(updates, models.NewSetMetalakePropertyRequest(key, newVal))
+		}
+	}
+	return updates
 }
