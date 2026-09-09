@@ -31,7 +31,7 @@ func (d *IdpGroupDataSource) SetClient(c *client.Client) {
 type IdpGroupDataSourceModel struct {
 	Name    types.String `tfsdk:"name"`
 	Comment types.String `tfsdk:"comment"`
-	Users   types.List   `tfsdk:"users"`
+	Users   types.Set    `tfsdk:"users"`
 }
 
 func (d *IdpGroupDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -65,7 +65,7 @@ func (d *IdpGroupDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 				Computed:    true,
 				Description: "Optional description of the group.",
 			},
-			"users": schema.ListAttribute{
+			"users": schema.SetAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
 				Description: "The usernames of members in the group.",
@@ -100,10 +100,10 @@ func (d *IdpGroupDataSource) Read(ctx context.Context, req datasource.ReadReques
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func stringSliceToList(ctx context.Context, items []string) (types.List, diag.Diagnostics) {
+func stringSliceToList(ctx context.Context, items []string) (types.Set, diag.Diagnostics) {
 	vals := make([]attr.Value, 0, len(items))
 	for _, s := range items {
 		vals = append(vals, types.StringValue(s))
 	}
-	return types.ListValue(types.StringType, vals)
+	return types.SetValue(types.StringType, vals)
 }

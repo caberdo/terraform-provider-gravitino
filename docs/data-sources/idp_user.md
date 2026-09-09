@@ -27,4 +27,4 @@ data "gravitino_idp_user" "alice" {
 ### Read-Only
 
 - `enabled` (Boolean) Whether the user is enabled.
-- `groups` (List of String) The groups the user belongs to.
+- `groups` (Set of String) The groups the user belongs to.

@@ -39,7 +39,7 @@ resource "gravitino_policy" "data_retention" {
 
 - `metalake` (String) The metalake name.
 - `name` (String) The policy name.
-- `supported_object_types` (List of String) The object types this policy supports. One or more of: CATALOG, SCHEMA, TABLE, FILESET, TOPIC, MODEL.
+- `supported_object_types` (Set of String) The object types this policy supports. One or more of: CATALOG, SCHEMA, TABLE, FILESET, TOPIC, MODEL.
 
 ### Optional
 

@@ -32,7 +32,7 @@ func (d *UserDataSource) SetClient(c *client.Client) {
 type UserDataSourceModel struct {
 	Metalake types.String `tfsdk:"metalake"`
 	Name     types.String `tfsdk:"name"`
-	Roles    types.List   `tfsdk:"roles"`
+	Roles    types.Set    `tfsdk:"roles"`
 	Audit    types.Object `tfsdk:"audit"`
 }
 
@@ -73,7 +73,7 @@ func (d *UserDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 				Required:    true,
 				Description: "The user name.",
 			},
-			"roles": schema.ListAttribute{
+			"roles": schema.SetAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
 				Description: "The roles assigned to the user.",
@@ -109,7 +109,7 @@ func (d *UserDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 }
 
 func setDataSourceStateFromUser(ctx context.Context, diags *diag.Diagnostics, user *models.User, model *UserDataSourceModel) {
-	roles, d := types.ListValueFrom(ctx, types.StringType, user.Roles)
+	roles, d := types.SetValueFrom(ctx, types.StringType, user.Roles)
 	diags.Append(d...)
 	if diags.HasError() {
 		return

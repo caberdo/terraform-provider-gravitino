@@ -40,7 +40,7 @@ type IdpUserResourceModel struct {
 	Name     types.String `tfsdk:"name"`
 	Password types.String `tfsdk:"password"`
 	Enabled  types.Bool   `tfsdk:"enabled"`
-	Groups   types.List   `tfsdk:"groups"`
+	Groups   types.Set    `tfsdk:"groups"`
 }
 
 func (r *IdpUserResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -90,7 +90,7 @@ func (r *IdpUserResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 				Description: "Whether the user is enabled. Disabled users cannot authenticate.",
 			},
-			"groups": schema.ListAttribute{
+			"groups": schema.SetAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
 				Description: "The groups the user belongs to.",
@@ -226,10 +226,10 @@ func (r *IdpUserResource) ImportState(ctx context.Context, req resource.ImportSt
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 }
 
-func stringSliceToList(ctx context.Context, items []string) (types.List, diag.Diagnostics) {
+func stringSliceToList(ctx context.Context, items []string) (types.Set, diag.Diagnostics) {
 	vals := make([]attr.Value, 0, len(items))
 	for _, s := range items {
 		vals = append(vals, types.StringValue(s))
 	}
-	return types.ListValue(types.StringType, vals)
+	return types.SetValue(types.StringType, vals)
 }

@@ -34,7 +34,7 @@ data "gravitino_model_version" "example" {
 
 ### Read-Only
 
-- `aliases` (List of String) Aliases for this model version.
+- `aliases` (Set of String) Aliases for this model version.
 - `audit` (Object) Audit information for the model version. (see [below for nested schema](#nestedatt--audit))
 - `comment` (String) The model version comment.
 - `properties` (Map of String) Key-value properties for the model version.

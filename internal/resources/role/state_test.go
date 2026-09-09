@@ -13,7 +13,7 @@ import (
 func TestSecurableObjectsToTF_NormalizesToUppercase(t *testing.T) {
 	objects := []models.SecurableObject{
 		{
-			FullName: "olympus",
+			FullName: "acme",
 			Type:     "metalake",
 			Privileges: []models.Privilege{
 				{Name: "create_catalog", Condition: "allow"},

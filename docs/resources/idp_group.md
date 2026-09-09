@@ -30,7 +30,7 @@ resource "gravitino_idp_group" "engineers" {
 ### Optional
 
 - `comment` (String) Optional description of the group.
-- `users` (List of String) The usernames of members in the group.
+- `users` (Set of String) The usernames of members in the group.
 
 ### Read-Only
 

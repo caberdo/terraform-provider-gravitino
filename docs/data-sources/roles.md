@@ -38,5 +38,5 @@ data "gravitino_roles" "example" {
 Read-Only:
 
 - `name` (String) The role name.
-- `privileges` (List of String) The privileges assigned to the role.
+- `privileges` (Set of String) The privileges assigned to the role.
 - `securable_object` (String) The securable object associated with the role.

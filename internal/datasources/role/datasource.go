@@ -40,13 +40,13 @@ type RolesDataSourceModel struct {
 
 type roleItemModel struct {
 	Name            types.String `tfsdk:"name"`
-	Privileges      types.List   `tfsdk:"privileges"`
+	Privileges      types.Set    `tfsdk:"privileges"`
 	SecurableObject types.String `tfsdk:"securable_object"`
 }
 
 var RoleItemAttrTypes = map[string]attr.Type{
 	"name":             types.StringType,
-	"privileges":       types.ListType{ElemType: types.StringType},
+	"privileges":       types.SetType{ElemType: types.StringType},
 	"securable_object": types.StringType,
 }
 
@@ -96,7 +96,7 @@ func (d *RolesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 							Computed:    true,
 							Description: "The role name.",
 						},
-						"privileges": schema.ListAttribute{
+						"privileges": schema.SetAttribute{
 							Computed:    true,
 							ElementType: types.StringType,
 							Description: "The privileges assigned to the role.",
@@ -169,13 +169,13 @@ func roleToItemModel(ctx context.Context, r *models.Role) *roleItemModel {
 		for _, p := range r.Privileges {
 			privileges = append(privileges, types.StringValue(strings.ToUpper(p)))
 		}
-		privList, d := types.ListValue(types.StringType, privileges)
+		privSet, d := types.SetValue(types.StringType, privileges)
 		if d.HasError() {
 			return nil
 		}
-		item.Privileges = privList
+		item.Privileges = privSet
 	} else {
-		item.Privileges = types.ListNull(types.StringType)
+		item.Privileges = types.SetNull(types.StringType)
 	}
 
 	return item

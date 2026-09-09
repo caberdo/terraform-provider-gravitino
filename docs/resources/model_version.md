@@ -52,7 +52,7 @@ resource "gravitino_model_version" "v2" {
 
 ### Optional
 
-- `aliases` (List of String) Aliases for this model version.
+- `aliases` (Set of String) Aliases for this model version.
 - `comment` (String) A comment describing the model version.
 - `properties` (Map of String) Key-value properties for the model version.
 - `uri` (String) The URI of the model version artifact.

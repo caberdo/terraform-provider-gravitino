@@ -55,7 +55,7 @@ func TestUserResource_Create(t *testing.T) {
 	r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
 	schemaObj := schemaResp.Schema
 
-	rolesList, _ := types.ListValueFrom(ctx, types.StringType, []string{})
+	rolesList, _ := types.SetValueFrom(ctx, types.StringType, []string{})
 	planModel := res.UserResourceModel{
 		Metalake: types.StringValue("test_metalake"),
 		Name:     types.StringValue("test_user"),
@@ -105,7 +105,7 @@ func TestUserResource_ImportState(t *testing.T) {
 	nullModel := res.UserResourceModel{
 		Metalake: types.StringNull(),
 		Name:     types.StringNull(),
-		Roles:    types.ListNull(types.StringType),
+		Roles:    types.SetNull(types.StringType),
 		Audit:    types.ObjectNull(res.AuditAttrTypes),
 	}
 	nullObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), nullModel)
@@ -145,7 +145,7 @@ func TestUserResource_ImportState_Invalid(t *testing.T) {
 	nullModel := res.UserResourceModel{
 		Metalake: types.StringNull(),
 		Name:     types.StringNull(),
-		Roles:    types.ListNull(types.StringType),
+		Roles:    types.SetNull(types.StringType),
 		Audit:    types.ObjectNull(res.AuditAttrTypes),
 	}
 	nullObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), nullModel)
@@ -197,7 +197,7 @@ func TestUserResource_Delete(t *testing.T) {
 		ID:       types.StringValue("test_metalake.test_user"),
 		Metalake: types.StringValue("test_metalake"),
 		Name:     types.StringValue("test_user"),
-		Roles:    types.ListNull(types.StringType),
+		Roles:    types.SetNull(types.StringType),
 		Audit:    types.ObjectNull(res.AuditAttrTypes),
 	}
 

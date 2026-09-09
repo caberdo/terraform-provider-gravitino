@@ -40,7 +40,7 @@ type policyItemModel struct {
 	Comment              types.String `tfsdk:"comment"`
 	PolicyType           types.String `tfsdk:"policy_type"`
 	Enabled              types.Bool   `tfsdk:"enabled"`
-	SupportedObjectTypes types.List   `tfsdk:"supported_object_types"`
+	SupportedObjectTypes types.Set    `tfsdk:"supported_object_types"`
 	Properties           types.Map    `tfsdk:"properties"`
 	CustomRules          types.Map    `tfsdk:"custom_rules"`
 	Audit                types.Object `tfsdk:"audit"`
@@ -51,7 +51,7 @@ var PolicyItemAttrTypes = map[string]attr.Type{
 	"comment":                types.StringType,
 	"policy_type":            types.StringType,
 	"enabled":                types.BoolType,
-	"supported_object_types": types.ListType{ElemType: types.StringType},
+	"supported_object_types": types.SetType{ElemType: types.StringType},
 	"properties":             types.MapType{ElemType: types.StringType},
 	"custom_rules":           types.MapType{ElemType: types.StringType},
 	"audit":                  types.ObjectType{AttrTypes: AuditAttrTypes},
@@ -110,7 +110,7 @@ func (d *PoliciesDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 							Computed:    true,
 							Description: "Whether the policy is enabled.",
 						},
-						"supported_object_types": schema.ListAttribute{
+						"supported_object_types": schema.SetAttribute{
 							Computed:    true,
 							ElementType: types.StringType,
 							Description: "The object types this policy supports.",
@@ -199,11 +199,11 @@ func policyToItemModel(ctx context.Context, p *models.Policy, diags *diag.Diagno
 		customRules = p.Content.CustomRules
 	}
 
-	typesList, d := types.ListValueFrom(ctx, types.StringType, supportedObjectTypes)
+	typesSet, d := types.SetValueFrom(ctx, types.StringType, supportedObjectTypes)
 	if d.HasError() {
 		return nil
 	}
-	item.SupportedObjectTypes = typesList
+	item.SupportedObjectTypes = typesSet
 
 	props, d := types.MapValueFrom(ctx, types.StringType, properties)
 	if d.HasError() {

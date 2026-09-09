@@ -34,7 +34,7 @@ func (d *GroupDataSource) SetClient(c *client.Client) {
 type GroupDataSourceModel struct {
 	Metalake types.String `tfsdk:"metalake"`
 	Name     types.String `tfsdk:"name"`
-	Roles    types.List   `tfsdk:"roles"`
+	Roles    types.Set    `tfsdk:"roles"`
 	Audit    types.Object `tfsdk:"audit"`
 }
 
@@ -75,7 +75,7 @@ func (d *GroupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Required:    true,
 				Description: "The group name.",
 			},
-			"roles": schema.ListAttribute{
+			"roles": schema.SetAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
 				Description: "The roles assigned to the group.",
@@ -111,7 +111,7 @@ func (d *GroupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 }
 
 func setDataSourceStateFromGroup(ctx context.Context, diags *diag.Diagnostics, group *models.Group, model *GroupDataSourceModel) {
-	roles, d := types.ListValueFrom(ctx, types.StringType, group.Roles)
+	roles, d := types.SetValueFrom(ctx, types.StringType, group.Roles)
 	diags.Append(d...)
 	if diags.HasError() {
 		return

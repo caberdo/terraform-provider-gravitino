@@ -30,7 +30,7 @@ data "gravitino_role" "example" {
 
 - `audit` (Object) Audit information for the role. (see [below for nested schema](#nestedatt--audit))
 - `properties` (Map of String) A map of key-value properties for the role.
-- `securable_objects` (Attributes List) The securable objects and their privileges assigned to the role. (see [below for nested schema](#nestedatt--securable_objects))
+- `securable_objects` (Attributes Set) The securable objects and their privileges assigned to the role. (see [below for nested schema](#nestedatt--securable_objects))
 
 <a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`
@@ -49,7 +49,7 @@ Read-Only:
 Read-Only:
 
 - `full_name` (String) The full name of the securable object.
-- `privileges` (Attributes List) The privileges for the securable object. (see [below for nested schema](#nestedatt--securable_objects--privileges))
+- `privileges` (Attributes Set) The privileges for the securable object. (see [below for nested schema](#nestedatt--securable_objects--privileges))
 - `type` (String) The type of the securable object.
 
 <a id="nestedatt--securable_objects--privileges"></a>

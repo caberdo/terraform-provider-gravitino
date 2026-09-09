@@ -43,14 +43,14 @@ type RoleResourceModel struct {
 	Metalake         types.String `tfsdk:"metalake"`
 	Name             types.String `tfsdk:"name"`
 	Properties       types.Map    `tfsdk:"properties"`
-	SecurableObjects types.List   `tfsdk:"securable_objects"`
+	SecurableObjects types.Set    `tfsdk:"securable_objects"`
 	Audit            types.Object `tfsdk:"audit"`
 }
 
 type securableObjectModel struct {
 	FullName   types.String `tfsdk:"full_name"`
 	Type       types.String `tfsdk:"type"`
-	Privileges types.List   `tfsdk:"privileges"`
+	Privileges types.Set    `tfsdk:"privileges"`
 }
 
 type privilegeModel struct {
@@ -66,7 +66,7 @@ var PrivilegeAttrTypes = map[string]attr.Type{
 var SecurableObjectAttrTypes = map[string]attr.Type{
 	"full_name":  types.StringType,
 	"type":       types.StringType,
-	"privileges": types.ListType{ElemType: types.ObjectType{AttrTypes: PrivilegeAttrTypes}},
+	"privileges": types.SetType{ElemType: types.ObjectType{AttrTypes: PrivilegeAttrTypes}},
 }
 
 var AuditAttrTypes = map[string]attr.Type{
@@ -119,7 +119,7 @@ func (r *RoleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				ElementType: types.StringType,
 				Description: "A map of key-value properties for the role.",
 			},
-			"securable_objects": schema.ListNestedAttribute{
+			"securable_objects": schema.SetNestedAttribute{
 				Optional:    true,
 				Description: "The securable objects and their privileges assigned to the role.",
 				NestedObject: schema.NestedAttributeObject{
@@ -135,7 +135,7 @@ func (r *RoleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 								stringvalidator.OneOf(models.AllObjectTypes...),
 							},
 						},
-						"privileges": schema.ListNestedAttribute{
+						"privileges": schema.SetNestedAttribute{
 							Required:    true,
 							Description: "The privileges for the securable object.",
 							NestedObject: schema.NestedAttributeObject{
@@ -381,11 +381,11 @@ func setStateFromRole(ctx context.Context, diags *diag.Diagnostics, metalake str
 	model.Metalake = types.StringValue(metalake)
 }
 
-func securableObjectsToTF(ctx context.Context, objects []models.SecurableObject) (types.List, diag.Diagnostics) {
+func securableObjectsToTF(ctx context.Context, objects []models.SecurableObject) (types.Set, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if len(objects) == 0 {
-		return types.ListNull(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}), diags
+		return types.SetNull(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}), diags
 	}
 
 	items := make([]attr.Value, 0, len(objects))
@@ -402,34 +402,34 @@ func securableObjectsToTF(ctx context.Context, objects []models.SecurableObject)
 			privObj, d := types.ObjectValue(PrivilegeAttrTypes, privAttrs)
 			diags.Append(d...)
 			if diags.HasError() {
-				return types.ListNull(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}), diags
+				return types.SetNull(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}), diags
 			}
 			privItems = append(privItems, privObj)
 		}
 
-		privList, d := types.ListValue(types.ObjectType{AttrTypes: PrivilegeAttrTypes}, privItems)
+		privSet, d := types.SetValue(types.ObjectType{AttrTypes: PrivilegeAttrTypes}, privItems)
 		diags.Append(d...)
 		if diags.HasError() {
-			return types.ListNull(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}), diags
+			return types.SetNull(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}), diags
 		}
 
 		soAttrs := map[string]attr.Value{
 			"full_name":  types.StringValue(o.FullName),
 			"type":       types.StringValue(strings.ToUpper(o.Type)),
-			"privileges": privList,
+			"privileges": privSet,
 		}
 		soObj, d := types.ObjectValue(SecurableObjectAttrTypes, soAttrs)
 		diags.Append(d...)
 		if diags.HasError() {
-			return types.ListNull(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}), diags
+			return types.SetNull(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}), diags
 		}
 		items = append(items, soObj)
 	}
 
-	return types.ListValue(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}, items)
+	return types.SetValue(types.ObjectType{AttrTypes: SecurableObjectAttrTypes}, items)
 }
 
-func securableObjectsFromTF(ctx context.Context, l types.List) []models.SecurableObject {
+func securableObjectsFromTF(ctx context.Context, l types.Set) []models.SecurableObject {
 	if l.IsNull() || l.IsUnknown() {
 		return nil
 	}
@@ -471,7 +471,7 @@ type securableObjectMapEntry struct {
 	Privileges []models.Privilege
 }
 
-func securableObjectMapFromTF(ctx context.Context, l types.List) map[string]securableObjectMapEntry {
+func securableObjectMapFromTF(ctx context.Context, l types.Set) map[string]securableObjectMapEntry {
 	result := make(map[string]securableObjectMapEntry)
 	if l.IsNull() || l.IsUnknown() {
 		return result

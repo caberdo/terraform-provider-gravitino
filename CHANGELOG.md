@@ -1,5 +1,15 @@
 ## Unreleased
 
+BREAKING CHANGES:
+- **Order-insensitive collections are now `set` attributes.** Attributes that
+  Gravitino treats as unordered collections were modeled as lists, causing
+  "inconsistent result after apply" when the server returned them in a different
+  order than configured (e.g. role privileges on update). The following are now
+  sets: `gravitino_role` `securable_objects`/`privileges`, `gravitino_user` and
+  `gravitino_group` `roles`, `gravitino_idp_user` `groups`,
+  `gravitino_idp_group` `users`, `gravitino_policy` `supported_object_types`,
+  `gravitino_model_version` `aliases` (resources and data sources).
+
 FIXES:
 - **Fix `gravitino_principal` decode against real Gravitino.** `GET /api/authn/me`
   returns `principal` as a plain string (e.g. `"anonymous"`), not an object with

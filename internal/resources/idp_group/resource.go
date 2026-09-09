@@ -38,7 +38,7 @@ type IdpGroupResourceModel struct {
 	ID      types.String `tfsdk:"id"`
 	Name    types.String `tfsdk:"name"`
 	Comment types.String `tfsdk:"comment"`
-	Users   types.List   `tfsdk:"users"`
+	Users   types.Set    `tfsdk:"users"`
 }
 
 func (r *IdpGroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -80,7 +80,7 @@ func (r *IdpGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Computed:    true,
 				Description: "Optional description of the group.",
 			},
-			"users": schema.ListAttribute{
+			"users": schema.SetAttribute{
 				Optional:    true,
 				Computed:    true,
 				ElementType: types.StringType,
@@ -227,15 +227,15 @@ func (r *IdpGroupResource) ImportState(ctx context.Context, req resource.ImportS
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 }
 
-func stringSliceToList(ctx context.Context, items []string) (types.List, diag.Diagnostics) {
+func stringSliceToList(ctx context.Context, items []string) (types.Set, diag.Diagnostics) {
 	vals := make([]attr.Value, 0, len(items))
 	for _, s := range items {
 		vals = append(vals, types.StringValue(s))
 	}
-	return types.ListValue(types.StringType, vals)
+	return types.SetValue(types.StringType, vals)
 }
 
-func listToSlice(l types.List) []string {
+func listToSlice(l types.Set) []string {
 	if l.IsNull() || l.IsUnknown() {
 		return nil
 	}

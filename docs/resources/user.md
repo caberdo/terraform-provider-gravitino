@@ -43,7 +43,7 @@ resource "gravitino_user" "viewer" {
 
 ### Optional
 
-- `roles` (List of String) The roles assigned to the user.
+- `roles` (Set of String) The roles assigned to the user.
 
 ### Read-Only
 

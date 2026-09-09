@@ -39,7 +39,7 @@ type UserResourceModel struct {
 	ID       types.String `tfsdk:"id"`
 	Metalake types.String `tfsdk:"metalake"`
 	Name     types.String `tfsdk:"name"`
-	Roles    types.List   `tfsdk:"roles"`
+	Roles    types.Set    `tfsdk:"roles"`
 	Audit    types.Object `tfsdk:"audit"`
 }
 
@@ -87,7 +87,7 @@ func (r *UserResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Required:    true,
 				Description: "The user name.",
 			},
-			"roles": schema.ListAttribute{
+			"roles": schema.SetAttribute{
 				Computed:    true,
 				Optional:    true,
 				ElementType: types.StringType,
@@ -247,7 +247,7 @@ func setStateFromUser(ctx context.Context, diags *diag.Diagnostics, metalake str
 		model.Name = types.StringValue(user.Name)
 		model.ID = types.StringValue(metalake + "." + user.Name)
 
-		roles, d := types.ListValueFrom(ctx, types.StringType, user.Roles)
+		roles, d := types.SetValueFrom(ctx, types.StringType, user.Roles)
 		diags.Append(d...)
 		if !diags.HasError() {
 			model.Roles = roles
@@ -297,7 +297,7 @@ func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object,
 	return types.ObjectValue(AuditAttrTypes, attrs)
 }
 
-func listFromTF(m types.List) []string {
+func listFromTF(m types.Set) []string {
 	result := make([]string, 0)
 	if m.IsNull() || m.IsUnknown() {
 		return result

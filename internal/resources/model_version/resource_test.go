@@ -65,7 +65,7 @@ func TestModelVersionResource_Create(t *testing.T) {
 		Version:    types.StringValue("v1.0"),
 		URI:        types.StringValue("s3://bucket/model"),
 		Comment:    types.StringValue("test version"),
-		Aliases:    types.ListNull(types.StringType),
+		Aliases:    types.SetNull(types.StringType),
 		Properties: types.MapNull(types.StringType),
 		Audit:      types.ObjectNull(res.AuditAttrTypes),
 	}
@@ -115,7 +115,7 @@ func TestModelVersionResource_ImportState(t *testing.T) {
 		Schema:     types.StringNull(),
 		Model:      types.StringNull(),
 		Version:    types.StringNull(),
-		Aliases:    types.ListNull(types.StringType),
+		Aliases:    types.SetNull(types.StringType),
 		Properties: types.MapNull(types.StringType),
 		Audit:      types.ObjectNull(res.AuditAttrTypes),
 	}
@@ -159,7 +159,7 @@ func TestModelVersionResource_ImportState_Invalid(t *testing.T) {
 		Schema:     types.StringNull(),
 		Model:      types.StringNull(),
 		Version:    types.StringNull(),
-		Aliases:    types.ListNull(types.StringType),
+		Aliases:    types.SetNull(types.StringType),
 		Properties: types.MapNull(types.StringType),
 		Audit:      types.ObjectNull(res.AuditAttrTypes),
 	}
@@ -215,7 +215,7 @@ func TestModelVersionResource_Delete(t *testing.T) {
 		Schema:     types.StringValue("test_schema"),
 		Model:      types.StringValue("test_model"),
 		Version:    types.StringValue("v1.0"),
-		Aliases:    types.ListNull(types.StringType),
+		Aliases:    types.SetNull(types.StringType),
 		Properties: types.MapNull(types.StringType),
 		Audit:      types.ObjectNull(res.AuditAttrTypes),
 	}

@@ -35,7 +35,7 @@ type RoleDataSourceModel struct {
 	Metalake         types.String `tfsdk:"metalake"`
 	Name             types.String `tfsdk:"name"`
 	Properties       types.Map    `tfsdk:"properties"`
-	SecurableObjects types.List   `tfsdk:"securable_objects"`
+	SecurableObjects types.Set    `tfsdk:"securable_objects"`
 	Audit            types.Object `tfsdk:"audit"`
 }
 
@@ -47,7 +47,7 @@ var RolePrivilegeAttrTypes = map[string]attr.Type{
 var RoleSecurableObjectAttrTypes = map[string]attr.Type{
 	"full_name":  types.StringType,
 	"type":       types.StringType,
-	"privileges": types.ListType{ElemType: types.ObjectType{AttrTypes: RolePrivilegeAttrTypes}},
+	"privileges": types.SetType{ElemType: types.ObjectType{AttrTypes: RolePrivilegeAttrTypes}},
 }
 
 var RoleAuditAttrTypes = map[string]attr.Type{
@@ -92,7 +92,7 @@ func (d *RoleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 				ElementType: types.StringType,
 				Description: "A map of key-value properties for the role.",
 			},
-			"securable_objects": schema.ListNestedAttribute{
+			"securable_objects": schema.SetNestedAttribute{
 				Computed:    true,
 				Description: "The securable objects and their privileges assigned to the role.",
 				NestedObject: schema.NestedAttributeObject{
@@ -105,7 +105,7 @@ func (d *RoleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 							Computed:    true,
 							Description: "The type of the securable object.",
 						},
-						"privileges": schema.ListNestedAttribute{
+						"privileges": schema.SetNestedAttribute{
 							Computed:    true,
 							Description: "The privileges for the securable object.",
 							NestedObject: schema.NestedAttributeObject{
@@ -177,11 +177,11 @@ func setDataSourceStateFromRole(ctx context.Context, diags *diag.Diagnostics, ro
 	model.Audit = auditObj
 }
 
-func securableObjectsToTFForDS(ctx context.Context, objects []models.SecurableObject) (types.List, diag.Diagnostics) {
+func securableObjectsToTFForDS(ctx context.Context, objects []models.SecurableObject) (types.Set, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if len(objects) == 0 {
-		return types.ListNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
+		return types.SetNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
 	}
 
 	items := make([]attr.Value, 0, len(objects))
@@ -198,31 +198,31 @@ func securableObjectsToTFForDS(ctx context.Context, objects []models.SecurableOb
 			privObj, d := types.ObjectValue(RolePrivilegeAttrTypes, privAttrs)
 			diags.Append(d...)
 			if diags.HasError() {
-				return types.ListNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
+				return types.SetNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
 			}
 			privItems = append(privItems, privObj)
 		}
 
-		privList, d := types.ListValue(types.ObjectType{AttrTypes: RolePrivilegeAttrTypes}, privItems)
+		privSet, d := types.SetValue(types.ObjectType{AttrTypes: RolePrivilegeAttrTypes}, privItems)
 		diags.Append(d...)
 		if diags.HasError() {
-			return types.ListNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
+			return types.SetNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
 		}
 
 		soAttrs := map[string]attr.Value{
 			"full_name":  types.StringValue(o.FullName),
 			"type":       types.StringValue(strings.ToUpper(o.Type)),
-			"privileges": privList,
+			"privileges": privSet,
 		}
 		soObj, d := types.ObjectValue(RoleSecurableObjectAttrTypes, soAttrs)
 		diags.Append(d...)
 		if diags.HasError() {
-			return types.ListNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
+			return types.SetNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
 		}
 		items = append(items, soObj)
 	}
 
-	return types.ListValue(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}, items)
+	return types.SetValue(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}, items)
 }
 
 func auditToObjectValueForDS(ctx context.Context, audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {

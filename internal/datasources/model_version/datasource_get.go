@@ -44,7 +44,7 @@ type ModelVersionDataSourceModel struct {
 	Model      types.String `tfsdk:"model"`
 	Version    types.String `tfsdk:"version"`
 	URI        types.String `tfsdk:"uri"`
-	Aliases    types.List   `tfsdk:"aliases"`
+	Aliases    types.Set    `tfsdk:"aliases"`
 	Comment    types.String `tfsdk:"comment"`
 	Properties types.Map    `tfsdk:"properties"`
 	Audit      types.Object `tfsdk:"audit"`
@@ -82,7 +82,7 @@ func (d *ModelVersionDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 				Description: "The URI of the model version artifact.",
 				Computed:    true,
 			},
-			"aliases": schema.ListAttribute{
+			"aliases": schema.SetAttribute{
 				Description: "Aliases for this model version.",
 				Computed:    true,
 				ElementType: types.StringType,
@@ -135,11 +135,11 @@ func (d *ModelVersionDataSource) Read(ctx context.Context, req datasource.ReadRe
 	config.Comment = types.StringValue(mv.Comment)
 
 	if len(mv.Aliases) > 0 {
-		aliasesList, d := types.ListValueFrom(ctx, types.StringType, mv.Aliases)
+		aliasesList, d := types.SetValueFrom(ctx, types.StringType, mv.Aliases)
 		resp.Diagnostics.Append(d...)
 		config.Aliases = aliasesList
 	} else {
-		config.Aliases = types.ListNull(types.StringType)
+		config.Aliases = types.SetNull(types.StringType)
 	}
 
 	if len(mv.Properties) > 0 {

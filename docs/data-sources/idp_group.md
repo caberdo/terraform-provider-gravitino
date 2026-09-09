@@ -27,4 +27,4 @@ data "gravitino_idp_group" "engineers" {
 ### Read-Only
 
 - `comment` (String) Optional description of the group.
-- `users` (List of String) The usernames of members in the group.
+- `users` (Set of String) The usernames of members in the group.

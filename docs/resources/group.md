@@ -43,7 +43,7 @@ resource "gravitino_group" "readers" {
 
 ### Optional
 
-- `roles` (List of String) The roles assigned to the group.
+- `roles` (Set of String) The roles assigned to the group.
 
 ### Read-Only
 

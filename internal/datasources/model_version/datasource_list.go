@@ -82,7 +82,7 @@ func (d *ModelVersionsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 							Description: "The URI of the model version artifact.",
 							Computed:    true,
 						},
-						"aliases": schema.ListAttribute{
+						"aliases": schema.SetAttribute{
 							Description: "Aliases for this model version.",
 							Computed:    true,
 							ElementType: types.StringType,
@@ -124,7 +124,7 @@ func versionListItemAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"version":    types.StringType,
 		"uri":        types.StringType,
-		"aliases":    types.ListType{ElemType: types.StringType},
+		"aliases":    types.SetType{ElemType: types.StringType},
 		"comment":    types.StringType,
 		"properties": types.MapType{ElemType: types.StringType},
 		"audit":      types.ObjectType{AttrTypes: dslAuditAttrTypes},
@@ -170,13 +170,13 @@ func (d *ModelVersionsDataSource) Read(ctx context.Context, req datasource.ReadR
 func versionListItemToObject(ctx context.Context, mv *models.ModelVersion) (types.Object, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	var aliasesList types.List
+	var aliasesList types.Set
 	if len(mv.Aliases) > 0 {
-		a, aDiags := types.ListValueFrom(ctx, types.StringType, mv.Aliases)
+		a, aDiags := types.SetValueFrom(ctx, types.StringType, mv.Aliases)
 		diags.Append(aDiags...)
 		aliasesList = a
 	} else {
-		aliasesList = types.ListNull(types.StringType)
+		aliasesList = types.SetNull(types.StringType)
 	}
 
 	var props types.Map

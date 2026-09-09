@@ -29,7 +29,7 @@ data "gravitino_user" "example" {
 ### Read-Only
 
 - `audit` (Object) Audit information for the user. (see [below for nested schema](#nestedatt--audit))
-- `roles` (List of String) The roles assigned to the user.
+- `roles` (Set of String) The roles assigned to the user.
 
 <a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`

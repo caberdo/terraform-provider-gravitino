@@ -40,7 +40,7 @@ Read-Only:
 - `name` (String) The policy name.
 - `policy_type` (String) The policy type.
 - `properties` (Map of String) The policy properties.
-- `supported_object_types` (List of String) The object types this policy supports.
+- `supported_object_types` (Set of String) The object types this policy supports.
 
 <a id="nestedatt--policies--audit"></a>
 ### Nested Schema for `policies.audit`

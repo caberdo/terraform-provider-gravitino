@@ -29,7 +29,7 @@ data "gravitino_group" "example" {
 ### Read-Only
 
 - `audit` (Object) Audit information for the group. (see [below for nested schema](#nestedatt--audit))
-- `roles` (List of String) The roles assigned to the group.
+- `roles` (Set of String) The roles assigned to the group.
 
 <a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`

@@ -60,7 +60,7 @@ func TestRoleDataSource_Read(t *testing.T) {
 		"metalake":          types.StringType,
 		"name":              types.StringType,
 		"properties":        types.MapType{ElemType: types.StringType},
-		"securable_objects": types.ListType{ElemType: soObjType},
+		"securable_objects": types.SetType{ElemType: soObjType},
 		"audit":             types.ObjectType{AttrTypes: ds.RoleAuditAttrTypes},
 	}
 
@@ -68,7 +68,7 @@ func TestRoleDataSource_Read(t *testing.T) {
 		Metalake:         types.StringValue("test_metalake"),
 		Name:             types.StringValue("test_role"),
 		Properties:       types.MapNull(types.StringType),
-		SecurableObjects: types.ListNull(soObjType),
+		SecurableObjects: types.SetNull(soObjType),
 		Audit:            types.ObjectNull(ds.RoleAuditAttrTypes),
 	}
 

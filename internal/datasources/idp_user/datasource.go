@@ -31,7 +31,7 @@ func (d *IdpUserDataSource) SetClient(c *client.Client) {
 type IdpUserDataSourceModel struct {
 	Name    types.String `tfsdk:"name"`
 	Enabled types.Bool   `tfsdk:"enabled"`
-	Groups  types.List   `tfsdk:"groups"`
+	Groups  types.Set    `tfsdk:"groups"`
 }
 
 func (d *IdpUserDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -65,7 +65,7 @@ func (d *IdpUserDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 				Computed:    true,
 				Description: "Whether the user is enabled.",
 			},
-			"groups": schema.ListAttribute{
+			"groups": schema.SetAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
 				Description: "The groups the user belongs to.",
@@ -100,10 +100,10 @@ func (d *IdpUserDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func stringSliceToList(ctx context.Context, items []string) (types.List, diag.Diagnostics) {
+func stringSliceToList(ctx context.Context, items []string) (types.Set, diag.Diagnostics) {
 	vals := make([]attr.Value, 0, len(items))
 	for _, s := range items {
 		vals = append(vals, types.StringValue(s))
 	}
-	return types.ListValue(types.StringType, vals)
+	return types.SetValue(types.StringType, vals)
 }

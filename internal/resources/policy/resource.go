@@ -8,7 +8,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -48,7 +48,7 @@ type PolicyResourceModel struct {
 	Comment              types.String `tfsdk:"comment"`
 	PolicyType           types.String `tfsdk:"policy_type"`
 	Enabled              types.Bool   `tfsdk:"enabled"`
-	SupportedObjectTypes types.List   `tfsdk:"supported_object_types"`
+	SupportedObjectTypes types.Set    `tfsdk:"supported_object_types"`
 	Properties           types.Map    `tfsdk:"properties"`
 	CustomRules          types.Map    `tfsdk:"custom_rules"`
 	Audit                types.Object `tfsdk:"audit"`
@@ -121,12 +121,12 @@ func (r *PolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"supported_object_types": schema.ListAttribute{
+			"supported_object_types": schema.SetAttribute{
 				Required:    true,
 				ElementType: types.StringType,
 				Description: "The object types this policy supports. One or more of: CATALOG, SCHEMA, TABLE, FILESET, TOPIC, MODEL.",
-				Validators: []validator.List{
-					listvalidator.ValueStringsAre(
+				Validators: []validator.Set{
+					setvalidator.ValueStringsAre(
 						stringvalidator.OneOf("CATALOG", "SCHEMA", "TABLE", "FILESET", "TOPIC", "MODEL"),
 					),
 				},
@@ -368,10 +368,10 @@ func setStateFromPolicy(ctx context.Context, diags *diag.Diagnostics, metalake s
 		model.ID = types.StringValue(metalake + "." + policy.Name)
 
 		if policy.Content != nil {
-			typesList, d := types.ListValueFrom(ctx, types.StringType, policy.Content.SupportedObjectTypes)
+			typesSet, d := types.SetValueFrom(ctx, types.StringType, policy.Content.SupportedObjectTypes)
 			diags.Append(d...)
 			if !diags.HasError() {
-				model.SupportedObjectTypes = typesList
+				model.SupportedObjectTypes = typesSet
 			}
 
 			props, d := types.MapValueFrom(ctx, types.StringType, policy.Content.Properties)
@@ -444,7 +444,7 @@ func mapFromTF(m types.Map) map[string]string {
 	return result
 }
 
-func listFromTF(l types.List) []string {
+func listFromTF(l types.Set) []string {
 	if l.IsNull() || l.IsUnknown() {
 		return nil
 	}

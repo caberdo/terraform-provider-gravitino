@@ -54,7 +54,7 @@ func TestGroupResource_Create(t *testing.T) {
 	r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
 	schemaObj := schemaResp.Schema
 
-	rolesList, _ := types.ListValueFrom(ctx, types.StringType, []string{"admin"})
+	rolesList, _ := types.SetValueFrom(ctx, types.StringType, []string{"admin"})
 
 	planModel := res.GroupResourceModel{
 		Metalake: types.StringValue("test_metalake"),
@@ -105,7 +105,7 @@ func TestGroupResource_ImportState(t *testing.T) {
 	nullModel := res.GroupResourceModel{
 		Metalake: types.StringNull(),
 		Name:     types.StringNull(),
-		Roles:    types.ListNull(types.StringType),
+		Roles:    types.SetNull(types.StringType),
 		Audit:    types.ObjectNull(res.AuditAttrTypes),
 	}
 	nullObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), nullModel)
@@ -145,7 +145,7 @@ func TestGroupResource_ImportState_Invalid(t *testing.T) {
 	nullModel := res.GroupResourceModel{
 		Metalake: types.StringNull(),
 		Name:     types.StringNull(),
-		Roles:    types.ListNull(types.StringType),
+		Roles:    types.SetNull(types.StringType),
 		Audit:    types.ObjectNull(res.AuditAttrTypes),
 	}
 	nullObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), nullModel)
@@ -197,7 +197,7 @@ func TestGroupResource_Delete(t *testing.T) {
 		ID:       types.StringValue("test_metalake.test_group"),
 		Metalake: types.StringValue("test_metalake"),
 		Name:     types.StringValue("test_group"),
-		Roles:    types.ListNull(types.StringType),
+		Roles:    types.SetNull(types.StringType),
 		Audit:    types.ObjectNull(res.AuditAttrTypes),
 	}
 

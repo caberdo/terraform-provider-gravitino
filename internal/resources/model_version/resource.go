@@ -52,7 +52,7 @@ type ModelVersionResourceModel struct {
 	Model      types.String `tfsdk:"model"`
 	Version    types.String `tfsdk:"version"`
 	URI        types.String `tfsdk:"uri"`
-	Aliases    types.List   `tfsdk:"aliases"`
+	Aliases    types.Set    `tfsdk:"aliases"`
 	Comment    types.String `tfsdk:"comment"`
 	Properties types.Map    `tfsdk:"properties"`
 	Audit      types.Object `tfsdk:"audit"`
@@ -98,7 +98,7 @@ func (r *ModelVersionResource) Schema(_ context.Context, _ resource.SchemaReques
 				Optional:    true,
 				Computed:    true,
 			},
-			"aliases": schema.ListAttribute{
+			"aliases": schema.SetAttribute{
 				Description: "Aliases for this model version.",
 				Optional:    true,
 				Computed:    true,
@@ -317,11 +317,11 @@ func (r *ModelVersionResource) readModelVersionToState(ctx context.Context, mvRe
 		m.Comment = types.StringValue(mv.Comment)
 
 		if len(mv.Aliases) > 0 {
-			aliasesList, d := types.ListValueFrom(ctx, types.StringType, mv.Aliases)
+			aliasesSet, d := types.SetValueFrom(ctx, types.StringType, mv.Aliases)
 			diags.Append(d...)
-			m.Aliases = aliasesList
+			m.Aliases = aliasesSet
 		} else {
-			m.Aliases = types.ListNull(types.StringType)
+			m.Aliases = types.SetNull(types.StringType)
 		}
 
 		if len(mv.Properties) > 0 {
@@ -373,7 +373,7 @@ func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics
 	})
 }
 
-func stringListFromTF(ctx context.Context, list types.List) ([]string, diag.Diagnostics) {
+func stringListFromTF(ctx context.Context, list types.Set) ([]string, diag.Diagnostics) {
 	if list.IsNull() || list.IsUnknown() {
 		return nil, nil
 	}

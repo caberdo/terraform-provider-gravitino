@@ -128,14 +128,14 @@ func TestUserDataSource_Read(t *testing.T) {
 	attrTypes := map[string]attr.Type{
 		"metalake": types.StringType,
 		"name":     types.StringType,
-		"roles":    types.ListType{ElemType: types.StringType},
+		"roles":    types.SetType{ElemType: types.StringType},
 		"audit":    types.ObjectType{AttrTypes: ds.AuditAttrTypes},
 	}
 
 	configModel := ds.UserDataSourceModel{
 		Metalake: types.StringValue("test_metalake"),
 		Name:     types.StringValue("test_user"),
-		Roles:    types.ListNull(types.StringType),
+		Roles:    types.SetNull(types.StringType),
 		Audit:    types.ObjectNull(ds.AuditAttrTypes),
 	}
 

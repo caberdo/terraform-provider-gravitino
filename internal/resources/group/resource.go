@@ -39,7 +39,7 @@ type GroupResourceModel struct {
 	ID       types.String `tfsdk:"id"`
 	Metalake types.String `tfsdk:"metalake"`
 	Name     types.String `tfsdk:"name"`
-	Roles    types.List   `tfsdk:"roles"`
+	Roles    types.Set    `tfsdk:"roles"`
 	Audit    types.Object `tfsdk:"audit"`
 }
 
@@ -87,7 +87,7 @@ func (r *GroupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Required:    true,
 				Description: "The group name.",
 			},
-			"roles": schema.ListAttribute{
+			"roles": schema.SetAttribute{
 				Optional:    true,
 				Computed:    true,
 				ElementType: types.StringType,
@@ -256,7 +256,7 @@ func setStateFromGroup(ctx context.Context, diags *diag.Diagnostics, metalake st
 		model.Name = types.StringValue(group.Name)
 		model.ID = types.StringValue(metalake + "." + group.Name)
 
-		roles, d := types.ListValueFrom(ctx, types.StringType, group.Roles)
+		roles, d := types.SetValueFrom(ctx, types.StringType, group.Roles)
 		diags.Append(d...)
 		if !diags.HasError() {
 			model.Roles = roles
@@ -306,7 +306,7 @@ func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object,
 	return types.ObjectValue(AuditAttrTypes, attrs)
 }
 
-func listFromTF(l types.List) []string {
+func listFromTF(l types.Set) []string {
 	if l.IsNull() || l.IsUnknown() {
 		return nil
 	}

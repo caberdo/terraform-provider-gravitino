@@ -41,5 +41,5 @@ resource "gravitino_idp_user" "legacy" {
 
 ### Read-Only
 
-- `groups` (List of String) The groups the user belongs to.
+- `groups` (Set of String) The groups the user belongs to.
 - `id` (String) The username of the built-in IDP user.

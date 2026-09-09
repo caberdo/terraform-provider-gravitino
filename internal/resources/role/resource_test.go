@@ -57,7 +57,7 @@ func TestRoleResource_Create(t *testing.T) {
 		Metalake:         types.StringValue("test_metalake"),
 		Name:             types.StringValue("test_role"),
 		Properties:       types.MapNull(types.StringType),
-		SecurableObjects: types.ListNull(types.ObjectType{AttrTypes: res.SecurableObjectAttrTypes}),
+		SecurableObjects: types.SetNull(types.ObjectType{AttrTypes: res.SecurableObjectAttrTypes}),
 		Audit:            types.ObjectNull(res.AuditAttrTypes),
 	}
 
@@ -106,7 +106,7 @@ func TestRoleResource_ImportState(t *testing.T) {
 		Metalake:         types.StringNull(),
 		Name:             types.StringNull(),
 		Properties:       types.MapNull(types.StringType),
-		SecurableObjects: types.ListNull(soObjType),
+		SecurableObjects: types.SetNull(soObjType),
 		Audit:            types.ObjectNull(res.AuditAttrTypes),
 	}
 	nullObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), nullModel)
@@ -149,7 +149,7 @@ func TestRoleResource_ImportState_Invalid(t *testing.T) {
 		Metalake:         types.StringNull(),
 		Name:             types.StringNull(),
 		Properties:       types.MapNull(types.StringType),
-		SecurableObjects: types.ListNull(soObjType),
+		SecurableObjects: types.SetNull(soObjType),
 		Audit:            types.ObjectNull(res.AuditAttrTypes),
 	}
 	nullObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), nullModel)
@@ -204,7 +204,7 @@ func TestRoleResource_Delete(t *testing.T) {
 		Metalake:         types.StringValue("test_metalake"),
 		Name:             types.StringValue("test_role"),
 		Properties:       types.MapNull(types.StringType),
-		SecurableObjects: types.ListNull(soObjType),
+		SecurableObjects: types.SetNull(soObjType),
 		Audit:            types.ObjectNull(res.AuditAttrTypes),
 	}
 
