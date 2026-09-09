@@ -31,7 +31,16 @@ install: build
 testacc-docker:
 	docker compose run --rm test
 
+testacc-live:
+	podman compose up -d gravitino
+	podman compose run --rm acc
+
+testacc-live-filter:
+	@test -n "$(F)" || (echo "usage: make testacc-live-filter F=TestLiveAccMetalakeResource"; exit 1)
+	podman compose up -d gravitino
+	GO_TEST_FILTER="$(F)" podman compose run --rm acc
+
 generate:
 	go generate ./...
 
-.PHONY: build test testacc lint lint-fix fmt vet install testacc-docker generate
+.PHONY: build test testacc lint lint-fix fmt vet install testacc-docker testacc-live testacc-live-filter generate

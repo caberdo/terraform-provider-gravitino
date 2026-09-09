@@ -36,5 +36,24 @@ services:
       gravitino:
         condition: service_healthy
 
+  acc:
+    image: golang:1.26.4
+    volumes:
+      - .:/app
+      - go-modules:/go/pkg/mod
+    working_dir: /app
+    entrypoint: ["bash", "/app/scripts/testacc-live.sh"]
+    environment:
+      TF_ACC: "1"
+      GRAVITINO_URI: "http://gravitino:8090"
+      GRAVITINO_AUTH: "none"
+      GRAVITINO_USERNAME: ""
+      GRAVITINO_PASSWORD: ""
+      GRAVITINO_OAUTH_TOKEN: ""
+      GRAVITINO_EXPECT_VERSION: "1.3.0"
+    depends_on:
+      gravitino:
+        condition: service_healthy
+
 volumes:
   go-modules:
