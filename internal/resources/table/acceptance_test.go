@@ -92,6 +92,138 @@ resource "gravitino_table" "this" {
 	})
 }
 
+func TestAccTableResource_NoDriftWithServerDroppedProperty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/metalakes/ml/catalogs/cat/schemas/sch/tables":
+			var req models.TableCreateRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			json.NewEncoder(w).Encode(models.TableResponse{
+				Code: 0,
+				Table: models.Table{
+					Name:         req.Name,
+					Columns:      req.Columns,
+					Distribution: req.Distribution,
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/metalakes/ml/catalogs/cat/schemas/sch/tables/tbl2":
+			// Server keeps one configured property but drops the reserved one.
+			json.NewEncoder(w).Encode(models.TableResponse{
+				Code: 0,
+				Table: models.Table{
+					Name:         "tbl2",
+					Columns:      []models.Column{{Name: "id", Type: models.DataType{Type: "long"}, Nullable: true}},
+					Distribution: &models.Distribution{Strategy: "hash", Number: 1},
+					Properties:   map[string]string{"env": "dev"},
+				},
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/metalakes/ml/catalogs/cat/schemas/sch/tables/tbl2":
+			json.NewEncoder(w).Encode(models.DropResponse{Code: 0, Dropped: true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_table" "this" {
+  metalake   = "ml"
+  catalog    = "cat"
+  schema     = "sch"
+  name       = "tbl2"
+  properties = { "in-use" = "true", "env" = "dev" }
+
+  column {
+    name = "id"
+    type = "long"
+  }
+
+  distribution {
+    number = 1
+  }
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_table.this", "name", "tbl2"),
+					resource.TestCheckResourceAttr("gravitino_table.this", "properties.%", "2"),
+					resource.TestCheckResourceAttr("gravitino_table.this", "properties.in-use", "true"),
+					resource.TestCheckResourceAttr("gravitino_table.this", "properties.env", "dev"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccTableResource_CreateWithEmptyProperties(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/metalakes/ml/catalogs/cat/schemas/sch/tables":
+			var req models.TableCreateRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			json.NewEncoder(w).Encode(models.TableResponse{
+				Code: 0,
+				Table: models.Table{
+					Name:         req.Name,
+					Columns:      req.Columns,
+					Distribution: req.Distribution,
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/metalakes/ml/catalogs/cat/schemas/sch/tables/tbl3":
+			json.NewEncoder(w).Encode(models.TableResponse{
+				Code: 0,
+				Table: models.Table{
+					Name:         "tbl3",
+					Columns:      []models.Column{{Name: "id", Type: models.DataType{Type: "long"}, Nullable: true}},
+					Distribution: &models.Distribution{Strategy: "hash", Number: 1},
+				},
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/metalakes/ml/catalogs/cat/schemas/sch/tables/tbl3":
+			json.NewEncoder(w).Encode(models.DropResponse{Code: 0, Dropped: true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_table" "this" {
+  metalake   = "ml"
+  catalog    = "cat"
+  schema     = "sch"
+  name       = "tbl3"
+  properties = {}
+
+  column {
+    name = "id"
+    type = "long"
+  }
+
+  distribution {
+    number = 1
+  }
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_table.this", "name", "tbl3"),
+					resource.TestCheckResourceAttr("gravitino_table.this", "properties.%", "0"),
+				),
+			},
+		},
+	})
+}
+
 func auditModel(t time.Time) *models.Audit {
 	return &models.Audit{
 		Creator:          "admin",

@@ -1,4 +1,22 @@
-## 0.4.1 (2026-09-09)
+## 0.4.3 (2026-09-09)
+
+FIXES:
+- **Fix perpetual drift on `properties` when the server drops a configured key**
+  (e.g. the reserved `in-use` property). State now merges configured properties
+  with server-returned ones, so keys Gravitino does not echo back are preserved
+  instead of being dropped. Applies to `gravitino_metalake` and
+  `gravitino_table`; both `properties` attributes are now `Optional + Computed`.
+- **Fix "inconsistent result: .properties was cty.MapValEmpty, but now null" for
+  `gravitino_table`** when `properties = {}` is configured and the server returns
+  no properties (metalake already handled in 0.4.2).
+
+ENHANCEMENTS:
+- Acceptance tests that reproduce and guard against properties drift and empty
+  maps: `TestAccMetalakeResource_NoDriftWithServerDroppedProperty` (incl.
+  property removal on update), `TestAccTableResource_NoDriftWithServerDroppedProperty`,
+  and `TestAccTableResource_CreateWithEmptyProperties`.
+
+## 0.4.2 (2026-09-09)
 
 FIXES:
 - **Fix "Provider produced inconsistent result after apply: .audit was absent,

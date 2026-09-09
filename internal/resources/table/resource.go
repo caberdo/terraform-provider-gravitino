@@ -85,6 +85,7 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"properties": schema.MapAttribute{
 				Optional:    true,
+				Computed:    true,
 				ElementType: types.StringType,
 			},
 			"id": schema.StringAttribute{
@@ -255,7 +256,7 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Comment: plan.Comment.ValueString(),
 	}
 
-	if !plan.Properties.IsNull() {
+	if !plan.Properties.IsNull() && !plan.Properties.IsUnknown() {
 		props := make(map[string]string)
 		resp.Diagnostics.Append(plan.Properties.ElementsAs(ctx, &props, false)...)
 		if resp.Diagnostics.HasError() {
@@ -376,10 +377,10 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 
 	oldProps := make(map[string]string)
 	newProps := make(map[string]string)
-	if !state.Properties.IsNull() {
+	if !state.Properties.IsNull() && !state.Properties.IsUnknown() {
 		resp.Diagnostics.Append(state.Properties.ElementsAs(ctx, &oldProps, false)...)
 	}
-	if !plan.Properties.IsNull() {
+	if !plan.Properties.IsNull() && !plan.Properties.IsUnknown() {
 		resp.Diagnostics.Append(plan.Properties.ElementsAs(ctx, &newProps, false)...)
 	}
 	if resp.Diagnostics.HasError() {
@@ -627,10 +628,22 @@ func mapTableResponseToState(ctx context.Context, resp *models.TableResponse, st
 	t := resp.Table
 
 	state.Name = types.StringValue(t.Name)
-	state.Comment = types.StringValue(t.Comment)
+	if t.Comment != "" {
+		state.Comment = types.StringValue(t.Comment)
+	}
 
-	if len(t.Properties) > 0 {
-		props, d := types.MapValueFrom(ctx, types.StringType, t.Properties)
+	if state.Properties.IsNull() || state.Properties.IsUnknown() {
+		state.Properties = types.MapNull(types.StringType)
+	}
+	merged := map[string]string{}
+	if !state.Properties.IsNull() && !state.Properties.IsUnknown() {
+		diags.Append(state.Properties.ElementsAs(ctx, &merged, false)...)
+	}
+	for k, v := range t.Properties {
+		merged[k] = v
+	}
+	if len(merged) > 0 {
+		props, d := types.MapValueFrom(ctx, types.StringType, merged)
 		diags.Append(d...)
 		state.Properties = props
 	}

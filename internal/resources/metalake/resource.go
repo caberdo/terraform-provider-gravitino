@@ -62,6 +62,7 @@ func (r *MetalakeResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"properties": schema.MapAttribute{
 				Optional:    true,
+				Computed:    true,
 				ElementType: types.StringType,
 			},
 			"audit": schema.ObjectAttribute{
@@ -263,10 +264,22 @@ func propertiesToMap(ctx context.Context, props map[string]string, diags *diag.D
 
 func metalakeToState(m *models.Metalake, state *MetalakeResourceModel, diags *diag.Diagnostics) {
 	state.Name = types.StringValue(m.Name)
-	state.Comment = types.StringValue(m.Comment)
+	if m.Comment != "" {
+		state.Comment = types.StringValue(m.Comment)
+	}
 
-	if len(m.Properties) > 0 {
-		state.Properties = propertiesToMap(context.Background(), m.Properties, diags)
+	// Merge configured properties with server-returned ones so that keys the
+	// server does not echo back (e.g. the reserved "in-use" property) are not
+	// dropped from state, which would otherwise cause perpetual drift.
+	if state.Properties.IsNull() || state.Properties.IsUnknown() {
+		state.Properties = types.MapNull(types.StringType)
+	}
+	merged := mapToProperties(context.Background(), state.Properties, diags)
+	for k, v := range m.Properties {
+		merged[k] = v
+	}
+	if len(merged) > 0 {
+		state.Properties = propertiesToMap(context.Background(), merged, diags)
 	}
 
 	auditObj, d := models.AuditToObjectValue(context.Background(), m.Audit)

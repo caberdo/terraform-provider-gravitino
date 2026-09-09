@@ -140,6 +140,106 @@ resource "gravitino_metalake" "this" {
 	})
 }
 
+func TestAccMetalakeResource_NoDriftWithServerDroppedProperty(t *testing.T) {
+	currentProps := map[string]string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/metalakes":
+			var req models.MetalakeCreateRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			currentProps = req.Properties
+			// Real Gravitino does not echo back the special "in-use" property.
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name:    req.Name,
+					Comment: req.Comment,
+				},
+			})
+		case r.Method == http.MethodPut && r.URL.Path == "/api/metalakes/inuse_ml":
+			var req models.MetalakeUpdateRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			for _, u := range req.Updates {
+				if m, ok := u.(map[string]interface{}); ok {
+					switch m["@type"] {
+					case "removeProperty":
+						delete(currentProps, m["property"].(string))
+					case "setProperty":
+						currentProps[m["property"].(string)] = m["value"].(string)
+					}
+				}
+			}
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name:       "inuse_ml",
+					Comment:    "in-use metalake",
+					Properties: currentProps,
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/metalakes/inuse_ml":
+			// Real Gravitino does not echo back the reserved "in-use" property
+			// inside the properties map, but keeps any other configured ones.
+			props := make(map[string]string)
+			for k, v := range currentProps {
+				if k != "in-use" {
+					props[k] = v
+				}
+			}
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name:       "inuse_ml",
+					Comment:    "in-use metalake",
+					Properties: props,
+				},
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/metalakes/inuse_ml":
+			json.NewEncoder(w).Encode(models.DropResponse{Code: 0, Dropped: true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_metalake" "this" {
+  name       = "inuse_ml"
+  comment    = "in-use metalake"
+  properties = { "in-use" = "true", "env" = "dev" }
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "name", "inuse_ml"),
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.%", "2"),
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.in-use", "true"),
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.env", "dev"),
+				),
+			},
+			{
+				Config: `
+resource "gravitino_metalake" "this" {
+  name       = "inuse_ml"
+  comment    = "in-use metalake"
+  properties = { "in-use" = "true" }
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "name", "inuse_ml"),
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.%", "1"),
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.in-use", "true"),
+				),
+			},
+		},
+	})
+}
+
 func timePtr(s string) *time.Time {
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
