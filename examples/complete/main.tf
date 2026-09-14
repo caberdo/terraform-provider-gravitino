@@ -18,22 +18,22 @@ resource "gravitino_metalake" "platform" {
 # CATALOGS — Data sources
 # ---------------------------------------------------------------------------
 resource "gravitino_catalog" "hive" {
-  metalake = gravitino_metalake.platform.name
-  name     = "warehouse"
-  type     = "relational"
-  provider = "hive"
-  comment  = "Hive warehouse for structured data"
+  metalake         = gravitino_metalake.platform.name
+  name             = "warehouse"
+  type             = "relational"
+  catalog_provider = "hive"
+  comment          = "Hive warehouse for structured data"
   properties = {
     "metastore.uris" = "thrift://hive-metastore:9083"
   }
 }
 
 resource "gravitino_catalog" "iceberg" {
-  metalake = gravitino_metalake.platform.name
-  name     = "lakehouse"
-  type     = "relational"
-  provider = "lakehouse-iceberg"
-  comment  = "Iceberg lakehouse for transactional data lake"
+  metalake         = gravitino_metalake.platform.name
+  name             = "lakehouse"
+  type             = "relational"
+  catalog_provider = "lakehouse-iceberg"
+  comment          = "Iceberg lakehouse for transactional data lake"
   properties = {
     "warehouse"      = "s3a://iceberg-warehouse"
     "catalog-backend" = "jdbc"
@@ -49,11 +49,11 @@ resource "gravitino_catalog" "fileset_catalog" {
 }
 
 resource "gravitino_catalog" "kafka" {
-  metalake = gravitino_metalake.platform.name
-  name     = "streaming"
-  type     = "messaging"
-  provider = "kafka"
-  comment  = "Kafka for event streaming"
+  metalake         = gravitino_metalake.platform.name
+  name             = "streaming"
+  type             = "messaging"
+  catalog_provider = "kafka"
+  comment          = "Kafka for event streaming"
   properties = {
     "bootstrap.servers" = "kafka-cluster:9092"
   }
