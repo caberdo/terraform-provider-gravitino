@@ -268,7 +268,9 @@ func (r *SchemaResource) ImportState(ctx context.Context, req resource.ImportSta
 func (r *SchemaResource) readSchemaToState(ctx context.Context, schemaResp *models.SchemaResponse, m *SchemaResourceModel, diags *diag.Diagnostics) {
 	m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), schemaResp.Schema.Name))
 	m.Name = types.StringValue(schemaResp.Schema.Name)
-	m.Comment = types.StringValue(schemaResp.Schema.Comment)
+	if schemaResp.Schema.Comment != "" {
+		m.Comment = types.StringValue(schemaResp.Schema.Comment)
+	}
 
 	if len(schemaResp.Schema.Properties) > 0 {
 		props, d := types.MapValueFrom(ctx, types.StringType, schemaResp.Schema.Properties)

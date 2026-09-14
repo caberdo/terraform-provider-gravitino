@@ -284,7 +284,9 @@ func (r *ModelResource) ImportState(ctx context.Context, req resource.ImportStat
 func (r *ModelResource) readModelToState(ctx context.Context, modelResp *models.ModelResponse, m *ModelResourceModel, diags *diag.Diagnostics) {
 	m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), m.Schema.ValueString(), modelResp.Model.Name))
 	m.Name = types.StringValue(modelResp.Model.Name)
-	m.Comment = types.StringValue(modelResp.Model.Comment)
+	if modelResp.Model.Comment != "" {
+		m.Comment = types.StringValue(modelResp.Model.Comment)
+	}
 	m.ModelURI = types.StringValue(modelResp.Model.ModelURI)
 
 	if len(modelResp.Model.Properties) > 0 {

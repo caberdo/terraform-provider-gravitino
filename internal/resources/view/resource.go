@@ -284,7 +284,9 @@ func (r *ViewResource) ImportState(ctx context.Context, req resource.ImportState
 func (r *ViewResource) readViewToState(ctx context.Context, viewResp *models.ViewResponse, m *ViewResourceModel, diags *diag.Diagnostics) {
 	m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), m.Schema.ValueString(), viewResp.View.Name))
 	m.Name = types.StringValue(viewResp.View.Name)
-	m.Comment = types.StringValue(viewResp.View.Comment)
+	if viewResp.View.Comment != "" {
+		m.Comment = types.StringValue(viewResp.View.Comment)
+	}
 	m.ViewDef = types.StringValue(viewResp.View.ViewDef)
 
 	if len(viewResp.View.Properties) > 0 {

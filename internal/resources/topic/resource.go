@@ -278,7 +278,9 @@ func (r *TopicResource) ImportState(ctx context.Context, req resource.ImportStat
 func (r *TopicResource) readTopicToState(ctx context.Context, topicResp *models.TopicResponse, m *TopicResourceModel, diags *diag.Diagnostics) {
 	m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), m.Schema.ValueString(), topicResp.Topic.Name))
 	m.Name = types.StringValue(topicResp.Topic.Name)
-	m.Comment = types.StringValue(topicResp.Topic.Comment)
+	if topicResp.Topic.Comment != "" {
+		m.Comment = types.StringValue(topicResp.Topic.Comment)
+	}
 
 	if len(topicResp.Topic.Properties) > 0 {
 		props, d := types.MapValueFrom(ctx, types.StringType, topicResp.Topic.Properties)

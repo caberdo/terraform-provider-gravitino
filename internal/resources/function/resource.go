@@ -280,7 +280,9 @@ func (r *FunctionResource) ImportState(ctx context.Context, req resource.ImportS
 func (r *FunctionResource) readFunctionToState(ctx context.Context, functionResp *models.FunctionResponse, m *FunctionResourceModel, diags *diag.Diagnostics) {
 	m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), m.Schema.ValueString(), functionResp.Function.Name))
 	m.Name = types.StringValue(functionResp.Function.Name)
-	m.Comment = types.StringValue(functionResp.Function.Comment)
+	if functionResp.Function.Comment != "" {
+		m.Comment = types.StringValue(functionResp.Function.Comment)
+	}
 	m.FunctionBody = types.StringValue(functionResp.Function.FunctionBody)
 
 	if len(functionResp.Function.Properties) > 0 {

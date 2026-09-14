@@ -11,6 +11,12 @@ BREAKING CHANGES:
   `gravitino_model_version` `aliases` (resources and data sources).
 
 FIXES:
+- **Fix "inconsistent result after apply" for optional `comment` attributes.**
+  `gravitino_schema`, `gravitino_view`, `gravitino_function`, `gravitino_model`, and
+  `gravitino_topic` set `comment` to an empty string in state when the server returned
+  no comment, while the config had `comment` omitted (null). The read functions now only
+  set `comment` when the server returns a non-empty value, so apply no longer fails with
+  `.comment: was null, but now cty.StringVal("")`. Covered by new acceptance tests.
 - **Fix `gravitino_principal` decode against real Gravitino.** `GET /api/authn/me`
   returns `principal` as a plain string (e.g. `"anonymous"`), not an object with
   `name`/`roles`; the data source now decodes the real response shape.
