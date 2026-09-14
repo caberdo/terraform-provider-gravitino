@@ -14,6 +14,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -61,6 +65,9 @@ func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"id": schema.StringAttribute{
 				Description: "The compound identifier in the format metalake.catalog.schema.function.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -77,6 +84,9 @@ func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"name": schema.StringAttribute{
 				Description: "The function name.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"comment": schema.StringAttribute{
 				Description: "A comment describing the function.",
@@ -90,11 +100,17 @@ func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Description: "Key-value properties for the function.",
 				Optional:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.RequiresReplace(),
+				},
 			},
 			"audit": schema.ObjectAttribute{
 				Description:    "Audit information for the function.",
 				Computed:       true,
 				AttributeTypes: auditAttrTypes,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -194,34 +210,8 @@ func (r *FunctionResource) Update(ctx context.Context, req resource.UpdateReques
 
 	var updates []interface{}
 
-	if !plan.Name.Equal(state.Name) {
-		updates = append(updates, models.NewRenameFunctionRequest(plan.Name.ValueString()))
-	}
 	if !plan.Comment.Equal(state.Comment) {
 		updates = append(updates, models.NewUpdateFunctionCommentRequest(plan.Comment.ValueString()))
-	}
-
-	if !plan.Properties.Equal(state.Properties) {
-		oldProps := make(map[string]string)
-		if !state.Properties.IsNull() && !state.Properties.IsUnknown() {
-			state.Properties.ElementsAs(ctx, &oldProps, false)
-		}
-
-		newProps := make(map[string]string)
-		if !plan.Properties.IsNull() && !plan.Properties.IsUnknown() {
-			plan.Properties.ElementsAs(ctx, &newProps, false)
-		}
-
-		for k := range oldProps {
-			if _, exists := newProps[k]; !exists {
-				updates = append(updates, models.NewRemoveFunctionPropertyRequest(k))
-			}
-		}
-		for k, v := range newProps {
-			if oldVal, exists := oldProps[k]; !exists || oldVal != v {
-				updates = append(updates, models.NewSetFunctionPropertyRequest(k, v))
-			}
-		}
 	}
 
 	if len(updates) > 0 {
@@ -282,6 +272,8 @@ func (r *FunctionResource) readFunctionToState(ctx context.Context, functionResp
 	m.Name = types.StringValue(functionResp.Function.Name)
 	if functionResp.Function.Comment != "" {
 		m.Comment = types.StringValue(functionResp.Function.Comment)
+	} else {
+		m.Comment = types.StringNull()
 	}
 	m.FunctionBody = types.StringValue(functionResp.Function.FunctionBody)
 

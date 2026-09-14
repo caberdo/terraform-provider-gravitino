@@ -14,6 +14,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -59,6 +62,9 @@ func (r *SchemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"id": schema.StringAttribute{
 				Description: "The compound identifier in the format metalake.catalog.schema.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -71,10 +77,16 @@ func (r *SchemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"name": schema.StringAttribute{
 				Description: "The schema name.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"comment": schema.StringAttribute{
 				Description: "A comment describing the schema.",
 				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"properties": schema.MapAttribute{
 				Description: "Key-value properties for the schema.",
@@ -85,6 +97,9 @@ func (r *SchemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Description:    "Audit information for the schema.",
 				Computed:       true,
 				AttributeTypes: auditAttrTypes,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -183,13 +198,6 @@ func (r *SchemaResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	var updates []interface{}
 
-	if !plan.Name.Equal(state.Name) {
-		updates = append(updates, models.NewRenameSchemaRequest(plan.Name.ValueString()))
-	}
-	if !plan.Comment.Equal(state.Comment) {
-		updates = append(updates, models.NewUpdateSchemaCommentRequest(plan.Comment.ValueString()))
-	}
-
 	if !plan.Properties.Equal(state.Properties) {
 		oldProps := make(map[string]string)
 		if !state.Properties.IsNull() && !state.Properties.IsUnknown() {
@@ -270,6 +278,8 @@ func (r *SchemaResource) readSchemaToState(ctx context.Context, schemaResp *mode
 	m.Name = types.StringValue(schemaResp.Schema.Name)
 	if schemaResp.Schema.Comment != "" {
 		m.Comment = types.StringValue(schemaResp.Schema.Comment)
+	} else {
+		m.Comment = types.StringNull()
 	}
 
 	if len(schemaResp.Schema.Properties) > 0 {

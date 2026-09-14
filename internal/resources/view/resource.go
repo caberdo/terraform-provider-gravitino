@@ -14,6 +14,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -65,6 +68,9 @@ func (r *ViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"id": schema.StringAttribute{
 				Description: "Compound identifier in the format metalake.catalog.schema.view.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -85,6 +91,9 @@ func (r *ViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"comment": schema.StringAttribute{
 				Description: "A comment describing the view.",
 				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"view_def": schema.StringAttribute{
 				Description: "The SQL view definition.",
@@ -99,6 +108,9 @@ func (r *ViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Description:    "Audit information for the view.",
 				Computed:       true,
 				AttributeTypes: AuditAttrTypes,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -201,9 +213,6 @@ func (r *ViewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	if !plan.Name.Equal(state.Name) {
 		updates = append(updates, models.NewRenameViewRequest(plan.Name.ValueString()))
 	}
-	if !plan.Comment.Equal(state.Comment) {
-		updates = append(updates, models.NewUpdateViewCommentRequest(plan.Comment.ValueString()))
-	}
 
 	if !plan.Properties.Equal(state.Properties) {
 		oldProps := make(map[string]string)
@@ -286,6 +295,8 @@ func (r *ViewResource) readViewToState(ctx context.Context, viewResp *models.Vie
 	m.Name = types.StringValue(viewResp.View.Name)
 	if viewResp.View.Comment != "" {
 		m.Comment = types.StringValue(viewResp.View.Comment)
+	} else {
+		m.Comment = types.StringNull()
 	}
 	m.ViewDef = types.StringValue(viewResp.View.ViewDef)
 

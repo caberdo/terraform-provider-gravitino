@@ -11,11 +11,29 @@ BREAKING CHANGES:
   `gravitino_model_version` `aliases` (resources and data sources).
 
 FIXES:
+- **Fix `Malformed json request` when updating schema, topic, view or function.**
+  These resources sent update `@type` values that Gravitino does not support for
+  the entity, so the server rejected the request with
+  `{"code":1001,"type":"IllegalArgumentException","message":"Malformed json request"}`
+  (Jackson `InvalidTypeIdException`). Per Gravitino's `*UpdateRequest` DTOs:
+  - `gravitino_schema`: dropped `rename`/`updateComment`; `name` and `comment` now
+    force replacement (Gravitino only supports `setProperty`/`removeProperty` for
+    schemas).
+  - `gravitino_topic`: dropped `rename`; `name` now forces replacement (topics have
+    no rename).
+  - `gravitino_view`: dropped `updateComment`; `comment` now forces replacement
+    (views have no comment update; use rename/properties/`replaceView`).
+  - `gravitino_function`: dropped `rename`/`setProperty`/`removeProperty`; `name`
+    and `properties` now force replacement (functions only support comment and
+    definition/implementation updates).
+  Also added `UseStateForUnknown` plan modifiers on `id`/`audit` for these
+  resources to avoid spurious `-> (known after apply)` diffs. Covered by new
+  acceptance tests that assert no unsupported `@type` is ever sent.
 - **Fix "inconsistent result after apply" for optional `comment` attributes.**
   `gravitino_schema`, `gravitino_view`, `gravitino_function`, `gravitino_model`, and
   `gravitino_topic` set `comment` to an empty string in state when the server returned
-  no comment, while the config had `comment` omitted (null). The read functions now only
-  set `comment` when the server returns a non-empty value, so apply no longer fails with
+  no comment, while the config had `comment` omitted (null). The read functions now
+  normalize an empty server comment to `null`, so apply no longer fails with
   `.comment: was null, but now cty.StringVal("")`. Covered by new acceptance tests.
 - **Fix `gravitino_principal` decode against real Gravitino.** `GET /api/authn/me`
   returns `principal` as a plain string (e.g. `"anonymous"`), not an object with

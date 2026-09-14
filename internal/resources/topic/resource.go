@@ -14,6 +14,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -64,6 +67,9 @@ func (r *TopicResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"id": schema.StringAttribute{
 				Description: "The compound identifier in the format metalake.catalog.schema.topic.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -80,6 +86,9 @@ func (r *TopicResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"name": schema.StringAttribute{
 				Description: "The topic name.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"comment": schema.StringAttribute{
 				Description: "A comment describing the topic.",
@@ -94,6 +103,9 @@ func (r *TopicResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Description:    "Audit information for the topic.",
 				Computed:       true,
 				AttributeTypes: AuditAttrTypes,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -192,9 +204,6 @@ func (r *TopicResource) Update(ctx context.Context, req resource.UpdateRequest, 
 
 	var updates []interface{}
 
-	if !plan.Name.Equal(state.Name) {
-		updates = append(updates, models.NewRenameTopicRequest(plan.Name.ValueString()))
-	}
 	if !plan.Comment.Equal(state.Comment) {
 		updates = append(updates, models.NewUpdateTopicCommentRequest(plan.Comment.ValueString()))
 	}
@@ -280,6 +289,8 @@ func (r *TopicResource) readTopicToState(ctx context.Context, topicResp *models.
 	m.Name = types.StringValue(topicResp.Topic.Name)
 	if topicResp.Topic.Comment != "" {
 		m.Comment = types.StringValue(topicResp.Topic.Comment)
+	} else {
+		m.Comment = types.StringNull()
 	}
 
 	if len(topicResp.Topic.Properties) > 0 {
