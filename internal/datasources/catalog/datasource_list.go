@@ -46,12 +46,12 @@ type catalogItemModel struct {
 }
 
 var CatalogItemAttrTypes = map[string]attr.Type{
-	"name":       types.StringType,
-	"type":       types.StringType,
-	"catalog_provider":   types.StringType,
-	"comment":    types.StringType,
-	"properties": types.MapType{ElemType: types.StringType},
-	"audit":      types.ObjectType{AttrTypes: AuditAttrTypes},
+	"name":             types.StringType,
+	"type":             types.StringType,
+	"catalog_provider": types.StringType,
+	"comment":          types.StringType,
+	"properties":       types.MapType{ElemType: types.StringType},
+	"audit":            types.ObjectType{AttrTypes: AuditAttrTypes},
 }
 
 var AuditAttrTypes = map[string]attr.Type{
@@ -109,6 +109,7 @@ func (d *CatalogsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 						},
 						"properties": schema.MapAttribute{
 							Computed:    true,
+							Sensitive:   true,
 							ElementType: types.StringType,
 							Description: "The catalog properties.",
 						},
@@ -131,9 +132,16 @@ func (d *CatalogsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.ListCatalogsDetails(config.Metalake.ValueString())
+	result, err := d.client.ListCatalogsDetails(ctx, config.Metalake.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list catalogs", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Metalake not found",
+				fmt.Sprintf("No metalake %q exists; cannot list its catalogs.", config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("listing catalogs", config.Metalake.ValueString(), err)...)
 		return
 	}
 
@@ -178,7 +186,8 @@ func catalogToItemModel(ctx context.Context, c *models.Catalog, diags *diag.Diag
 	}
 
 	props, d := types.MapValueFrom(ctx, types.StringType, c.Properties)
-	if d.HasError() {
+	diags.Append(d...)
+	if diags.HasError() {
 		return nil
 	}
 	item.Properties = props

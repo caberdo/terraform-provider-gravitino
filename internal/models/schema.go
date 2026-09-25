@@ -1,5 +1,7 @@
 package models
 
+// Schema mirrors the `Schema` component of the Gravitino v1.3.0 OpenAPI spec
+// (docs/open-api/schemas.yaml).
 type Schema struct {
 	Name       string            `json:"name"`
 	Comment    string            `json:"comment,omitempty"`
@@ -12,40 +14,23 @@ type SchemaResponse struct {
 	Schema Schema `json:"schema"`
 }
 
+// SchemaCreateRequest mirrors `SchemaCreateRequest`: name (required), comment
+// and properties. The spec defines no other create fields.
 type SchemaCreateRequest struct {
 	Name       string            `json:"name"`
 	Comment    string            `json:"comment,omitempty"`
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
-type SchemaUpdate struct {
-	Type string `json:"@type"`
-}
-
+// SchemaUpdateRequest mirrors `SchemaUpdatesRequest`. The spec's
+// `SchemaUpdateRequest` oneOf only allows SetSchemaPropertyRequest and
+// RemoveSchemaPropertyRequest, so there is deliberately no rename/comment
+// update here: those schema fields are not updateable through the REST API.
 type SchemaUpdateRequest struct {
 	Updates []interface{} `json:"updates"`
 }
 
-func NewRenameSchemaRequest(newName string) interface{} {
-	return struct {
-		Type    string `json:"@type"`
-		NewName string `json:"newName"`
-	}{
-		Type:    "rename",
-		NewName: newName,
-	}
-}
-
-func NewUpdateSchemaCommentRequest(newComment string) interface{} {
-	return struct {
-		Type       string `json:"@type"`
-		NewComment string `json:"newComment"`
-	}{
-		Type:       "updateComment",
-		NewComment: newComment,
-	}
-}
-
+// NewSetSchemaPropertyRequest builds a `SetSchemaPropertyRequest`.
 func NewSetSchemaPropertyRequest(property, value string) interface{} {
 	return struct {
 		Type     string `json:"@type"`
@@ -58,6 +43,7 @@ func NewSetSchemaPropertyRequest(property, value string) interface{} {
 	}
 }
 
+// NewRemoveSchemaPropertyRequest builds a `RemoveSchemaPropertyRequest`.
 func NewRemoveSchemaPropertyRequest(property string) interface{} {
 	return struct {
 		Type     string `json:"@type"`

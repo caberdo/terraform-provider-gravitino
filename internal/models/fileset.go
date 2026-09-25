@@ -1,5 +1,7 @@
 package models
 
+// Fileset mirrors the `Fileset` component of the Gravitino v1.3.0 OpenAPI spec
+// (docs/open-api/filesets.yaml).
 type Fileset struct {
 	Name            string            `json:"name"`
 	Comment         string            `json:"comment,omitempty"`
@@ -14,6 +16,12 @@ type FilesetResponse struct {
 	Fileset Fileset `json:"fileset"`
 }
 
+// FilesetCreateRequest mirrors `FilesetCreateRequest`: name (required), type,
+// comment, storageLocation, storageLocations and properties.
+//
+// `storageLocations` is intentionally not modelled: the spec's `Fileset`
+// response does not return it, so it could never be reconciled into Terraform
+// state and is therefore not exposed by the provider.
 type FilesetCreateRequest struct {
 	Name            string            `json:"name"`
 	Comment         string            `json:"comment,omitempty"`
@@ -22,10 +30,12 @@ type FilesetCreateRequest struct {
 	Properties      map[string]string `json:"properties,omitempty"`
 }
 
+// FilesetUpdateRequest mirrors `FilesetUpdatesRequest`.
 type FilesetUpdateRequest struct {
 	Updates []interface{} `json:"updates"`
 }
 
+// NewRenameFilesetRequest builds a `RenameFilesetRequest`.
 func NewRenameFilesetRequest(newName string) interface{} {
 	return struct {
 		Type    string `json:"@type"`
@@ -33,6 +43,7 @@ func NewRenameFilesetRequest(newName string) interface{} {
 	}{Type: "rename", NewName: newName}
 }
 
+// NewUpdateFilesetCommentRequest builds an `UpdateFilesetCommentRequest`.
 func NewUpdateFilesetCommentRequest(newComment string) interface{} {
 	return struct {
 		Type       string `json:"@type"`
@@ -40,6 +51,14 @@ func NewUpdateFilesetCommentRequest(newComment string) interface{} {
 	}{Type: "updateComment", NewComment: newComment}
 }
 
+// NewRemoveFilesetCommentRequest builds a `RemoveFilesetCommentRequest`.
+func NewRemoveFilesetCommentRequest() interface{} {
+	return struct {
+		Type string `json:"@type"`
+	}{Type: "removeComment"}
+}
+
+// NewSetFilesetPropertyRequest builds a `SetFilesetPropertyRequest`.
 func NewSetFilesetPropertyRequest(property, value string) interface{} {
 	return struct {
 		Type     string `json:"@type"`
@@ -48,6 +67,7 @@ func NewSetFilesetPropertyRequest(property, value string) interface{} {
 	}{Type: "setProperty", Property: property, Value: value}
 }
 
+// NewRemoveFilesetPropertyRequest builds a `RemoveFilesetPropertyRequest`.
 func NewRemoveFilesetPropertyRequest(property string) interface{} {
 	return struct {
 		Type     string `json:"@type"`
@@ -55,10 +75,14 @@ func NewRemoveFilesetPropertyRequest(property string) interface{} {
 	}{Type: "removeProperty", Property: property}
 }
 
+// FilesetFile mirrors the `FileInfo` component returned by the
+// `listFilesetFiles` operation.
 type FilesetFile struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
-	Path string `json:"path"`
+	Name         string `json:"name"`
+	IsDir        bool   `json:"isDir"`
+	Size         int64  `json:"size"`
+	LastModified int64  `json:"lastModified"`
+	Path         string `json:"path"`
 }
 
 type FilesetFileListResponse struct {

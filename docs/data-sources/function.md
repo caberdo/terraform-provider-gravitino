@@ -16,7 +16,17 @@ data "gravitino_function" "example" {
   metalake = "example_metalake"
   catalog  = "hive_catalog"
   schema   = "example_schema"
-  name     = "parse_json"
+  name     = "add_one"
+}
+
+output "function_type" {
+  description = "The type of the function: SCALAR, AGGREGATE or TABLE."
+  value       = data.gravitino_function.example.function_type
+}
+
+output "function_definitions" {
+  description = "The definitions of the function, including parameters, return type and implementations."
+  value       = data.gravitino_function.example.definitions
 }
 ```
 
@@ -34,8 +44,9 @@ data "gravitino_function" "example" {
 
 - `audit` (Object) Audit information for the function. (see [below for nested schema](#nestedatt--audit))
 - `comment` (String) The function comment.
-- `function_body` (String) The function body.
-- `properties` (Map of String) Key-value properties for the function.
+- `definitions` (Attributes List) The definitions of the function, including their implementations. (see [below for nested schema](#nestedatt--definitions))
+- `deterministic` (Boolean) Whether the function is deterministic.
+- `function_type` (String) The type of the function (SCALAR, AGGREGATE or TABLE).
 
 <a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`
@@ -46,3 +57,59 @@ Read-Only:
 - `creator` (String)
 - `last_modified_time` (String)
 - `last_modifier` (String)
+
+
+<a id="nestedatt--definitions"></a>
+### Nested Schema for `definitions`
+
+Read-Only:
+
+- `impls` (Attributes List) The implementations of the definition. (see [below for nested schema](#nestedatt--definitions--impls))
+- `parameters` (Attributes List) The parameters of the definition. (see [below for nested schema](#nestedatt--definitions--parameters))
+- `return_columns` (Attributes List) The return columns of the definition (TABLE functions). (see [below for nested schema](#nestedatt--definitions--return_columns))
+- `return_type` (String) The return type of the definition (SCALAR and AGGREGATE functions).
+
+<a id="nestedatt--definitions--impls"></a>
+### Nested Schema for `definitions.impls`
+
+Read-Only:
+
+- `class_name` (String) The class name of a JAVA implementation.
+- `code_block` (String) The code block of a PYTHON implementation.
+- `handler` (String) The handler of a PYTHON implementation.
+- `language` (String) The implementation language (SQL, JAVA or PYTHON).
+- `properties` (Map of String) Additional properties of the implementation.
+- `resources` (Attributes) External resources required by the implementation. (see [below for nested schema](#nestedatt--definitions--impls--resources))
+- `runtime` (String) The runtime of the implementation (SPARK or TRINO).
+- `sql` (String) The SQL expression of a SQL implementation.
+
+<a id="nestedatt--definitions--impls--resources"></a>
+### Nested Schema for `definitions.impls.resources`
+
+Read-Only:
+
+- `archives` (List of String) Archive URIs.
+- `files` (List of String) File URIs.
+- `jars` (List of String) JAR file URIs.
+
+
+
+<a id="nestedatt--definitions--parameters"></a>
+### Nested Schema for `definitions.parameters`
+
+Read-Only:
+
+- `comment` (String) The comment of the parameter.
+- `data_type` (String) The Gravitino data type of the parameter.
+- `default_value` (String) The default value expression of the parameter.
+- `name` (String) The name of the parameter.
+
+
+<a id="nestedatt--definitions--return_columns"></a>
+### Nested Schema for `definitions.return_columns`
+
+Read-Only:
+
+- `comment` (String) The comment of the return column.
+- `data_type` (String) The Gravitino data type of the return column.
+- `name` (String) The name of the return column.

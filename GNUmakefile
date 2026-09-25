@@ -13,10 +13,10 @@ testacc:
 	TF_ACC=1 go test -v -cover ./internal/...
 
 lint:
-	golangci-lint run ./...
+	golangci-lint run --config .github/golangci.yml ./...
 
 lint-fix:
-	golangci-lint run --fix ./...
+	golangci-lint run --config .github/golangci.yml --fix ./...
 
 fmt:
 	go fmt ./...
@@ -40,7 +40,10 @@ testacc-live-filter:
 	podman compose up -d gravitino
 	podman compose run --rm -e GO_TEST_FILTER="$(F)" acc
 
+validate-examples:
+	./scripts/validate-examples.sh
+
 generate:
 	go generate ./...
 
-.PHONY: build test testacc lint lint-fix fmt vet install testacc-docker testacc-live testacc-live-filter generate
+.PHONY: build test testacc lint lint-fix fmt vet install testacc-docker testacc-live testacc-live-filter validate-examples generate

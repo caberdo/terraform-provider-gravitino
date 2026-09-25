@@ -1,64 +1,48 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
-func (c *Client) ListPartitions(metalake, catalog, schema, table string) (*models.IdentifiersResponse, error) {
-	var result models.IdentifiersResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/tables/%s/partitions",
+func partitionsPath(metalake, catalog, schema, table string) string {
+	return fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/tables/%s/partitions",
 		url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(table))
-	err := c.Get(path, &result)
-	return &result, err
 }
 
-func (c *Client) GetPartition(metalake, catalog, schema, table, name string) (*models.PartitionResponse, error) {
+// ListPartitions returns the partitions of a table, including their type,
+// field names, values and properties, in a single request. The details query
+// parameter is defined by partitions.yaml for the list partitions operation.
+func (c *Client) ListPartitions(ctx context.Context, metalake, catalog, schema, table string) ([]models.Partition, error) {
+	var result models.PartitionListResponse
+	err := c.Get(ctx, partitionsPath(metalake, catalog, schema, table)+"?details=true", &result)
+	return result.Partitions, err
+}
+
+// GetPartition returns a single partition of a table.
+func (c *Client) GetPartition(ctx context.Context, metalake, catalog, schema, table, name string) (*models.PartitionResponse, error) {
 	var result models.PartitionResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/tables/%s/partitions/%s",
-		url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(table), url.PathEscape(name))
-	err := c.Get(path, &result)
+	path := partitionsPath(metalake, catalog, schema, table) + "/" + url.PathEscape(name)
+	err := c.Get(ctx, path, &result)
 	return &result, err
 }
 
-func (c *Client) CreatePartition(metalake, catalog, schema, table string, req *models.PartitionCreateRequest) (*models.PartitionResponse, error) {
-	var result models.PartitionResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/tables/%s/partitions",
-		url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(table))
-	err := c.Post(path, req, &result)
+// AddPartitions adds partitions to a table. The response contains the added
+// partitions, including the names the catalog derived for them.
+func (c *Client) AddPartitions(ctx context.Context, metalake, catalog, schema, table string, partitions []models.Partition) (*models.PartitionListResponse, error) {
+	var result models.PartitionListResponse
+	body := &models.AddPartitionsRequest{Partitions: partitions}
+	err := c.Post(ctx, partitionsPath(metalake, catalog, schema, table), body, &result)
 	return &result, err
 }
 
-func (c *Client) UpdatePartition(metalake, catalog, schema, table, name string, updates []interface{}) (*models.PartitionResponse, error) {
-	var result models.PartitionResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/tables/%s/partitions/%s",
-		url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(table), url.PathEscape(name))
-	err := c.Put(path, &models.PartitionUpdateRequest{Updates: updates}, &result)
-	return &result, err
-}
-
-func (c *Client) DropPartition(metalake, catalog, schema, table, name string) (*models.DropResponse, error) {
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/tables/%s/partitions/%s",
-		url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(table), url.PathEscape(name))
+// DropPartition drops a single partition of a table.
+func (c *Client) DropPartition(ctx context.Context, metalake, catalog, schema, table, name string) (*models.DropResponse, error) {
 	var result models.DropResponse
-	err := c.Delete(path, &result)
+	path := partitionsPath(metalake, catalog, schema, table) + "/" + url.PathEscape(name)
+	err := c.Delete(ctx, path, &result)
 	return &result, err
-}
-
-func (c *Client) ListPartitionsDetails(metalake, catalog, schema, table string) ([]models.Partition, error) {
-	identifiers, err := c.ListPartitions(metalake, catalog, schema, table)
-	if err != nil {
-		return nil, err
-	}
-	partitions := make([]models.Partition, 0, len(identifiers.Identifiers))
-	for _, id := range identifiers.Identifiers {
-		resp, err := c.GetPartition(metalake, catalog, schema, table, id.Name)
-		if err != nil {
-			return nil, err
-		}
-		partitions = append(partitions, resp.Partition)
-	}
-	return partitions, nil
 }

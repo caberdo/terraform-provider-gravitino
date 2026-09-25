@@ -4,84 +4,101 @@ import (
 	"context"
 	"testing"
 
-	"github.com/gravitino/terraform-provider-gravitino/internal/models"
-
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func TestMapTableResponseToState_NullPropertiesWithServerProperties(t *testing.T) {
-	state := models.TableResourceModel{
-		Name:       types.StringValue("tbl"),
-		Properties: types.MapNull(types.StringType),
-	}
+// TestMergeTableProperties covers the property rules of the resource: the
+// configuration owns the keys it manages, and the keys a catalog adds on its
+// own (Hive reports location and table-type) only surface when the
+// configuration manages no properties at all.
+func TestMergeTableProperties_ConfiguredKeysAreNotPolluted(t *testing.T) {
+	desired := mustMap(map[string]string{"format": "ORC"})
 
-	diags := mapTableResponseToState(context.Background(), &models.TableResponse{
-		Table: models.Table{
-			Name:       "tbl",
-			Properties: map[string]string{"env": "dev"},
-		},
-	}, &state)
-
+	merged, diags := mergeTableProperties(context.Background(), map[string]string{
+		"format":     "ORC",
+		"location":   "hdfs://namenode/user/hive/warehouse/t",
+		"table-type": "MANAGED_TABLE",
+	}, desired, false)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
-	if state.Properties.IsNull() || state.Properties.IsUnknown() {
-		t.Fatalf("expected properties to be set, got null/unknown")
+
+	properties := make(map[string]string)
+	if d := merged.ElementsAs(context.Background(), &properties, false); d.HasError() {
+		t.Fatalf("reading properties: %v", d)
 	}
-	props := make(map[string]string)
-	if d := state.Properties.ElementsAs(context.Background(), &props, false); d.HasError() {
-		t.Fatalf("failed to read properties: %v", d)
-	}
-	if props["env"] != "dev" {
-		t.Fatalf("expected env=dev, got %#v", props)
+	if len(properties) != 1 || properties["format"] != "ORC" {
+		t.Fatalf("expected only the configured property, got %#v", properties)
 	}
 }
 
-func TestMapTableResponseToState_EmptyConfigProperties(t *testing.T) {
-	props, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{})
-	state := models.TableResourceModel{
-		Name:       types.StringValue("tbl"),
-		Properties: props,
-	}
+func TestMergeTableProperties_ServerWinsOnRefresh(t *testing.T) {
+	desired := mustMap(map[string]string{"format": "ORC", "region": "eu"})
 
-	diags := mapTableResponseToState(context.Background(), &models.TableResponse{
-		Table: models.Table{
-			Name: "tbl",
-		},
-	}, &state)
-
+	merged, diags := mergeTableProperties(context.Background(), map[string]string{
+		"format": "PARQUET",
+	}, desired, true)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
-	if state.Properties.IsNull() {
-		t.Fatalf("expected empty map to be preserved, got null")
+
+	properties := make(map[string]string)
+	if d := merged.ElementsAs(context.Background(), &properties, false); d.HasError() {
+		t.Fatalf("reading properties: %v", d)
+	}
+	if properties["format"] != "PARQUET" {
+		t.Errorf("format = %q, want the value reported by the server", properties["format"])
+	}
+	if properties["region"] != "eu" {
+		t.Errorf("region = %q, want the configured value", properties["region"])
 	}
 }
 
-func TestMapTableResponseToState_FiltersReservedProperties(t *testing.T) {
-	state := models.TableResourceModel{
-		Name:       types.StringValue("tbl"),
-		Properties: types.MapNull(types.StringType),
-	}
-
-	diags := mapTableResponseToState(context.Background(), &models.TableResponse{
-		Table: models.Table{
-			Name:       "tbl",
-			Properties: map[string]string{"in-use": "true", "env": "dev"},
-		},
-	}, &state)
-
+func TestMergeTableProperties_UnmanagedSurfacesServerProperties(t *testing.T) {
+	merged, diags := mergeTableProperties(context.Background(), map[string]string{
+		"env":    "dev",
+		"in-use": "true",
+	}, types.MapNull(types.StringType), false)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
-	props := make(map[string]string)
-	if d := state.Properties.ElementsAs(context.Background(), &props, false); d.HasError() {
-		t.Fatalf("failed to read properties: %v", d)
+
+	properties := make(map[string]string)
+	if d := merged.ElementsAs(context.Background(), &properties, false); d.HasError() {
+		t.Fatalf("reading properties: %v", d)
 	}
-	if _, ok := props["in-use"]; ok {
-		t.Fatalf("reserved property 'in-use' must not appear in state, got %#v", props)
+	if properties["env"] != "dev" {
+		t.Errorf("env = %q, want dev", properties["env"])
 	}
-	if props["env"] != "dev" {
-		t.Fatalf("expected env=dev preserved, got %#v", props)
+	if _, ok := properties["in-use"]; ok {
+		t.Errorf("the reserved in-use property must be filtered, got %#v", properties)
+	}
+}
+
+func TestMergeTableProperties_EmptyConfigurationStaysEmpty(t *testing.T) {
+	desired, diags := types.MapValueFrom(context.Background(), types.StringType, map[string]string{})
+	if diags.HasError() {
+		t.Fatalf("building empty map: %v", diags)
+	}
+
+	merged, mergeDiags := mergeTableProperties(context.Background(), map[string]string{"env": "dev"}, desired, true)
+	if mergeDiags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", mergeDiags)
+	}
+	if merged.IsNull() {
+		t.Fatal("an empty properties map configured by the user must stay empty, not become null")
+	}
+	if len(merged.Elements()) != 0 {
+		t.Errorf("expected an empty map, got %v", merged.Elements())
+	}
+}
+
+func TestMergeTableProperties_NoServerPropertiesAndNoConfiguration(t *testing.T) {
+	merged, diags := mergeTableProperties(context.Background(), nil, types.MapNull(types.StringType), true)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !merged.IsNull() {
+		t.Errorf("expected null, got %v", merged)
 	}
 }

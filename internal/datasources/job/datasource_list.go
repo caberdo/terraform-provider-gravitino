@@ -39,26 +39,19 @@ func (d *JobsDataSource) SetClient(c *client.Client) {
 }
 
 type JobsDataSourceModel struct {
-	Metalake types.String `tfsdk:"metalake"`
-	Jobs     types.List   `tfsdk:"jobs"`
-}
-
-type jobItemModel struct {
-	Name       types.String `tfsdk:"name"`
-	Template   types.String `tfsdk:"template"`
-	Schedule   types.String `tfsdk:"schedule"`
-	Status     types.String `tfsdk:"status"`
-	Parameters types.Map    `tfsdk:"parameters"`
-	Audit      types.Object `tfsdk:"audit"`
+	Metalake    types.String `tfsdk:"metalake"`
+	Jobs        types.List   `tfsdk:"jobs"`
+	JobTemplate types.String `tfsdk:"job_template"`
 }
 
 var JobItemAttrTypes = map[string]attr.Type{
-	"name":       types.StringType,
-	"template":   types.StringType,
-	"schedule":   types.StringType,
-	"status":     types.StringType,
-	"parameters": types.MapType{ElemType: types.StringType},
-	"audit":      types.ObjectType{AttrTypes: AuditAttrTypes},
+	"job_id":       types.StringType,
+	"job_template": types.StringType,
+	"status":       types.StringType,
+	"queued_at":    types.StringType,
+	"started_at":   types.StringType,
+	"finished_at":  types.StringType,
+	"audit":        types.ObjectType{AttrTypes: AuditAttrTypes},
 }
 
 func (d *JobsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -82,40 +75,48 @@ func (d *JobsDataSource) Metadata(_ context.Context, _ datasource.MetadataReques
 
 func (d *JobsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Lists the job runs of a metalake, optionally filtered by job template name.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Required:    true,
 				Description: "The metalake name.",
 			},
+			"job_template": schema.StringAttribute{
+				Optional:    true,
+				Description: "Only return job runs of this job template.",
+			},
 			"jobs": schema.ListNestedAttribute{
 				Computed: true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
+						"job_id": schema.StringAttribute{
 							Computed:    true,
-							Description: "The job name.",
+							Description: "The unique identifier of the job run.",
 						},
-						"template": schema.StringAttribute{
+						"job_template": schema.StringAttribute{
 							Computed:    true,
-							Description: "The job template name.",
-						},
-						"schedule": schema.StringAttribute{
-							Computed:    true,
-							Description: "The job schedule.",
+							Description: "The name of the job template the job runs.",
 						},
 						"status": schema.StringAttribute{
 							Computed:    true,
-							Description: "The current status of the job.",
+							Description: "The current status of the job run.",
 						},
-						"parameters": schema.MapAttribute{
+						"queued_at": schema.StringAttribute{
 							Computed:    true,
-							ElementType: types.StringType,
-							Description: "The job parameters.",
+							Description: "The time the job was queued (RFC3339).",
+						},
+						"started_at": schema.StringAttribute{
+							Computed:    true,
+							Description: "The time the job started (RFC3339).",
+						},
+						"finished_at": schema.StringAttribute{
+							Computed:    true,
+							Description: "The time the job finished (RFC3339).",
 						},
 						"audit": schema.ObjectAttribute{
 							Computed:       true,
 							AttributeTypes: AuditAttrTypes,
-							Description:    "Audit information for the job.",
+							Description:    "Audit information for the job run.",
 						},
 					},
 				},
@@ -131,28 +132,32 @@ func (d *JobsDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	result, err := d.client.ListJobs(config.Metalake.ValueString())
+	metalake := config.Metalake.ValueString()
+
+	result, err := d.client.ListJobs(ctx, metalake)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list jobs", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing jobs", metalake, err)...)
 		return
 	}
 
+	filter := ""
+	if !config.JobTemplate.IsNull() && !config.JobTemplate.IsUnknown() {
+		filter = config.JobTemplate.ValueString()
+	}
+
 	items := make([]attr.Value, 0, len(result.Jobs))
-	for _, job := range result.Jobs {
-		j := job
-		item := jobToItemModel(ctx, &j, &resp.Diagnostics)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		if item == nil {
+	for i := range result.Jobs {
+		job := &result.Jobs[i]
+		if filter != "" && job.JobTemplateName != filter {
 			continue
 		}
-		obj, objDiags := types.ObjectValueFrom(ctx, JobItemAttrTypes, item)
-		resp.Diagnostics.Append(objDiags...)
+
+		item, itemDiags := jobToItemModel(ctx, job)
+		resp.Diagnostics.Append(itemDiags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		items = append(items, obj)
+		items = append(items, item)
 	}
 
 	jobsList, listDiags := types.ListValue(types.ObjectType{AttrTypes: JobItemAttrTypes}, items)
@@ -160,46 +165,41 @@ func (d *JobsDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	config.Jobs = jobsList
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func jobToItemModel(ctx context.Context, j *models.Job, diags *diag.Diagnostics) *jobItemModel {
-	if j == nil {
-		return nil
-	}
+func jobToItemModel(ctx context.Context, job *models.Job) (basetypes.ObjectValue, diag.Diagnostics) {
+	var diags diag.Diagnostics
 
-	item := &jobItemModel{
-		Name:     types.StringValue(j.Name),
-		Template: types.StringValue(j.Template),
-		Schedule: types.StringValue(j.Schedule),
-		Status:   types.StringValue(j.Status),
-	}
-
-	props, d := types.MapValueFrom(ctx, types.StringType, strMapFromInterface(j.Parameters))
-	if d.HasError() {
-		return nil
-	}
-	item.Parameters = props
-
-	auditObj, d := auditToObjectValueForDS(ctx, j.Audit)
+	auditObj, d := auditToObjectValueForDS(ctx, job.Audit)
 	diags.Append(d...)
 	if diags.HasError() {
-		return nil
+		return basetypes.ObjectValue{}, diags
 	}
-	item.Audit = auditObj
 
-	return item
+	attrs := map[string]attr.Value{
+		"job_id":       types.StringValue(job.JobID),
+		"job_template": types.StringValue(job.JobTemplateName),
+		"status":       types.StringValue(job.Status),
+		"queued_at":    dataSourceTimeToString(job.QueuedAt),
+		"started_at":   dataSourceTimeToString(job.StartedAt),
+		"finished_at":  dataSourceTimeToString(job.FinishedAt),
+		"audit":        auditObj,
+	}
+
+	obj, d := types.ObjectValue(JobItemAttrTypes, attrs)
+	diags.Append(d...)
+	return obj, diags
 }
 
-func auditToObjectValueForDS(ctx context.Context, audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
+func auditToObjectValueForDS(_ context.Context, audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
+	var diags diag.Diagnostics
 
-	creator := types.StringValue(audit.Creator)
-	lastModifier := types.StringValue(audit.LastModifier)
+	if audit == nil {
+		return types.ObjectNull(AuditAttrTypes), diags
+	}
 
 	var createTime, lastModifiedTime types.String
 	if audit.CreateTime != nil {
@@ -214,21 +214,11 @@ func auditToObjectValueForDS(ctx context.Context, audit *models.Audit) (basetype
 	}
 
 	attrs := map[string]attr.Value{
-		"creator":            creator,
+		"creator":            types.StringValue(audit.Creator),
 		"create_time":        createTime,
-		"last_modifier":      lastModifier,
+		"last_modifier":      types.StringValue(audit.LastModifier),
 		"last_modified_time": lastModifiedTime,
 	}
 
 	return types.ObjectValue(AuditAttrTypes, attrs)
-}
-
-func strMapFromInterface(m map[string]interface{}) map[string]string {
-	result := make(map[string]string)
-	for k, v := range m {
-		if strVal, ok := v.(string); ok {
-			result[k] = strVal
-		}
-	}
-	return result
 }

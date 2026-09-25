@@ -2,6 +2,7 @@ package model_version
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
@@ -18,7 +19,7 @@ import (
 var _ datasource.DataSource = &ModelVersionDataSource{}
 var _ datasource.DataSourceWithConfigure = &ModelVersionDataSource{}
 
-var dsAuditAttrTypes = map[string]attr.Type{
+var AuditAttrTypes = map[string]attr.Type{
 	"creator":            types.StringType,
 	"create_time":        types.StringType,
 	"last_modifier":      types.StringType,
@@ -42,8 +43,10 @@ type ModelVersionDataSourceModel struct {
 	Catalog    types.String `tfsdk:"catalog"`
 	Schema     types.String `tfsdk:"schema"`
 	Model      types.String `tfsdk:"model"`
-	Version    types.String `tfsdk:"version"`
+	Version    types.Int64  `tfsdk:"version"`
+	Alias      types.String `tfsdk:"alias"`
 	URI        types.String `tfsdk:"uri"`
+	URIs       types.Map    `tfsdk:"uris"`
 	Aliases    types.Set    `tfsdk:"aliases"`
 	Comment    types.String `tfsdk:"comment"`
 	Properties types.Map    `tfsdk:"properties"`
@@ -56,7 +59,7 @@ func (d *ModelVersionDataSource) Metadata(_ context.Context, _ datasource.Metada
 
 func (d *ModelVersionDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Retrieves a single Gravitino model version by identifier.",
+		Description: "Retrieves a single Gravitino model version, either by version number or by alias.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -74,16 +77,26 @@ func (d *ModelVersionDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 				Description: "The model name.",
 				Required:    true,
 			},
-			"version": schema.StringAttribute{
-				Description: "The model version identifier.",
-				Required:    true,
-			},
-			"uri": schema.StringAttribute{
-				Description: "The URI of the model version artifact.",
+			"version": schema.Int64Attribute{
+				Description: "The model version number. Exactly one of version and alias must be set.",
+				Optional:    true,
 				Computed:    true,
 			},
+			"alias": schema.StringAttribute{
+				Description: "An alias of the model version. Exactly one of version and alias must be set.",
+				Optional:    true,
+			},
+			"uri": schema.StringAttribute{
+				Description: "The unnamed URI of the model artifact.",
+				Computed:    true,
+			},
+			"uris": schema.MapAttribute{
+				Description: "The URIs of the model artifact, keyed by URI name.",
+				Computed:    true,
+				ElementType: types.StringType,
+			},
 			"aliases": schema.SetAttribute{
-				Description: "Aliases for this model version.",
+				Description: "Aliases of the model version.",
 				Computed:    true,
 				ElementType: types.StringType,
 			},
@@ -99,7 +112,7 @@ func (d *ModelVersionDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 			"audit": schema.ObjectAttribute{
 				Description:    "Audit information for the model version.",
 				Computed:       true,
-				AttributeTypes: dsAuditAttrTypes,
+				AttributeTypes: AuditAttrTypes,
 			},
 		},
 	}
@@ -124,42 +137,81 @@ func (d *ModelVersionDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	mvResp, err := d.client.GetModelVersion(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Model.ValueString(), config.Version.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read model version", err.Error())
+	metalake := config.Metalake.ValueString()
+	catalog := config.Catalog.ValueString()
+	schemaName := config.Schema.ValueString()
+	model := config.Model.ValueString()
+
+	hasVersion := !config.Version.IsNull() && !config.Version.IsUnknown()
+	hasAlias := !config.Alias.IsNull() && !config.Alias.IsUnknown()
+	if hasVersion == hasAlias {
+		resp.Diagnostics.AddError(
+			"Invalid model version lookup",
+			"Exactly one of version and alias must be set.",
+		)
 		return
 	}
 
-	mv := mvResp.ModelVersion
-	config.URI = types.StringValue(mv.URI)
-	config.Comment = types.StringValue(mv.Comment)
-
-	if len(mv.Aliases) > 0 {
-		aliasesList, d := types.SetValueFrom(ctx, types.StringType, mv.Aliases)
-		resp.Diagnostics.Append(d...)
-		config.Aliases = aliasesList
+	var (
+		result   *models.ModelVersionResponse
+		err      error
+		resource string
+	)
+	if hasAlias {
+		resource = fmt.Sprintf("%s alias %q", model, config.Alias.ValueString())
+		result, err = d.client.GetModelVersionByAlias(ctx, metalake, catalog, schemaName, model, config.Alias.ValueString())
 	} else {
-		config.Aliases = types.SetNull(types.StringType)
+		resource = fmt.Sprintf("%s version %d", model, config.Version.ValueInt64())
+		result, err = d.client.GetModelVersion(ctx, metalake, catalog, schemaName, model, int32(config.Version.ValueInt64()))
+	}
+	if err != nil {
+		resp.Diagnostics.Append(client.NewResourceError("reading model version", resource, err)...)
+		return
 	}
 
-	if len(mv.Properties) > 0 {
-		props, propsDiags := types.MapValueFrom(ctx, types.StringType, mv.Properties)
-		resp.Diagnostics.Append(propsDiags...)
-		config.Properties = props
-	} else {
-		config.Properties = types.MapNull(types.StringType)
-	}
+	mv := result.ModelVersion
+	config.Version = types.Int64Value(int64(mv.Version))
+	config.URI = optionalString(mv.URI)
+	config.Comment = optionalString(mv.Comment)
+	config.URIs = mapValueFrom(ctx, mv.URIs, &resp.Diagnostics)
+	config.Properties = mapValueFrom(ctx, mv.Properties, &resp.Diagnostics)
+	config.Aliases = setValueFrom(ctx, mv.Aliases, &resp.Diagnostics)
 
-	auditObj, auditDiags := dsAuditToObject(mv.Audit)
+	auditObj, auditDiags := auditToObject(mv.Audit)
 	resp.Diagnostics.Append(auditDiags...)
 	config.Audit = auditObj
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }
 
-func dsAuditToObject(a *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
+func optionalString(apiValue string) types.String {
+	if apiValue != "" {
+		return types.StringValue(apiValue)
+	}
+	return types.StringNull()
+}
+
+func mapValueFrom(ctx context.Context, values map[string]string, diags *diag.Diagnostics) types.Map {
+	if len(values) > 0 {
+		value, d := types.MapValueFrom(ctx, types.StringType, values)
+		diags.Append(d...)
+		return value
+	}
+	return types.MapNull(types.StringType)
+}
+
+func setValueFrom(ctx context.Context, values []string, diags *diag.Diagnostics) types.Set {
+	if len(values) > 0 {
+		value, d := types.SetValueFrom(ctx, types.StringType, values)
+		diags.Append(d...)
+		return value
+	}
+	return types.SetNull(types.StringType)
+}
+
+func auditToObject(a *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
 	if a == nil {
-		return types.ObjectNull(dsAuditAttrTypes), nil
+		return types.ObjectNull(AuditAttrTypes), nil
 	}
 
 	creator := types.StringNull()
@@ -182,7 +234,7 @@ func dsAuditToObject(a *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) 
 		lastModifiedTime = types.StringValue(a.LastModifiedTime.Format(time.RFC3339))
 	}
 
-	return types.ObjectValue(dsAuditAttrTypes, map[string]attr.Value{
+	return types.ObjectValue(AuditAttrTypes, map[string]attr.Value{
 		"creator":            creator,
 		"create_time":        createTime,
 		"last_modifier":      lastModifier,

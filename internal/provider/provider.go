@@ -50,12 +50,13 @@ import (
 	rspolicy "github.com/gravitino/terraform-provider-gravitino/internal/resources/policy"
 	rsrole "github.com/gravitino/terraform-provider-gravitino/internal/resources/role"
 	rsschema "github.com/gravitino/terraform-provider-gravitino/internal/resources/schema"
-	rstag "github.com/gravitino/terraform-provider-gravitino/internal/resources/tag"
 	rstable "github.com/gravitino/terraform-provider-gravitino/internal/resources/table"
+	rstag "github.com/gravitino/terraform-provider-gravitino/internal/resources/tag"
 	rstopic "github.com/gravitino/terraform-provider-gravitino/internal/resources/topic"
 	rsuser "github.com/gravitino/terraform-provider-gravitino/internal/resources/user"
 	rsview "github.com/gravitino/terraform-provider-gravitino/internal/resources/view"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -63,7 +64,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 )
 
 var _ provider.Provider = (*GravitinoProvider)(nil)
@@ -73,8 +73,8 @@ type GravitinoProvider struct {
 }
 
 type GravitinoProviderModel struct {
-	URI      types.String `tfsdk:"uri"`
-	Auth     types.String `tfsdk:"auth"`
+	URI  types.String `tfsdk:"uri"`
+	Auth types.String `tfsdk:"auth"`
 
 	// Simple / Basic
 	Username types.String `tfsdk:"username"`
@@ -114,13 +114,13 @@ func (p *GravitinoProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 				Optional:    true,
 				Description: "The URI of the Gravitino server. Can also be set via GRAVITINO_URI environment variable.",
 			},
-		"auth": schema.StringAttribute{
-			Optional:    true,
-			Description: "Authentication method: 'simple', 'basic', 'oauth', or 'kerberos'. Can also be set via GRAVITINO_AUTH environment variable.",
-			Validators: []validator.String{
-				stringvalidator.OneOf("simple", "basic", "oauth", "kerberos", "none"),
+			"auth": schema.StringAttribute{
+				Optional:    true,
+				Description: "Authentication method: 'simple', 'basic', 'oauth', or 'kerberos'. Can also be set via GRAVITINO_AUTH environment variable.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("simple", "basic", "oauth", "kerberos", "none"),
+				},
 			},
-		},
 			"username": schema.StringAttribute{
 				Optional:    true,
 				Description: "Username for simple/basic authentication. Can also be set via GRAVITINO_USERNAME environment variable.",
@@ -207,7 +207,16 @@ func (p *GravitinoProvider) Configure(ctx context.Context, req provider.Configur
 
 	kerberosUseTicketCache := false
 	if envVal := os.Getenv("GRAVITINO_KERBEROS_USE_TICKET_CACHE"); envVal != "" {
-		kerberosUseTicketCache, _ = strconv.ParseBool(envVal)
+		parsed, err := strconv.ParseBool(envVal)
+		if err != nil {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("kerberos_use_ticket_cache"),
+				"Invalid GRAVITINO_KERBEROS_USE_TICKET_CACHE value",
+				fmt.Sprintf("Expected a boolean, got %q.", envVal),
+			)
+			return
+		}
+		kerberosUseTicketCache = parsed
 	}
 	if !config.KerberosUseTicketCache.IsNull() {
 		kerberosUseTicketCache = config.KerberosUseTicketCache.ValueBool()

@@ -2,19 +2,19 @@
 page_title: "gravitino_job Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  
+  Looks up a single job run by its server-generated job id.
 ---
 
 # gravitino_job Data Source
 
-
+Looks up a single job run by its server-generated job id.
 
 ## Example Usage
 
 ```terraform
 data "gravitino_job" "example" {
   metalake = "example_metalake"
-  name     = "daily_etl"
+  job_id   = "job-1234567890"
 }
 ```
 
@@ -23,16 +23,17 @@ data "gravitino_job" "example" {
 
 ### Required
 
+- `job_id` (String) The unique identifier of the job run.
 - `metalake` (String) The metalake name.
-- `name` (String) The job name.
 
 ### Read-Only
 
-- `audit` (Object) Audit information for the job. (see [below for nested schema](#nestedatt--audit))
-- `parameters` (Map of String) The job parameters.
-- `schedule` (String) The job schedule.
-- `status` (String) The current status of the job.
-- `template` (String) The job template name.
+- `audit` (Object) Audit information for the job run. (see [below for nested schema](#nestedatt--audit))
+- `finished_at` (String) The time the job finished (RFC3339).
+- `job_template` (String) The name of the job template the job runs.
+- `queued_at` (String) The time the job was queued (RFC3339).
+- `started_at` (String) The time the job started (RFC3339).
+- `status` (String) The current status of the job run.
 
 <a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`

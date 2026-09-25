@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -13,6 +14,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -23,6 +26,10 @@ var _ resource.Resource = &JobResource{}
 var _ resource.ResourceWithImportState = &JobResource{}
 var _ resource.ResourceWithConfigure = &JobResource{}
 
+// JobResource manages a single job run. Gravitino models jobs as job *runs* of a
+// job template: POST /jobs/runs starts one and the server assigns the jobId.
+// Therefore every configured attribute forces a replacement (a new run) and
+// Delete cancels the run rather than deleting it, because the API has no delete.
 type JobResource struct {
 	client *client.Client
 }
@@ -36,14 +43,16 @@ func (r *JobResource) SetClient(c *client.Client) {
 }
 
 type JobResourceModel struct {
-	ID         types.String `tfsdk:"id"`
-	Metalake   types.String `tfsdk:"metalake"`
-	Name       types.String `tfsdk:"name"`
-	Template   types.String `tfsdk:"template"`
-	Parameters types.Map    `tfsdk:"parameters"`
-	Schedule   types.String `tfsdk:"schedule"`
-	Status     types.String `tfsdk:"status"`
-	Audit      types.Object `tfsdk:"audit"`
+	ID          types.String `tfsdk:"id"`
+	Metalake    types.String `tfsdk:"metalake"`
+	JobTemplate types.String `tfsdk:"job_template"`
+	JobConf     types.Map    `tfsdk:"job_conf"`
+	JobID       types.String `tfsdk:"job_id"`
+	Status      types.String `tfsdk:"status"`
+	QueuedAt    types.String `tfsdk:"queued_at"`
+	StartedAt   types.String `tfsdk:"started_at"`
+	FinishedAt  types.String `tfsdk:"finished_at"`
+	Audit       types.Object `tfsdk:"audit"`
 }
 
 var AuditAttrTypes = map[string]attr.Type{
@@ -52,6 +61,18 @@ var AuditAttrTypes = map[string]attr.Type{
 	"last_modifier":      types.StringType,
 	"last_modified_time": types.StringType,
 }
+
+// jobStatuses are the status values defined by the Gravitino Job schema.
+var jobStatuses = []string{"queued", "started", "failed", "succeeded", "cancelling", "canceled"}
+
+const (
+	cancelPollInterval = 2 * time.Second
+	// cancelPollTimeout bounds how long destroy waits for a cancelled job to reach a
+	// terminal status. Gravitino only leaves "cancelling" once a job executor collects
+	// the cancellation, and without a running executor it never does, so the wait is
+	// deliberately short and best effort.
+	cancelPollTimeout = 10 * time.Second
+)
 
 func (r *JobResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
@@ -74,46 +95,82 @@ func (r *JobResource) Metadata(_ context.Context, _ resource.MetadataRequest, re
 
 func (r *JobResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Manages a job run in a Gravitino metalake. A job is started by running a job " +
+			"template and is identified by the server-generated job id, so changing any configured " +
+			"attribute starts a new run. Destroying the resource cancels the run; Gravitino keeps no " +
+			"deletable job records.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
-				Description: "Composite identifier in the format 'metalake.job_name'.",
+				Description: "Composite identifier in the format 'metalake.job_id'.",
 			},
 			"metalake": schema.StringAttribute{
-				Required:    true,
+				Required: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 				Description: "The metalake name.",
 			},
-			"name": schema.StringAttribute{
-				Required:    true,
-				Description: "The job name.",
+			"job_template": schema.StringAttribute{
+				Required: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+				Description: "The name of the job template to run.",
 			},
-			"template": schema.StringAttribute{
-				Optional:    true,
-				Computed:    true,
-				Description: "The job template name.",
-			},
-			"parameters": schema.MapAttribute{
-				Optional:    true,
-				Computed:    true,
+			"job_conf": schema.MapAttribute{
 				ElementType: types.StringType,
-				Description: "A map of key-value parameters for the job.",
-			},
-			"schedule": schema.StringAttribute{
 				Optional:    true,
-				Computed:    true,
-				Description: "The job schedule (cron expression).",
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.RequiresReplace(),
+				},
+				Description: "The job configuration passed to the job run.",
+			},
+			"job_id": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Description: "The server-generated unique identifier of the job run.",
 			},
 			"status": schema.StringAttribute{
-				Computed:    true,
-				Description: "The current status of the job.",
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Description: fmt.Sprintf("The status of the job run. One of: %s.", strings.Join(jobStatuses, ", ")),
+			},
+			"queued_at": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Description: "The time the job was queued (RFC3339).",
+			},
+			"started_at": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Description: "The time the job started (RFC3339).",
+			},
+			"finished_at": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Description: "The time the job finished (RFC3339).",
 			},
 			"audit": schema.ObjectAttribute{
 				Computed:       true,
 				AttributeTypes: AuditAttrTypes,
-				Description:    "Audit information for the job.",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Description: "Audit information for the job run.",
 			},
 		},
 	}
@@ -126,18 +183,19 @@ func (r *JobResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	tflog.Debug(ctx, "Creating job", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "name": plan.Name.ValueString()})
+	tflog.Debug(ctx, "Running job", map[string]interface{}{
+		"metalake": plan.Metalake.ValueString(),
+		"template": plan.JobTemplate.ValueString(),
+	})
 
-	createReq := &models.JobCreateRequest{
-		Name:       plan.Name.ValueString(),
-		Template:   plan.Template.ValueString(),
-		Parameters: mapFromTFInterface(plan.Parameters),
-		Schedule:   plan.Schedule.ValueString(),
+	runReq := &models.JobRunRequest{
+		JobTemplateName: plan.JobTemplate.ValueString(),
+		JobConf:         mapFromTF(plan.JobConf),
 	}
 
-	result, err := r.client.CreateJob(plan.Metalake.ValueString(), createReq)
+	result, err := r.client.RunJob(ctx, plan.Metalake.ValueString(), runReq)
 	if err != nil {
-		resp.Diagnostics.Append(client.NewResourceError("creating job", plan.Name.ValueString(), err)...)
+		resp.Diagnostics.Append(client.NewResourceError("running job", plan.JobTemplate.ValueString(), err)...)
 		return
 	}
 
@@ -148,7 +206,10 @@ func (r *JobResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 
-	tflog.Debug(ctx, "Created job", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "name": plan.Name.ValueString()})
+	tflog.Debug(ctx, "Ran job", map[string]interface{}{
+		"metalake": plan.Metalake.ValueString(),
+		"job_id":   plan.JobID.ValueString(),
+	})
 }
 
 func (r *JobResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -158,15 +219,18 @@ func (r *JobResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	tflog.Debug(ctx, "Reading job", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
+	tflog.Debug(ctx, "Reading job", map[string]interface{}{
+		"metalake": state.Metalake.ValueString(),
+		"job_id":   state.JobID.ValueString(),
+	})
 
-	result, err := r.client.GetJob(state.Metalake.ValueString(), state.Name.ValueString())
+	result, err := r.client.GetJob(ctx, state.Metalake.ValueString(), state.JobID.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		resp.Diagnostics.Append(client.NewResourceError("reading job", state.Name.ValueString(), err)...)
+		resp.Diagnostics.Append(client.NewResourceError("reading job", state.JobID.ValueString(), err)...)
 		return
 	}
 
@@ -176,23 +240,17 @@ func (r *JobResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+
+	tflog.Debug(ctx, "Read job", map[string]interface{}{"job_id": state.JobID.ValueString()})
 }
 
+// Update is unreachable: every configurable attribute forces a replacement. It
+// exists only to satisfy the resource interface.
 func (r *JobResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state JobResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	setStateFromJob(ctx, &resp.Diagnostics, plan.Metalake.ValueString(), nil, &plan)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+	resp.Diagnostics.AddError(
+		"Job update not supported",
+		"A Gravitino job run is immutable. Changing job_template, job_conf or metalake starts a new job run.",
+	)
 }
 
 func (r *JobResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -202,111 +260,154 @@ func (r *JobResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	tflog.Debug(ctx, "Deleting job", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
+	metalake := state.Metalake.ValueString()
+	jobID := state.JobID.ValueString()
 
-	_, err := r.client.DeleteJob(state.Metalake.ValueString(), state.Name.ValueString())
+	tflog.Debug(ctx, "Cancelling job", map[string]interface{}{"metalake": metalake, "job_id": jobID})
+
+	current, err := r.client.GetJob(ctx, metalake, jobID)
 	if err != nil {
-		resp.Diagnostics.Append(client.NewResourceError("deleting job", state.Name.ValueString(), err)...)
+		if client.IsNotFoundError(err) {
+			// Already gone: nothing to cancel.
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("deleting job", jobID, err)...)
 		return
 	}
 
-	tflog.Debug(ctx, "Deleted job", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
+	// Cancelling a finished job is rejected by the server, so only interrupt
+	// jobs that can still make progress.
+	if !jobIsTerminal(current.Job.Status) {
+		if _, err := r.client.CancelJob(ctx, metalake, jobID); err != nil && !client.IsNotFoundError(err) {
+			resp.Diagnostics.Append(client.NewResourceError("cancelling job", jobID, err)...)
+			return
+		}
+		// Gravitino refuses to delete a job template while it still has active
+		// jobs, and a cancelled job only becomes terminal once the job executor
+		// has stopped it. Wait (bounded) so that destroying a template after its
+		// jobs is deterministic whenever an executor is doing its work; if the
+		// job stays active we continue anyway and let the template delete report
+		// the server's own InUseException.
+		waitForTerminalJob(ctx, r.client, metalake, jobID)
+	}
+
+	tflog.Debug(ctx, "Cancelled job", map[string]interface{}{"metalake": metalake, "job_id": jobID})
+}
+
+// waitForTerminalJob polls until the job reaches a terminal status, the context is
+// cancelled, or cancelPollTimeout elapses.
+func waitForTerminalJob(ctx context.Context, c *client.Client, metalake, jobID string) {
+	deadline := time.Now().Add(cancelPollTimeout)
+
+	ticker := time.NewTicker(cancelPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				return
+			}
+			current, err := c.GetJob(ctx, metalake, jobID)
+			if err != nil {
+				return
+			}
+			if jobIsTerminal(current.Job.Status) {
+				return
+			}
+		}
+	}
 }
 
 func (r *JobResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	idx := strings.LastIndex(req.ID, ".")
-	if idx == -1 {
+	if idx == -1 || idx == 0 || idx == len(req.ID)-1 {
 		resp.Diagnostics.AddError(
 			"Invalid import ID",
-			fmt.Sprintf("Expected 'metalake.job_name', got: %s", req.ID),
+			fmt.Sprintf("Expected 'metalake.job_id', got: %s", req.ID),
 		)
 		return
 	}
 
-	metalake := req.ID[:idx]
-	name := req.ID[idx+1:]
-
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("metalake"), metalake)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), name)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("metalake"), req.ID[:idx])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("job_id"), req.ID[idx+1:])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 }
 
-func setStateFromJob(ctx context.Context, diags *diag.Diagnostics, metalake string, job *models.Job, model *JobResourceModel) {
-	if job != nil {
-		model.Name = types.StringValue(job.Name)
-		model.Template = types.StringValue(job.Template)
-		model.Schedule = types.StringValue(job.Schedule)
-		model.Status = types.StringValue(job.Status)
-		model.ID = types.StringValue(metalake + "." + job.Name)
-
-		props, d := types.MapValueFrom(ctx, types.StringType, strMapFromInterface(job.Parameters))
-		diags.Append(d...)
-		if !diags.HasError() {
-			model.Parameters = props
-		}
-
-		if job.Audit != nil {
-			auditObj, d := auditToObjectValue(ctx, job.Audit)
-			diags.Append(d...)
-			if !diags.HasError() {
-				model.Audit = auditObj
-			}
-		}
-	} else {
-		model.ID = types.StringValue(metalake + "." + model.Name.ValueString())
+// jobIsTerminal reports whether a status is final, so cancelling is meaningless.
+func jobIsTerminal(status string) bool {
+	switch status {
+	case "succeeded", "failed", "canceled":
+		return true
+	default:
+		return false
 	}
-
-	model.Metalake = types.StringValue(metalake)
 }
 
-func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {
+// setStateFromJob writes every schema attribute from an API response so no
+// attribute is ever left unknown after apply.
+func setStateFromJob(ctx context.Context, diags *diag.Diagnostics, metalake string, job *models.Job, model *JobResourceModel) {
+	model.Metalake = types.StringValue(metalake)
+	model.JobID = types.StringValue(job.JobID)
+	model.JobTemplate = types.StringValue(job.JobTemplateName)
+	model.Status = types.StringValue(job.Status)
+	model.ID = types.StringValue(metalake + "." + job.JobID)
+	model.QueuedAt = timeToString(job.QueuedAt)
+	model.StartedAt = timeToString(job.StartedAt)
+	model.FinishedAt = timeToString(job.FinishedAt)
+
+	auditObj, d := auditToObjectValue(ctx, job.Audit)
+	diags.Append(d...)
+	if diags.HasError() {
+		return
+	}
+	model.Audit = auditObj
+}
+
+func timeToString(t *time.Time) types.String {
+	if t == nil {
+		return types.StringNull()
+	}
+	return types.StringValue(t.Format(time.RFC3339))
+}
+
+func auditToObjectValue(_ context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {
 	if audit == nil {
 		return types.ObjectNull(AuditAttrTypes), nil
 	}
 
-	creator := types.StringValue(audit.Creator)
-	lastModifier := types.StringValue(audit.LastModifier)
-
 	var createTime, lastModifiedTime types.String
 	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format("2006-01-02T15:04:05Z07:00"))
+		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
 	} else {
 		createTime = types.StringNull()
 	}
 	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format("2006-01-02T15:04:05Z07:00"))
+		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
 	} else {
 		lastModifiedTime = types.StringNull()
 	}
 
 	attrs := map[string]attr.Value{
-		"creator":            creator,
+		"creator":            types.StringValue(audit.Creator),
 		"create_time":        createTime,
-		"last_modifier":      lastModifier,
+		"last_modifier":      types.StringValue(audit.LastModifier),
 		"last_modified_time": lastModifiedTime,
 	}
 
 	return types.ObjectValue(AuditAttrTypes, attrs)
 }
 
-func mapFromTFInterface(m types.Map) map[string]interface{} {
-	result := make(map[string]interface{})
+func mapFromTF(m types.Map) map[string]string {
+	result := make(map[string]string)
 	if m.IsNull() || m.IsUnknown() {
 		return result
 	}
 	for k, v := range m.Elements() {
 		if strVal, ok := v.(types.String); ok {
 			result[k] = strVal.ValueString()
-		}
-	}
-	return result
-}
-
-func strMapFromInterface(m map[string]interface{}) map[string]string {
-	result := make(map[string]string)
-	for k, v := range m {
-		if strVal, ok := v.(string); ok {
-			result[k] = strVal
 		}
 	}
 	return result

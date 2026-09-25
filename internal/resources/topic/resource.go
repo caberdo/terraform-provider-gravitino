@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -72,40 +72,50 @@ func (r *TopicResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				},
 			},
 			"metalake": schema.StringAttribute{
-				Description: "The metalake name.",
+				Description: "The metalake name. Changing this forces a new topic to be created (Gravitino topics cannot be moved between metalakes).",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"catalog": schema.StringAttribute{
-				Description: "The catalog name.",
+				Description: "The catalog name. Changing this forces a new topic to be created (Gravitino topics cannot be moved between catalogs).",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"schema": schema.StringAttribute{
-				Description: "The schema name.",
+				Description: "The schema name. Changing this forces a new topic to be created (Gravitino topics cannot be moved between schemas).",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"name": schema.StringAttribute{
-				Description: "The topic name.",
+				Description: "The topic name. Changing this forces a new topic to be created: Gravitino supports no rename update for topics.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"comment": schema.StringAttribute{
-				Description: "A comment describing the topic.",
+				Description: "A comment describing the topic. Removing the attribute (or setting it to an empty string) clears the comment: Gravitino has no removeComment update, so the provider sends an updateComment update with an empty newComment.",
 				Optional:    true,
 			},
 			"properties": schema.MapAttribute{
-				Description: "Key-value properties for the topic.",
+				Description: "Key-value properties for the topic. Adding, changing and removing entries is applied in place; only keys that appear in this map are written to state. Omit the attribute to keep the current properties, or set it to {} to remove all of them.",
 				Optional:    true,
+				Computed:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"audit": schema.ObjectAttribute{
-				Description:    "Audit information for the topic.",
+				Description:    "Audit information for the topic. Gravitino rewrites lastModifier/lastModifiedTime on every update, so this stays unknown in the plan and is written on every read.",
 				Computed:       true,
 				AttributeTypes: AuditAttrTypes,
-				PlanModifiers: []planmodifier.Object{
-					objectplanmodifier.UseStateForUnknown(),
-				},
 			},
 		},
 	}
@@ -149,7 +159,7 @@ func (r *TopicResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Properties: properties,
 	}
 
-	topicResp, err := r.client.CreateTopic(plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
+	topicResp, err := r.client.CreateTopic(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating topic", plan.Name.ValueString(), err)...)
 		return
@@ -174,7 +184,7 @@ func (r *TopicResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 	tflog.Debug(ctx, "Reading topic", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	topicResp, err := r.client.GetTopic(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	topicResp, err := r.client.GetTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -211,12 +221,15 @@ func (r *TopicResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	if !plan.Properties.Equal(state.Properties) {
 		oldProps := make(map[string]string)
 		if !state.Properties.IsNull() && !state.Properties.IsUnknown() {
-			state.Properties.ElementsAs(ctx, &oldProps, false)
+			resp.Diagnostics.Append(state.Properties.ElementsAs(ctx, &oldProps, false)...)
 		}
 
 		newProps := make(map[string]string)
 		if !plan.Properties.IsNull() && !plan.Properties.IsUnknown() {
-			plan.Properties.ElementsAs(ctx, &newProps, false)
+			resp.Diagnostics.Append(plan.Properties.ElementsAs(ctx, &newProps, false)...)
+		}
+		if resp.Diagnostics.HasError() {
+			return
 		}
 
 		for k := range oldProps {
@@ -232,14 +245,14 @@ func (r *TopicResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 
 	if len(updates) > 0 {
-		topicResp, err := r.client.UpdateTopic(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
+		topicResp, err := r.client.UpdateTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating topic", state.Name.ValueString(), err)...)
 			return
 		}
 		r.readTopicToState(ctx, topicResp, &plan, &resp.Diagnostics)
 	} else {
-		topicResp, err := r.client.GetTopic(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+		topicResp, err := r.client.GetTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("reading topic after update", state.Name.ValueString(), err)...)
 			return
@@ -261,8 +274,12 @@ func (r *TopicResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 	tflog.Debug(ctx, "Deleting topic", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.DropTopic(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	_, err := r.client.DropTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
+		if client.IsNotFoundError(err) {
+			tflog.Debug(ctx, "Topic already deleted", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
+			return
+		}
 		resp.Diagnostics.Append(client.NewResourceError("deleting topic", state.Name.ValueString(), err)...)
 		return
 	}
@@ -271,10 +288,16 @@ func (r *TopicResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 }
 
 func (r *TopicResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 4)
+	parts := strings.Split(req.ID, ".")
 	if len(parts) != 4 {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected format: metalake.catalog.schema.topic")
+		resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.topic, got: %s", req.ID))
 		return
+	}
+	for _, part := range parts {
+		if part == "" {
+			resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Import ID must not contain empty segments, got: %s", req.ID))
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("metalake"), parts[0])...)
@@ -284,26 +307,60 @@ func (r *TopicResource) ImportState(ctx context.Context, req resource.ImportStat
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 }
 
+// commentFromServer resolves a topic comment to a known value: the server value
+// when it has one, otherwise the planned value when the plan is known, otherwise
+// null. An absent server comment must never leave the state unknown.
+func commentFromServer(server string, planned types.String) types.String {
+	if server != "" {
+		return types.StringValue(server)
+	}
+	if !planned.IsNull() && !planned.IsUnknown() {
+		return types.StringValue(planned.ValueString())
+	}
+	return types.StringNull()
+}
+
 func (r *TopicResource) readTopicToState(ctx context.Context, topicResp *models.TopicResponse, m *TopicResourceModel, diags *diag.Diagnostics) {
 	m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), m.Schema.ValueString(), topicResp.Topic.Name))
 	m.Name = types.StringValue(topicResp.Topic.Name)
-	if topicResp.Topic.Comment != "" {
-		m.Comment = types.StringValue(topicResp.Topic.Comment)
-	} else {
-		m.Comment = types.StringNull()
-	}
+	m.Comment = commentFromServer(topicResp.Topic.Comment, m.Comment)
 
-	if len(topicResp.Topic.Properties) > 0 {
-		props, d := types.MapValueFrom(ctx, types.StringType, topicResp.Topic.Properties)
-		diags.Append(d...)
-		m.Properties = props
-	} else {
-		m.Properties = types.MapNull(types.StringType)
-	}
+	m.Properties = propertiesToState(ctx, topicResp.Topic.Properties, m.Properties, diags)
 
 	auditObj, d := auditToObject(topicResp.Topic.Audit)
 	diags.Append(d...)
 	m.Audit = auditObj
+}
+
+// propertiesToState maps the properties the server reports onto the keys that are
+// in the plan/state. Gravitino may report keys the configuration does not contain;
+// storing those would fail Terraform's "inconsistent result after apply" check,
+// while dropping configured keys would cause perpetual drift.
+func propertiesToState(ctx context.Context, server map[string]string, planned types.Map, diags *diag.Diagnostics) types.Map {
+	if planned.IsNull() || planned.IsUnknown() {
+		if len(server) == 0 {
+			return types.MapNull(types.StringType)
+		}
+		props, d := types.MapValueFrom(ctx, types.StringType, server)
+		diags.Append(d...)
+		return props
+	}
+
+	// A known map (including a configured empty map) keeps exactly its own keys.
+	result := make(map[string]string, len(planned.Elements()))
+	for key := range planned.Elements() {
+		if value, ok := server[key]; ok {
+			result[key] = value
+			continue
+		}
+		if plannedValue, ok := planned.Elements()[key].(types.String); ok {
+			result[key] = plannedValue.ValueString()
+		}
+	}
+
+	props, d := types.MapValueFrom(ctx, types.StringType, result)
+	diags.Append(d...)
+	return props
 }
 
 func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {

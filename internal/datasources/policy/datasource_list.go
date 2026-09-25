@@ -144,9 +144,16 @@ func (d *PoliciesDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.ListPolicies(config.Metalake.ValueString())
+	result, err := d.client.ListPolicies(ctx, config.Metalake.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list policies", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Metalake not found",
+				fmt.Sprintf("No metalake %q exists; cannot list its policies.", config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("listing policies", config.Metalake.ValueString(), err)...)
 		return
 	}
 
@@ -194,25 +201,28 @@ func policyToItemModel(ctx context.Context, p *models.Policy, diags *diag.Diagno
 	var properties map[string]string
 	var customRules map[string]string
 	if p.Content != nil {
-		supportedObjectTypes = p.Content.SupportedObjectTypes
+		supportedObjectTypes = models.NormalizePolicyObjectTypes(p.Content.SupportedObjectTypes)
 		properties = p.Content.Properties
 		customRules = p.Content.CustomRules
 	}
 
 	typesSet, d := types.SetValueFrom(ctx, types.StringType, supportedObjectTypes)
-	if d.HasError() {
+	diags.Append(d...)
+	if diags.HasError() {
 		return nil
 	}
 	item.SupportedObjectTypes = typesSet
 
 	props, d := types.MapValueFrom(ctx, types.StringType, properties)
-	if d.HasError() {
+	diags.Append(d...)
+	if diags.HasError() {
 		return nil
 	}
 	item.Properties = props
 
 	rules, d := types.MapValueFrom(ctx, types.StringType, customRules)
-	if d.HasError() {
+	diags.Append(d...)
+	if diags.HasError() {
 		return nil
 	}
 	item.CustomRules = rules

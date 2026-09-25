@@ -3,7 +3,16 @@ resource "gravitino_partition" "q1_2024" {
   catalog  = gravitino_catalog.hive.name
   schema   = gravitino_schema.example.name
   table    = gravitino_table.partitioned.name
-  name     = "2024_q1"
+
+  # Gravitino discriminates partitions by type: identity, range or list.
+  type        = "identity"
+  field_names = [["order_date"]]
+  values = [
+    {
+      data_type = "date"
+      value     = "2024-01-01"
+    }
+  ]
 }
 
 resource "gravitino_partition" "q2_2024" {
@@ -11,7 +20,15 @@ resource "gravitino_partition" "q2_2024" {
   catalog  = gravitino_catalog.hive.name
   schema   = gravitino_schema.example.name
   table    = gravitino_table.partitioned.name
-  name     = "2024_q2"
+
+  type        = "identity"
+  field_names = [["order_date"]]
+  values = [
+    {
+      data_type = "date"
+      value     = "2024-04-01"
+    }
+  ]
 }
 
 resource "gravitino_partition" "eu_region" {
@@ -19,7 +36,15 @@ resource "gravitino_partition" "eu_region" {
   catalog  = gravitino_catalog.hive.name
   schema   = gravitino_schema.example.name
   table    = gravitino_table.sorted.name
-  name     = "region_eu"
+
+  type        = "identity"
+  field_names = [["region"]]
+  values = [
+    {
+      data_type = "string"
+      value     = "eu"
+    }
+  ]
 }
 
 resource "gravitino_partition" "us_region" {
@@ -27,5 +52,13 @@ resource "gravitino_partition" "us_region" {
   catalog  = gravitino_catalog.hive.name
   schema   = gravitino_schema.example.name
   table    = gravitino_table.sorted.name
-  name     = "region_us"
+
+  type        = "identity"
+  field_names = [["region"]]
+  values = [
+    {
+      data_type = "string"
+      value     = "us"
+    }
+  ]
 }

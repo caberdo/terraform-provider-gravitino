@@ -1,22 +1,73 @@
-package auth_test
+package auth
 
 import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
-
-	"github.com/gravitino/terraform-provider-gravitino/internal/client/auth"
 )
 
-func TestKerberosProvider_TransportProvider(t *testing.T) {
-	var _ auth.TransportProvider = (*auth.KerberosProvider)(nil)
-}
+func TestHasNegotiateChallenge(t *testing.T) {
+	tests := map[string]struct {
+		header string
+		want   bool
+	}{
+		"real spnego challenge with token": {header: "Negotiate YIIFhgYGKwYBBQUCoIIF", want: true},
+		"bare negotiate":                   {header: "Negotiate", want: true},
+		"trailing space":                   {header: "Negotiate ", want: true},
+		"leading space":                    {header: " Negotiate abc", want: true},
+		"basic auth":                       {header: `Basic realm="x"`, want: false},
+		"empty":                            {header: "", want: false},
+	}
 
-func TestKerberosProvider_KeytabFileNotFound(t *testing.T) {
-	_, err := auth.NewKerberosProvider("HTTP/test@REALM", "/nonexistent/keytab", false)
-	if err == nil {
-		t.Fatal("expected error for nonexistent keytab")
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{}}
+			if tc.header != "" {
+				resp.Header.Set("WWW-Authenticate", tc.header)
+			}
+			if got := hasNegotiateChallenge(resp); got != tc.want {
+				t.Errorf("hasNegotiateChallenge(%q) = %v, want %v", tc.header, got, tc.want)
+			}
+		})
 	}
 }
 
-func TestKerberosProvider_WrapTransport(t *testing.T) {
-	t.Skip("requires Kerberos KDC; run integration tests manually with TEST_KERBEROS=1")
+func TestCloneRequestForRetry_RewindsBody(t *testing.T) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://example.com/api/metalakes", strings.NewReader(`{"name":"ml"}`))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+
+	// Simulate the first attempt consuming the body.
+	if _, err := io.ReadAll(req.Body); err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+
+	retry, err := cloneRequestForRetry(req)
+	if err != nil {
+		t.Fatalf("cloneRequestForRetry() error = %v", err)
+	}
+
+	got, err := io.ReadAll(retry.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(retry.Body) error = %v", err)
+	}
+	if want := `{"name":"ml"}`; string(got) != want {
+		t.Errorf("retried body = %q, want %q", got, want)
+	}
+}
+
+func TestCloneRequestForRetry_NonRewindableBody(t *testing.T) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://example.com/api/metalakes", io.NopCloser(bytes.NewBufferString("x")))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.GetBody = nil
+
+	if _, err := cloneRequestForRetry(req); err == nil {
+		t.Error("cloneRequestForRetry() error = nil for a non-rewindable body, want an error")
+	}
 }

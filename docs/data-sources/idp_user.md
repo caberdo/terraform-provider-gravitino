@@ -2,12 +2,12 @@
 page_title: "gravitino_idp_user Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Gets a built-in IDP user.
+  Gets a built-in IDP user; the built-in IDP REST API needs gravitino.authenticators = basic (without simple) and gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature, and calls must come from a gravitino.authorization.serviceAdmins service admin, otherwise the endpoint answers HTTP 404.
 ---
 
 # gravitino_idp_user Data Source
 
-Gets a built-in IDP user.
+Gets a built-in IDP user; the built-in IDP REST API needs `gravitino.authenticators = basic` (without `simple`) and `gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`, and calls must come from a `gravitino.authorization.serviceAdmins` service admin, otherwise the endpoint answers HTTP 404.
 
 ## Example Usage
 
@@ -26,5 +26,4 @@ data "gravitino_idp_user" "alice" {
 
 ### Read-Only
 
-- `enabled` (Boolean) Whether the user is enabled.
 - `groups` (Set of String) The groups the user belongs to.

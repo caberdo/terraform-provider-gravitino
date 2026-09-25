@@ -21,8 +21,8 @@ A Terraform provider for [Apache Gravitino](https://gravitino.apache.org/), buil
 | Partition             | `gravitino_partition`     | `metalake.catalog.schema.tb.pt` |
 | Tag                   | `gravitino_tag`           | `metalake.tag`                 |
 | Policy                | `gravitino_policy`        | `metalake.{obj}.policy`        |
-| Job                   | `gravitino_job`           | `metalake.job`                 |
-| Job Template          | `gravitino_job_template`  | `metalake.job`                 |
+| Job                   | `gravitino_job`           | `metalake.job_id` (job run)    |
+| Job Template          | `gravitino_job_template`  | `metalake.job_template`        |
 | User                  | `gravitino_user`          | `metalake.user`                |
 | Group                 | `gravitino_group`         | `metalake.group`               |
 | Role                  | `gravitino_role`          | `metalake.role`                |
@@ -60,6 +60,16 @@ internal/
 │   └── ...
 ```
 
+## API compatibility target
+
+Resources are aligned against the Apache Gravitino **v1.3.0** OpenAPI specification
+(`docs/open-api/` in the Gravitino repository, e.g.
+`https://raw.githubusercontent.com/apache/gravitino/v1.3.0/docs/open-api/tables.yaml`).
+Always check that spec before adding or changing a field: field names, enum values and
+update request types are not guessable. Deviations that exist only on `main` (e.g. the
+secrets API used by `gravitino_secrets`) must be documented as version-restricted in the
+schema description.
+
 ## Conventions
 
 ### Quick Reference
@@ -79,6 +89,17 @@ if client.IsNotFoundError(err) {
 }
 ```
 
+`IsNotFoundError` inspects the real HTTP status of the response (`client.HTTPError`); it does
+not look at the Gravitino error payload, whose `code` field is an application code in the
+1000-1100 range and therefore never 404. Delete must treat a 404 as success (the object is
+already gone).
+
+**Client calls (mandatory):** every client method takes the request context first:
+
+```go
+result, err := r.client.GetCatalog(ctx, metalake, name)
+```
+
 **Logging (mandatory):**
 
 ```go
@@ -96,11 +117,13 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 - **"id" attribute**: Always `Computed: true` with `stringplanmodifier.UseStateForUnknown()`
 - **Audit**: `types.Object` with `AuditAttrTypes` (creator, create_time, last_modifier, last_modified_time)
 - **Properties**: `types.Map` with `ElementType: types.StringType`
-- **Update pattern**: Compare plan vs state for name/comment/properties, build `[]interface{}` update requests
+- **Update pattern**: Compare plan vs state and send the update requests the API supports. An attribute that cannot be updated in place MUST carry `RequiresReplace()`; never accept a change and silently drop it (that yields a perpetual diff).
+- **Computed attributes**: must be set on *every* code path, or carry `UseStateForUnknown()`. Leaving an unknown value in state fails the apply with "Provider produced inconsistent result after apply".
 - **404 handling**: `client.IsNotFoundError(err)` → `resp.State.RemoveResource(ctx)` (all resources)
 - **Configure**: Casts `req.ProviderData` to `*client.Client`. For auth, the provider builds an `AuthProvider` via `buildAuthProvider()` and passes it to `client.New(uri, authProvider)`
 - **Auth**: Uses `internal/client/auth/` package. The `AuthProvider` interface has `Header(ctx) (string, string, error)`. The `TransportProvider` (optional) has `WrapTransport(base) http.RoundTripper` for Kerberos SPNEGO.
-- **Tests**: Use `httptest.NewServer` with custom handlers; test schema, create, delete, import
+- **Tests**: Use `httptest.NewServer` with custom handlers; test schema, create, update, delete, import. Mock payloads MUST be copied from the `examples:` section of the matching OpenAPI spec — hand-written payloads invented from the same Go structs only prove that the struct marshals, not that the API agrees.
+- **End-to-end tests**: for CRUD correctness add a `TF_ACC=1` test using `resource.Test` with `providerserver.NewProtocol6WithError(provider.New("test")())`; that path goes through Terraform Core and catches unknown/inconsistent values that direct framework calls miss.
 - **Enum validators**: Always check the Gravitino API docs for possible values and add `stringvalidator.OneOf(...)` to enum fields. Store shared enums as constants in `internal/models/privilege_names.go`.
 
 ### Checklist for New Resources
@@ -109,7 +132,7 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 - [ ] 404 via `client.IsNotFoundError`
 - [ ] tflog.Debug at start/end of Create/Read/Update/Delete
 - [ ] Import with dot-separated ID parsing (valid + invalid test)
-- [ ] Unit tests: schema, create, delete, import
+- [ ] Unit tests: schema, create, update, delete, import (spec-faithful payloads)
 - [ ] Resource registered in `internal/provider/provider.go`
 - [ ] Enum fields have `stringvalidator.OneOf` with all possible values from API docs
 - [ ] Docs generated via `go generate ./...`

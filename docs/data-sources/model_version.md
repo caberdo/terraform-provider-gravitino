@@ -2,12 +2,12 @@
 page_title: "gravitino_model_version Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Retrieves a single Gravitino model version by identifier.
+  Retrieves a single Gravitino model version, either by version number or by alias.
 ---
 
 # gravitino_model_version Data Source
 
-Retrieves a single Gravitino model version by identifier.
+Retrieves a single Gravitino model version, either by version number or by alias.
 
 ## Example Usage
 
@@ -17,7 +17,20 @@ data "gravitino_model_version" "example" {
   catalog  = "ml_catalog"
   schema   = "example_schema"
   model    = "fraud_detector"
-  version  = "v1.0"
+  version  = 0
+}
+
+# A model version can also be looked up by one of its aliases.
+data "gravitino_model_version" "production" {
+  metalake = "example_metalake"
+  catalog  = "ml_catalog"
+  schema   = "example_schema"
+  model    = "fraud_detector"
+  alias    = "production"
+}
+
+output "production_version_uris" {
+  value = data.gravitino_model_version.production.uris
 }
 ```
 
@@ -30,15 +43,20 @@ data "gravitino_model_version" "example" {
 - `metalake` (String) The metalake name.
 - `model` (String) The model name.
 - `schema` (String) The schema name.
-- `version` (String) The model version identifier.
+
+### Optional
+
+- `alias` (String) An alias of the model version. Exactly one of version and alias must be set.
+- `version` (Number) The model version number. Exactly one of version and alias must be set.
 
 ### Read-Only
 
-- `aliases` (Set of String) Aliases for this model version.
+- `aliases` (Set of String) Aliases of the model version.
 - `audit` (Object) Audit information for the model version. (see [below for nested schema](#nestedatt--audit))
 - `comment` (String) The model version comment.
 - `properties` (Map of String) Key-value properties for the model version.
-- `uri` (String) The URI of the model version artifact.
+- `uri` (String) The unnamed URI of the model artifact.
+- `uris` (Map of String) The URIs of the model artifact, keyed by URI name.
 
 <a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`

@@ -39,7 +39,7 @@ Read-Only:
 
 - `audit` (Object) Audit information for the model. (see [below for nested schema](#nestedatt--models--audit))
 - `comment` (String) The model comment.
-- `model_uri` (String) The URI of the model artifact.
+- `latest_version` (Number) The latest version number of the model.
 - `name` (String) The model name.
 - `properties` (Map of String) Key-value properties for the model.
 

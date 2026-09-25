@@ -15,7 +15,11 @@ description: |-
 data "gravitino_roles" "example" {
   metalake      = "example_metalake"
   resource_type = "TABLE"
-  resource      = "users"
+  resource      = "catalog1.schema1.table1"
+}
+
+output "role_names" {
+  value = data.gravitino_roles.example.names
 }
 ```
 
@@ -25,18 +29,9 @@ data "gravitino_roles" "example" {
 ### Required
 
 - `metalake` (String) The metalake name.
-- `resource` (String) The resource name.
-- `resource_type` (String) The resource type (e.g. catalogs, schemas, tables).
+- `resource` (String) The full name of the metadata object, relative to the metalake (without the metalake prefix): the metalake name itself for a METALAKE, 'my_catalog' for a CATALOG, 'my_catalog.my_schema' for a SCHEMA and 'my_catalog.my_schema.my_table' for a TABLE. Gravitino rejects a metalake prefix on anything but a METALAKE with HTTP 400 IllegalNamespaceException.
+- `resource_type` (String) The type of the metadata object that owns the roles: METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE, MODEL, FUNCTION, TAG, POLICY or JOB_TEMPLATE.
 
 ### Read-Only
 
-- `roles` (Attributes List) The roles for the resource. (see [below for nested schema](#nestedatt--roles))
-
-<a id="nestedatt--roles"></a>
-### Nested Schema for `roles`
-
-Read-Only:
-
-- `name` (String) The role name.
-- `privileges` (Set of String) The privileges assigned to the role.
-- `securable_object` (String) The securable object associated with the role.
+- `names` (List of String) The names of the roles attached to the metadata object (GET /metalakes/{metalake}/objects/{metadataObjectType}/{metadataObjectFullName}/roles returns a plain name list).

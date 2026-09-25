@@ -3,7 +3,6 @@ package role
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -98,12 +97,13 @@ func (d *RoleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"full_name": schema.StringAttribute{
-							Computed:    true,
-							Description: "The full name of the securable object.",
+							Computed: true,
+							Description: "The full name of the securable object, relative to the metalake (e.g. 'my_catalog' " +
+								"for a CATALOG, the metalake name for a METALAKE).",
 						},
 						"type": schema.StringAttribute{
 							Computed:    true,
-							Description: "The type of the securable object.",
+							Description: "The type of the securable object, e.g. CATALOG, SCHEMA or TABLE.",
 						},
 						"privileges": schema.SetNestedAttribute{
 							Computed:    true,
@@ -112,11 +112,11 @@ func (d *RoleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 								Attributes: map[string]schema.Attribute{
 									"name": schema.StringAttribute{
 										Computed:    true,
-										Description: "The privilege name.",
+										Description: "The privilege name, reported in the canonical upper-case spelling (Gravitino serialises lower case).",
 									},
 									"condition": schema.StringAttribute{
 										Computed:    true,
-										Description: "The privilege condition.",
+										Description: "The privilege condition, ALLOW or DENY, reported in the canonical upper-case spelling (Gravitino serialises lower case).",
 									},
 								},
 							},
@@ -140,9 +140,9 @@ func (d *RoleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	result, err := d.client.GetRole(config.Metalake.ValueString(), config.Name.ValueString())
+	result, err := d.client.GetRole(ctx, config.Metalake.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get role", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("reading role", config.Name.ValueString(), err)...)
 		return
 	}
 
@@ -154,7 +154,7 @@ func (d *RoleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func setDataSourceStateFromRole(ctx context.Context, diags *diag.Diagnostics, role *models.RoleDetail, model *RoleDataSourceModel) {
+func setDataSourceStateFromRole(ctx context.Context, diags *diag.Diagnostics, role *models.Role, model *RoleDataSourceModel) {
 	props, d := types.MapValueFrom(ctx, types.StringType, role.Properties)
 	diags.Append(d...)
 	if diags.HasError() {
@@ -180,8 +180,8 @@ func setDataSourceStateFromRole(ctx context.Context, diags *diag.Diagnostics, ro
 func securableObjectsToTFForDS(ctx context.Context, objects []models.SecurableObject) (types.Set, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	if len(objects) == 0 {
-		return types.SetNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
+	emptySet := func() types.Set {
+		return types.SetValueMust(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}, []attr.Value{})
 	}
 
 	items := make([]attr.Value, 0, len(objects))
@@ -192,13 +192,13 @@ func securableObjectsToTFForDS(ctx context.Context, objects []models.SecurableOb
 		for _, priv := range o.Privileges {
 			p := priv
 			privAttrs := map[string]attr.Value{
-				"name":      types.StringValue(strings.ToUpper(p.Name)),
-				"condition": types.StringValue(strings.ToUpper(p.Condition)),
+				"name":      types.StringValue(models.CanonicalPrivilege(p.Name)),
+				"condition": types.StringValue(models.CanonicalPrivilege(p.Condition)),
 			}
 			privObj, d := types.ObjectValue(RolePrivilegeAttrTypes, privAttrs)
 			diags.Append(d...)
 			if diags.HasError() {
-				return types.SetNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
+				return emptySet(), diags
 			}
 			privItems = append(privItems, privObj)
 		}
@@ -206,23 +206,28 @@ func securableObjectsToTFForDS(ctx context.Context, objects []models.SecurableOb
 		privSet, d := types.SetValue(types.ObjectType{AttrTypes: RolePrivilegeAttrTypes}, privItems)
 		diags.Append(d...)
 		if diags.HasError() {
-			return types.SetNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
+			return emptySet(), diags
 		}
 
 		soAttrs := map[string]attr.Value{
 			"full_name":  types.StringValue(o.FullName),
-			"type":       types.StringValue(strings.ToUpper(o.Type)),
+			"type":       types.StringValue(models.CanonicalObjectType(o.Type)),
 			"privileges": privSet,
 		}
 		soObj, d := types.ObjectValue(RoleSecurableObjectAttrTypes, soAttrs)
 		diags.Append(d...)
 		if diags.HasError() {
-			return types.SetNull(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}), diags
+			return emptySet(), diags
 		}
 		items = append(items, soObj)
 	}
 
-	return types.SetValue(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}, items)
+	secObjs, d := types.SetValue(types.ObjectType{AttrTypes: RoleSecurableObjectAttrTypes}, items)
+	diags.Append(d...)
+	if diags.HasError() {
+		return emptySet(), diags
+	}
+	return secObjs, diags
 }
 
 func auditToObjectValueForDS(ctx context.Context, audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {

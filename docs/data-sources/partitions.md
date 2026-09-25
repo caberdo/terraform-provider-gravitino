@@ -2,12 +2,12 @@
 page_title: "gravitino_partitions Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Lists all partitions within a Gravitino table.
+  Lists the partitions of a Gravitino table with their details.
 ---
 
 # gravitino_partitions Data Source
 
-Lists all partitions within a Gravitino table.
+Lists the partitions of a Gravitino table with their details.
 
 ## Example Usage
 
@@ -25,30 +25,51 @@ data "gravitino_partitions" "example" {
 
 ### Required
 
-- `catalog` (String) The catalog name.
-- `metalake` (String) The metalake name.
-- `schema` (String) The schema name.
-- `table` (String) The table name.
+- `catalog` (String) The catalog the partitions belong to.
+- `metalake` (String) The metalake the partitions belong to.
+- `schema` (String) The schema the partitions belong to.
+- `table` (String) The table the partitions belong to.
 
 ### Read-Only
 
-- `partitions` (Attributes List) List of partitions with their details. (see [below for nested schema](#nestedatt--partitions))
+- `partitions` (Attributes List) The partitions of the table, as reported by Gravitino. (see [below for nested schema](#nestedatt--partitions))
 
 <a id="nestedatt--partitions"></a>
 ### Nested Schema for `partitions`
 
 Read-Only:
 
-- `audit` (Object) Audit information for the partition. (see [below for nested schema](#nestedatt--partitions--audit))
-- `name` (String) The partition name.
-- `properties` (Map of String) Key-value properties for the partition.
+- `field_names` (List of List of String) The identity partition fields, each entry holding the path segments of a field.
+- `lists` (List of List of Object) The value lists of a list partition, one entry per list.
+- `lower` (Object) The inclusive lower bound of a range partition. (see [below for nested schema](#nestedatt--partitions--lower))
+- `name` (String) The name of the partition.
+- `properties` (Map of String) The properties of the partition as reported by Gravitino.
+- `type` (String) The partition type: identity, range or list.
+- `upper` (Object) The exclusive upper bound of a range partition. (see [below for nested schema](#nestedatt--partitions--upper))
+- `values` (List of Object) The identity partition values, one literal per entry of field_names. (see [below for nested schema](#nestedatt--partitions--values))
 
-<a id="nestedatt--partitions--audit"></a>
-### Nested Schema for `partitions.audit`
+<a id="nestedatt--partitions--lower"></a>
+### Nested Schema for `partitions.lower`
 
 Read-Only:
 
-- `create_time` (String)
-- `creator` (String)
-- `last_modified_time` (String)
-- `last_modifier` (String)
+- `data_type` (String)
+- `value` (String)
+
+
+<a id="nestedatt--partitions--upper"></a>
+### Nested Schema for `partitions.upper`
+
+Read-Only:
+
+- `data_type` (String)
+- `value` (String)
+
+
+<a id="nestedatt--partitions--values"></a>
+### Nested Schema for `partitions.values`
+
+Read-Only:
+
+- `data_type` (String)
+- `value` (String)

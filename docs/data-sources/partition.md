@@ -2,12 +2,12 @@
 page_title: "gravitino_partition Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Retrieves a single Gravitino partition by name.
+  Retrieves a single partition of a Gravitino table by name.
 ---
 
 # gravitino_partition Data Source
 
-Retrieves a single Gravitino partition by name.
+Retrieves a single partition of a Gravitino table by name.
 
 ## Example Usage
 
@@ -26,23 +26,44 @@ data "gravitino_partition" "example" {
 
 ### Required
 
-- `catalog` (String) The catalog name.
-- `metalake` (String) The metalake name.
-- `name` (String) The partition name.
-- `schema` (String) The schema name.
-- `table` (String) The table name.
+- `catalog` (String) The catalog the partition belongs to.
+- `metalake` (String) The metalake the partition belongs to.
+- `name` (String) The name of the partition.
+- `schema` (String) The schema the partition belongs to.
+- `table` (String) The table the partition belongs to.
 
 ### Read-Only
 
-- `audit` (Object) Audit information for the partition. (see [below for nested schema](#nestedatt--audit))
-- `properties` (Map of String) Key-value properties for the partition.
+- `field_names` (List of List of String) The identity partition fields, one entry per field, each entry holding the path segments of the field.
+- `lists` (List of List of Object) The value lists of a list partition, one entry per list.
+- `lower` (Object) The inclusive lower bound of a range partition. (see [below for nested schema](#nestedatt--lower))
+- `properties` (Map of String) The properties of the partition as reported by Gravitino.
+- `type` (String) The partition type: identity, range or list.
+- `upper` (Object) The exclusive upper bound of a range partition. (see [below for nested schema](#nestedatt--upper))
+- `values` (List of Object) The identity partition values, one literal per entry of field_names. (see [below for nested schema](#nestedatt--values))
 
-<a id="nestedatt--audit"></a>
-### Nested Schema for `audit`
+<a id="nestedatt--lower"></a>
+### Nested Schema for `lower`
 
 Read-Only:
 
-- `create_time` (String)
-- `creator` (String)
-- `last_modified_time` (String)
-- `last_modifier` (String)
+- `data_type` (String)
+- `value` (String)
+
+
+<a id="nestedatt--upper"></a>
+### Nested Schema for `upper`
+
+Read-Only:
+
+- `data_type` (String)
+- `value` (String)
+
+
+<a id="nestedatt--values"></a>
+### Nested Schema for `values`
+
+Read-Only:
+
+- `data_type` (String)
+- `value` (String)

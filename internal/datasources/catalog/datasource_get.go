@@ -82,6 +82,7 @@ func (d *CatalogDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 			},
 			"properties": schema.MapAttribute{
 				Computed:    true,
+				Sensitive:   true,
 				ElementType: types.StringType,
 				Description: "The catalog properties.",
 			},
@@ -101,9 +102,16 @@ func (d *CatalogDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	result, err := d.client.GetCatalog(config.Metalake.ValueString(), config.Name.ValueString())
+	result, err := d.client.GetCatalog(ctx, config.Metalake.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get catalog", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Catalog not found",
+				fmt.Sprintf("No catalog %q exists in metalake %q.", config.Name.ValueString(), config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading catalog", config.Name.ValueString(), err)...)
 		return
 	}
 
@@ -115,19 +123,19 @@ func (d *CatalogDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func setDataSourceStateFromCatalog(_ context.Context, diags *diag.Diagnostics, catalog *models.Catalog, model *CatalogDataSourceModel) {
+func setDataSourceStateFromCatalog(ctx context.Context, diags *diag.Diagnostics, catalog *models.Catalog, model *CatalogDataSourceModel) {
 	model.Type = types.StringValue(catalog.Type)
 	model.Provider = types.StringValue(catalog.Provider)
 	model.Comment = types.StringValue(catalog.Comment)
 
-	props, d := types.MapValueFrom(context.TODO(), types.StringType, catalog.Properties)
+	props, d := types.MapValueFrom(ctx, types.StringType, catalog.Properties)
 	diags.Append(d...)
 	if diags.HasError() {
 		return
 	}
 	model.Properties = props
 
-	auditObj, d := auditToObjectValueForDS(context.TODO(), catalog.Audit)
+	auditObj, d := auditToObjectValueForDS(ctx, catalog.Audit)
 	diags.Append(d...)
 	if diags.HasError() {
 		return

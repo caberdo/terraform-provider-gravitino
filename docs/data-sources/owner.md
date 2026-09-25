@@ -25,10 +25,10 @@ data "gravitino_owner" "example" {
 ### Required
 
 - `metalake` (String) The metalake name.
-- `object_full_name` (String) The full object name (dot-separated).
-- `object_type` (String) The object type (e.g. CATALOG, SCHEMA, TABLE, etc.).
+- `object_full_name` (String) The name of the metadata object, relative to the metalake (the API rejects a metalake prefix with HTTP 400 IllegalNamespaceException): METALAKE = the metalake name, CATALOG = the catalog name, SCHEMA = 'catalog.schema', TABLE = 'catalog.schema.table', and likewise for FILESET, TOPIC and ROLE.
+- `object_type` (String) The metadata object type. One of: METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE (upper case singular, as required by the API path).
 
 ### Read-Only
 
 - `owner_name` (String) The owner name.
-- `owner_type` (String) The owner type (USER or GROUP).
+- `owner_type` (String) The owner type (USER or GROUP). Gravitino matches this case-insensitively and always answers in lowercase; the provider normalises responses back to upper case.

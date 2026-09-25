@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,10 @@ const (
 	defaultTimeout   = 30 * time.Second
 	contentType      = "application/vnd.gravitino.v1+json"
 	plainContentType = "application/json"
+	// maxErrorBodyBytes bounds how much of a non-JSON error body is echoed back
+	// to the user, so a misconfigured URI pointing at a huge page cannot flood
+	// the Terraform output.
+	maxErrorBodyBytes = 2 * 1024
 )
 
 type Client struct {
@@ -48,7 +53,7 @@ func New(uri string, authProvider auth.AuthProvider) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {
+func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -58,7 +63,7 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 		bodyReader = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), method, c.baseURL+"/api"+path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+"/api"+path, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -69,7 +74,7 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 	}
 
 	if c.authProvider != nil {
-		key, value, err := c.authProvider.Header(context.Background())
+		key, value, err := c.authProvider.Header(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("auth header failed: %w", err)
 		}
@@ -86,56 +91,83 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 	return resp, nil
 }
 
-func (c *Client) do(method, path string, body, result interface{}) error {
-	resp, err := c.doRequest(method, path, body)
+func (c *Client) do(ctx context.Context, method, path string, body, result interface{}) error {
+	resp, err := c.doRequest(ctx, method, path, body)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		var errResp models.ErrorResponse
-		errResp.Code = resp.StatusCode
-		if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
-			return fmt.Errorf("request failed with status %d", resp.StatusCode)
-		}
-		return &errResp
+		return newHTTPError(resp)
 	}
 
-	if result != nil {
-		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-			return fmt.Errorf("failed to decode response: %w", err)
+	if result == nil {
+		return nil
+	}
+
+	// Endpoints such as DELETE return an empty body; that is not an error.
+	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
 		}
+		return fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	return nil
 }
 
-func (c *Client) Get(path string, result interface{}) error {
-	return c.do(http.MethodGet, path, nil, result)
-}
-
-func (c *Client) Post(path string, body, result interface{}) error {
-	return c.do(http.MethodPost, path, body, result)
-}
-
-func (c *Client) Put(path string, body, result interface{}) error {
-	return c.do(http.MethodPut, path, body, result)
-}
-
-func (c *Client) Delete(path string, result interface{}) error {
-	return c.do(http.MethodDelete, path, nil, result)
-}
-
-func (c *Client) Patch(path string, body, result interface{}) error {
-	return c.do(http.MethodPatch, path, body, result)
-}
-
-func (c *Client) Close() error {
-	if closer, ok := c.authProvider.(io.Closer); ok {
-		return closer.Close()
+// newHTTPError builds an HTTPError, preserving the real HTTP status code. The
+// status is captured before decoding because a Gravitino error payload carries
+// its own application code in the `code` field.
+func newHTTPError(resp *http.Response) *HTTPError {
+	httpErr := &HTTPError{
+		StatusCode: resp.StatusCode,
+		Status:     http.StatusText(resp.StatusCode),
 	}
-	return nil
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+	if err != nil || len(raw) == 0 {
+		return httpErr
+	}
+
+	var errResp models.ErrorResponse
+	if err := json.Unmarshal(raw, &errResp); err != nil {
+		httpErr.Status = fmt.Sprintf("%s: %s", httpErr.Status, truncateBody(raw))
+		return httpErr
+	}
+
+	httpErr.Response = &errResp
+	return httpErr
+}
+
+func truncateBody(raw []byte) string {
+	s := strings.TrimSpace(string(raw))
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) > 200 {
+		return s[:200] + "..."
+	}
+	return s
+}
+
+func (c *Client) Get(ctx context.Context, path string, result interface{}) error {
+	return c.do(ctx, http.MethodGet, path, nil, result)
+}
+
+func (c *Client) Post(ctx context.Context, path string, body, result interface{}) error {
+	return c.do(ctx, http.MethodPost, path, body, result)
+}
+
+func (c *Client) Put(ctx context.Context, path string, body, result interface{}) error {
+	return c.do(ctx, http.MethodPut, path, body, result)
+}
+
+func (c *Client) Delete(ctx context.Context, path string, result interface{}) error {
+	return c.do(ctx, http.MethodDelete, path, nil, result)
+}
+
+func (c *Client) Patch(ctx context.Context, path string, body, result interface{}) error {
+	return c.do(ctx, http.MethodPatch, path, body, result)
 }
 
 func (c *Client) BaseURL() string {

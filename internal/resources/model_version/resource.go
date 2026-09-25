@@ -3,6 +3,8 @@ package model_version
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -50,8 +53,9 @@ type ModelVersionResourceModel struct {
 	Catalog    types.String `tfsdk:"catalog"`
 	Schema     types.String `tfsdk:"schema"`
 	Model      types.String `tfsdk:"model"`
-	Version    types.String `tfsdk:"version"`
+	Version    types.Int64  `tfsdk:"version"`
 	URI        types.String `tfsdk:"uri"`
+	URIs       types.Map    `tfsdk:"uris"`
 	Aliases    types.Set    `tfsdk:"aliases"`
 	Comment    types.String `tfsdk:"comment"`
 	Properties types.Map    `tfsdk:"properties"`
@@ -64,7 +68,7 @@ func (r *ModelVersionResource) Metadata(_ context.Context, _ resource.MetadataRe
 
 func (r *ModelVersionResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a Gravitino model version within a metalake, catalog, schema, and model.",
+		Description: "Links a model version to a Gravitino model. Model artifacts are attached to the version, not to the model: set either uri or uris.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The compound identifier in the format metalake.catalog.schema.model.version.",
@@ -74,32 +78,53 @@ func (r *ModelVersionResource) Schema(_ context.Context, _ resource.SchemaReques
 				},
 			},
 			"metalake": schema.StringAttribute{
-				Description: "The metalake name.",
+				Description: "The metalake name. Changing it forces a new model version to be linked, because Gravitino cannot move a model version between metalakes.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"catalog": schema.StringAttribute{
-				Description: "The catalog name.",
+				Description: "The catalog name. Changing it forces a new model version to be linked, because Gravitino cannot move a model version between catalogs.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"schema": schema.StringAttribute{
-				Description: "The schema name.",
+				Description: "The schema name. Changing it forces a new model version to be linked, because Gravitino cannot move a model version between schemas.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"model": schema.StringAttribute{
-				Description: "The model name.",
+				Description: "The model name. Changing it forces a new model version to be linked, because model versions belong to their model.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"version": schema.StringAttribute{
-				Description: "The model version identifier.",
-				Required:    true,
+			"version": schema.Int64Attribute{
+				Description: "The model version number, assigned by Gravitino. Linking a model version always creates the next version number.",
+				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"uri": schema.StringAttribute{
-				Description: "The URI of the model version artifact.",
+				Description: "The unnamed URI of the model artifact. Gravitino has no operation to remove the unnamed URI, so removing it from the configuration keeps the existing value.",
 				Optional:    true,
 				Computed:    true,
 			},
+			"uris": schema.MapAttribute{
+				Description: "The URIs of the model artifact, keyed by URI name. Adding a key sends an addUri update, changing a value an updateUri update and removing a key a removeUri update.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+			},
 			"aliases": schema.SetAttribute{
-				Description: "Aliases for this model version.",
+				Description: "Aliases for this model version. Gravitino rejects numeric aliases.",
 				Optional:    true,
 				Computed:    true,
 				ElementType: types.StringType,
@@ -146,44 +171,59 @@ func (r *ModelVersionResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	tflog.Debug(ctx, "Creating model version", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "model": plan.Model.ValueString(), "version": plan.Version.ValueString()})
+	tflog.Debug(ctx, "Creating model version", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "model": plan.Model.ValueString()})
 
-	aliases, d := stringListFromTF(ctx, plan.Aliases)
-	resp.Diagnostics.Append(d...)
+	uri := plan.URI.ValueString()
+	uris := propertiesFromTF(ctx, plan.URIs, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	properties := make(map[string]string)
-	if !plan.Properties.IsNull() && !plan.Properties.IsUnknown() {
-		resp.Diagnostics.Append(plan.Properties.ElementsAs(ctx, &properties, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-	}
-
-	createReq := &models.ModelVersionLinkRequest{
-		Version:    plan.Version.ValueString(),
-		URI:        plan.URI.ValueString(),
-		Aliases:    aliases,
-		Comment:    plan.Comment.ValueString(),
-		Properties: properties,
-	}
-
-	result, err := r.client.LinkModelVersion(plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), plan.Model.ValueString(), createReq)
-	if err != nil {
-		resp.Diagnostics.Append(client.NewResourceError("creating model version", plan.Version.ValueString(), err)...)
+	if uri == "" && len(uris) == 0 {
+		resp.Diagnostics.AddError(
+			"Invalid model version configuration",
+			"Either uri or uris must be set: Gravitino requires the artifact location of a model version.",
+		)
 		return
 	}
 
-	r.readModelVersionToState(ctx, result, &plan, &resp.Diagnostics)
+	createReq := &models.ModelVersionLinkRequest{
+		Aliases:    stringSetFromTF(ctx, plan.Aliases, &resp.Diagnostics),
+		Comment:    plan.Comment.ValueString(),
+		Properties: propertiesFromTF(ctx, plan.Properties, &resp.Diagnostics),
+	}
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	// Gravitino rejects a request that carries neither uri nor uris, and the
+	// uris map is the primary representation of a version's artifact locations.
+	if len(uris) > 0 {
+		createReq.URIs = uris
+	} else {
+		createReq.URI = uri
+	}
+
+	if _, err := r.client.LinkModelVersion(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), plan.Model.ValueString(), createReq); err != nil {
+		resp.Diagnostics.Append(client.NewResourceError("creating model version", plan.Model.ValueString(), err)...)
+		return
+	}
+
+	// Gravitino answers the link request with a plain BaseResponse: the version
+	// number it assigned has to be read back. A newly assigned version is always
+	// the highest version number of the model.
+	linkedVersion, err := r.newestModelVersion(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), plan.Model.ValueString())
+	if err != nil {
+		resp.Diagnostics.Append(client.NewResourceError("reading the linked model version", plan.Model.ValueString(), err)...)
+		return
+	}
+
+	r.setModelVersionState(ctx, linkedVersion, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 
-	tflog.Debug(ctx, "Created model version", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "model": plan.Model.ValueString(), "version": plan.Version.ValueString()})
+	tflog.Debug(ctx, "Created model version", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "model": plan.Model.ValueString(), "version": plan.Version.ValueInt64()})
 }
 
 func (r *ModelVersionResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -193,24 +233,26 @@ func (r *ModelVersionResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	tflog.Debug(ctx, "Reading model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueString()})
+	tflog.Debug(ctx, "Reading model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
 
-	result, err := r.client.GetModelVersion(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), state.Version.ValueString())
+	result, err := r.client.GetModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()))
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		resp.Diagnostics.Append(client.NewResourceError("reading model version", state.Version.ValueString(), err)...)
+		resp.Diagnostics.Append(client.NewResourceError("reading model version", fmt.Sprintf("%s version %d", state.Model.ValueString(), state.Version.ValueInt64()), err)...)
 		return
 	}
 
-	r.readModelVersionToState(ctx, result, &state, &resp.Diagnostics)
+	r.setModelVersionState(ctx, result.ModelVersion, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+
+	tflog.Debug(ctx, "Read model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
 }
 
 func (r *ModelVersionResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -221,52 +263,73 @@ func (r *ModelVersionResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	tflog.Debug(ctx, "Updating model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueString()})
+	tflog.Debug(ctx, "Updating model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
 
-	planAliases, d := stringListFromTF(ctx, plan.Aliases)
-	resp.Diagnostics.Append(d...)
-	if resp.Diagnostics.HasError() {
-		return
+	var updates []interface{}
+
+	if attributeChanged(plan.Comment, state.Comment) {
+		updates = append(updates, models.NewUpdateModelVersionCommentRequest(plan.Comment.ValueString()))
 	}
 
-	properties := make(map[string]string)
-	if !plan.Properties.IsNull() && !plan.Properties.IsUnknown() {
-		resp.Diagnostics.Append(plan.Properties.ElementsAs(ctx, &properties, false)...)
+	if attributeChanged(plan.Properties, state.Properties) {
+		updates = append(updates, modelVersionPropertyUpdates(ctx, state.Properties, plan.Properties, &resp.Diagnostics)...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 	}
 
-	needsUpdate := !plan.URI.Equal(state.URI) ||
-		!plan.Comment.Equal(state.Comment) ||
-		!plan.Aliases.Equal(state.Aliases) ||
-		!plan.Properties.Equal(state.Properties)
-
-	if needsUpdate {
-		updateReq := &models.ModelVersionLinkRequest{
-			URI:        plan.URI.ValueString(),
-			Aliases:    planAliases,
-			Comment:    plan.Comment.ValueString(),
-			Properties: properties,
-		}
-
-		result, err := r.client.UpdateModelVersion(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), state.Version.ValueString(), updateReq)
-		if err != nil {
-			resp.Diagnostics.Append(client.NewResourceError("updating model version", state.Version.ValueString(), err)...)
+	if attributeChanged(plan.Aliases, state.Aliases) {
+		added, removed := aliasDiff(ctx, state.Aliases, plan.Aliases, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
 			return
 		}
-		r.readModelVersionToState(ctx, result, &plan, &resp.Diagnostics)
-	} else {
-		r.readModelVersionToState(ctx, nil, &plan, &resp.Diagnostics)
+		if len(added) > 0 || len(removed) > 0 {
+			updates = append(updates, models.NewUpdateModelVersionAliasesRequest(added, removed))
+		}
 	}
 
+	if attributeChanged(plan.URI, state.URI) {
+		if newURI := plan.URI.ValueString(); newURI != "" {
+			updates = append(updates, models.NewUpdateModelVersionURIRequest(newURI, ""))
+		} else {
+			tflog.Warn(ctx, "Gravitino cannot unset the unnamed URI of a model version, keeping the existing URI", map[string]interface{}{"model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
+		}
+	}
+
+	if attributeChanged(plan.URIs, state.URIs) {
+		updates = append(updates, uriUpdates(ctx, state.URIs, plan.URIs, &resp.Diagnostics)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	var result *models.ModelVersionResponse
+	if len(updates) > 0 {
+		updated, err := r.client.UpdateModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()), updates)
+		if err != nil {
+			resp.Diagnostics.Append(client.NewResourceError("updating model version", fmt.Sprintf("%s version %d", state.Model.ValueString(), state.Version.ValueInt64()), err)...)
+			return
+		}
+		result = updated
+	} else {
+		// Nothing to send, but the computed attributes still need their real
+		// values in state.
+		current, err := r.client.GetModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()))
+		if err != nil {
+			resp.Diagnostics.Append(client.NewResourceError("reading model version after update", fmt.Sprintf("%s version %d", state.Model.ValueString(), state.Version.ValueInt64()), err)...)
+			return
+		}
+		result = current
+	}
+
+	r.setModelVersionState(ctx, result.ModelVersion, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 
-	tflog.Debug(ctx, "Updated model version", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "model": plan.Model.ValueString(), "version": plan.Version.ValueString()})
+	tflog.Debug(ctx, "Updated model version", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "model": plan.Model.ValueString(), "version": plan.Version.ValueInt64()})
 }
 
 func (r *ModelVersionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -276,21 +339,37 @@ func (r *ModelVersionResource) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 
-	tflog.Debug(ctx, "Deleting model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueString()})
+	tflog.Debug(ctx, "Deleting model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
 
-	_, err := r.client.DeleteModelVersion(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), state.Version.ValueString())
+	_, err := r.client.DeleteModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()))
 	if err != nil {
-		resp.Diagnostics.Append(client.NewResourceError("deleting model version", state.Version.ValueString(), err)...)
+		if client.IsNotFoundError(err) {
+			tflog.Debug(ctx, "Model version already deleted", map[string]interface{}{"model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("deleting model version", fmt.Sprintf("%s version %d", state.Model.ValueString(), state.Version.ValueInt64()), err)...)
 		return
 	}
 
-	tflog.Debug(ctx, "Deleted model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueString()})
+	tflog.Debug(ctx, "Deleted model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
 }
 
 func (r *ModelVersionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	parts := strings.SplitN(req.ID, ".", 5)
 	if len(parts) != 5 {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected format: metalake.catalog.schema.model.version")
+		resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.model.version, got %q", req.ID))
+		return
+	}
+	for _, part := range parts {
+		if part == "" {
+			resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.model.version, got %q", req.ID))
+			return
+		}
+	}
+
+	version, err := strconv.ParseInt(parts[4], 10, 64)
+	if err != nil || version < 0 {
+		resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("The version must be a non-negative integer, got %q", parts[4]))
 		return
 	}
 
@@ -298,46 +377,218 @@ func (r *ModelVersionResource) ImportState(ctx context.Context, req resource.Imp
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("catalog"), parts[1])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("schema"), parts[2])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("model"), parts[3])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("version"), parts[4])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("version"), version)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 }
 
-func (r *ModelVersionResource) readModelVersionToState(ctx context.Context, mvResp *models.ModelVersionResponse, m *ModelVersionResourceModel, diags *diag.Diagnostics) {
-	m.Version = types.StringValue(m.Version.ValueString())
-	m.Metalake = types.StringValue(m.Metalake.ValueString())
-	m.Catalog = types.StringValue(m.Catalog.ValueString())
-	m.Schema = types.StringValue(m.Schema.ValueString())
-	m.Model = types.StringValue(m.Model.ValueString())
-
-	if mvResp != nil {
-		mv := mvResp.ModelVersion
-		m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), m.Schema.ValueString(), m.Model.ValueString(), mv.Version))
-		m.Version = types.StringValue(mv.Version)
-		m.URI = types.StringValue(mv.URI)
-		m.Comment = types.StringValue(mv.Comment)
-
-		if len(mv.Aliases) > 0 {
-			aliasesSet, d := types.SetValueFrom(ctx, types.StringType, mv.Aliases)
-			diags.Append(d...)
-			m.Aliases = aliasesSet
-		} else {
-			m.Aliases = types.SetNull(types.StringType)
-		}
-
-		if len(mv.Properties) > 0 {
-			props, d := types.MapValueFrom(ctx, types.StringType, mv.Properties)
-			diags.Append(d...)
-			m.Properties = props
-		} else {
-			m.Properties = types.MapNull(types.StringType)
-		}
-
-		auditObj, d := auditToObject(mv.Audit)
-		diags.Append(d...)
-		m.Audit = auditObj
-	} else {
-		m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), m.Schema.ValueString(), m.Model.ValueString(), m.Version.ValueString()))
+// newestModelVersion returns the model version with the highest version number.
+// Gravitino assigns an increasing number to every linked version, so the newest
+// version is the one that was just linked.
+func (r *ModelVersionResource) newestModelVersion(ctx context.Context, metalake, catalog, schemaName, model string) (models.ModelVersion, error) {
+	list, err := r.client.ListModelVersions(ctx, metalake, catalog, schemaName, model, true)
+	if err != nil {
+		return models.ModelVersion{}, err
 	}
+
+	if len(list.Infos) > 0 {
+		newest := list.Infos[0]
+		for _, version := range list.Infos[1:] {
+			if version.Version > newest.Version {
+				newest = version
+			}
+		}
+		return newest, nil
+	}
+
+	// Gravitino only returned version numbers: fetch the highest one.
+	if len(list.Versions) > 0 {
+		version := list.Versions[0]
+		for _, candidate := range list.Versions[1:] {
+			if candidate > version {
+				version = candidate
+			}
+		}
+		result, err := r.client.GetModelVersion(ctx, metalake, catalog, schemaName, model, version)
+		if err != nil {
+			return models.ModelVersion{}, err
+		}
+		return result.ModelVersion, nil
+	}
+
+	return models.ModelVersion{}, fmt.Errorf("the server reported no model versions for model %q after linking one", model)
+}
+
+// setModelVersionState writes every attribute, including the computed ones, so
+// no computed value is ever left unknown after an apply.
+func (r *ModelVersionResource) setModelVersionState(ctx context.Context, mv models.ModelVersion, state *ModelVersionResourceModel, diags *diag.Diagnostics) {
+	state.Version = types.Int64Value(int64(mv.Version))
+	state.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s.%d", state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), mv.Version))
+	state.URI = optionalString(mv.URI, state.URI)
+	state.Comment = optionalString(mv.Comment, state.Comment)
+	state.URIs = mapValueFrom(ctx, mv.URIs, state.URIs, diags)
+	state.Properties = mapValueFrom(ctx, mv.Properties, state.Properties, diags)
+	state.Aliases = setValueFrom(ctx, mv.Aliases, state.Aliases, diags)
+
+	auditObj, d := auditToObject(mv.Audit)
+	diags.Append(d...)
+	state.Audit = auditObj
+}
+
+// attributeChanged reports whether the plan asks for a change. An unknown plan
+// value means the attribute was not configured, which is never a change
+// request.
+func attributeChanged(plan, current attr.Value) bool {
+	if plan.IsUnknown() {
+		return false
+	}
+	return !plan.Equal(current)
+}
+
+// optionalString maps an absent API value to null, while preserving a value
+// that was explicitly configured as the empty string.
+func optionalString(apiValue string, current types.String) types.String {
+	if apiValue != "" {
+		return types.StringValue(apiValue)
+	}
+	if current.IsNull() || current.IsUnknown() {
+		return types.StringNull()
+	}
+	return types.StringValue("")
+}
+
+// mapValueFrom maps a string map to a Terraform value, preserving an explicitly
+// configured empty map and using null when nothing was configured.
+func mapValueFrom(ctx context.Context, values map[string]string, current types.Map, diags *diag.Diagnostics) types.Map {
+	if len(values) > 0 {
+		value, d := types.MapValueFrom(ctx, types.StringType, values)
+		diags.Append(d...)
+		return value
+	}
+	if !current.IsNull() && !current.IsUnknown() {
+		return types.MapValueMust(types.StringType, map[string]attr.Value{})
+	}
+	return types.MapNull(types.StringType)
+}
+
+// setValueFrom maps a string slice to a Terraform set, preserving an explicitly
+// configured empty set and using null when nothing was configured.
+func setValueFrom(ctx context.Context, values []string, current types.Set, diags *diag.Diagnostics) types.Set {
+	if len(values) > 0 {
+		value, d := types.SetValueFrom(ctx, types.StringType, values)
+		diags.Append(d...)
+		return value
+	}
+	if !current.IsNull() && !current.IsUnknown() {
+		return types.SetValueMust(types.StringType, []attr.Value{})
+	}
+	return types.SetNull(types.StringType)
+}
+
+func propertiesFromTF(ctx context.Context, value types.Map, diags *diag.Diagnostics) map[string]string {
+	properties := make(map[string]string)
+	if value.IsNull() || value.IsUnknown() {
+		return properties
+	}
+	diags.Append(value.ElementsAs(ctx, &properties, false)...)
+	return properties
+}
+
+func stringSetFromTF(ctx context.Context, value types.Set, diags *diag.Diagnostics) []string {
+	if value.IsNull() || value.IsUnknown() {
+		return nil
+	}
+	var result []string
+	diags.Append(value.ElementsAs(ctx, &result, false)...)
+	return result
+}
+
+func modelVersionPropertyUpdates(ctx context.Context, oldValue, newValue types.Map, diags *diag.Diagnostics) []interface{} {
+	oldProps := propertiesFromTF(ctx, oldValue, diags)
+	newProps := propertiesFromTF(ctx, newValue, diags)
+	if diags.HasError() {
+		return nil
+	}
+
+	updates := make([]interface{}, 0, len(oldProps)+len(newProps))
+	for _, key := range sortedKeys(oldProps) {
+		if _, exists := newProps[key]; !exists {
+			updates = append(updates, models.NewRemoveModelVersionPropertyRequest(key))
+		}
+	}
+	for _, key := range sortedKeys(newProps) {
+		if old, exists := oldProps[key]; !exists || old != newProps[key] {
+			updates = append(updates, models.NewSetModelVersionPropertyRequest(key, newProps[key]))
+		}
+	}
+	return updates
+}
+
+func uriUpdates(ctx context.Context, oldValue, newValue types.Map, diags *diag.Diagnostics) []interface{} {
+	oldURIs := propertiesFromTF(ctx, oldValue, diags)
+	newURIs := propertiesFromTF(ctx, newValue, diags)
+	if diags.HasError() {
+		return nil
+	}
+
+	updates := make([]interface{}, 0, len(oldURIs)+len(newURIs))
+	for _, name := range sortedKeys(oldURIs) {
+		if _, exists := newURIs[name]; !exists {
+			updates = append(updates, models.NewRemoveModelVersionURIRequest(name))
+		}
+	}
+	for _, name := range sortedKeys(newURIs) {
+		uri := newURIs[name]
+		if old, exists := oldURIs[name]; !exists {
+			updates = append(updates, models.NewAddModelVersionURIRequest(name, uri))
+		} else if old != uri {
+			updates = append(updates, models.NewUpdateModelVersionURIRequest(uri, name))
+		}
+	}
+	return updates
+}
+
+func aliasDiff(ctx context.Context, oldValue, newValue types.Set, diags *diag.Diagnostics) ([]string, []string) {
+	oldAliases := stringSetFromTF(ctx, oldValue, diags)
+	newAliases := stringSetFromTF(ctx, newValue, diags)
+	if diags.HasError() {
+		return nil, nil
+	}
+
+	oldSet := make(map[string]struct{}, len(oldAliases))
+	for _, alias := range oldAliases {
+		oldSet[alias] = struct{}{}
+	}
+	newSet := make(map[string]struct{}, len(newAliases))
+	for _, alias := range newAliases {
+		newSet[alias] = struct{}{}
+	}
+
+	added := make([]string, 0, len(newAliases))
+	for _, alias := range newAliases {
+		if _, exists := oldSet[alias]; !exists {
+			added = append(added, alias)
+		}
+	}
+	removed := make([]string, 0, len(oldAliases))
+	for _, alias := range oldAliases {
+		if _, exists := newSet[alias]; !exists {
+			removed = append(removed, alias)
+		}
+	}
+	// A set has no defined element order, so sort to keep the update payload stable.
+	sort.Strings(added)
+	sort.Strings(removed)
+	return added, removed
+}
+
+// sortedKeys keeps the generated update requests deterministic.
+func sortedKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
@@ -371,13 +622,4 @@ func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics
 		"last_modifier":      lastModifier,
 		"last_modified_time": lastModifiedTime,
 	})
-}
-
-func stringListFromTF(ctx context.Context, list types.Set) ([]string, diag.Diagnostics) {
-	if list.IsNull() || list.IsUnknown() {
-		return nil, nil
-	}
-	var result []string
-	diags := list.ElementsAs(ctx, &result, false)
-	return result, diags
 }

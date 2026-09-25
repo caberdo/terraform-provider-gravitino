@@ -2,7 +2,7 @@ package model_version
 
 import (
 	"context"
-	"time"
+	"fmt"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -12,17 +12,20 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var _ datasource.DataSource = &ModelVersionsDataSource{}
 var _ datasource.DataSourceWithConfigure = &ModelVersionsDataSource{}
 
-var dslAuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
+// ModelVersionItemAttrTypes describes one entry of the `versions` list.
+var ModelVersionItemAttrTypes = map[string]attr.Type{
+	"version":    types.Int64Type,
+	"uri":        types.StringType,
+	"uris":       types.MapType{ElemType: types.StringType},
+	"aliases":    types.SetType{ElemType: types.StringType},
+	"comment":    types.StringType,
+	"properties": types.MapType{ElemType: types.StringType},
+	"audit":      types.ObjectType{AttrTypes: AuditAttrTypes},
 }
 
 type ModelVersionsDataSource struct {
@@ -51,7 +54,7 @@ func (d *ModelVersionsDataSource) Metadata(_ context.Context, _ datasource.Metad
 
 func (d *ModelVersionsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Lists all model versions within a Gravitino model.",
+		Description: "Lists all model versions of a Gravitino model.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -74,16 +77,21 @@ func (d *ModelVersionsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 				Computed:    true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"version": schema.StringAttribute{
-							Description: "The model version identifier.",
+						"version": schema.Int64Attribute{
+							Description: "The model version number.",
 							Computed:    true,
 						},
 						"uri": schema.StringAttribute{
-							Description: "The URI of the model version artifact.",
+							Description: "The unnamed URI of the model artifact.",
 							Computed:    true,
 						},
+						"uris": schema.MapAttribute{
+							Description: "The URIs of the model artifact, keyed by URI name.",
+							Computed:    true,
+							ElementType: types.StringType,
+						},
 						"aliases": schema.SetAttribute{
-							Description: "Aliases for this model version.",
+							Description: "Aliases of the model version.",
 							Computed:    true,
 							ElementType: types.StringType,
 						},
@@ -99,7 +107,7 @@ func (d *ModelVersionsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 						"audit": schema.ObjectAttribute{
 							Description:    "Audit information for the model version.",
 							Computed:       true,
-							AttributeTypes: dslAuditAttrTypes,
+							AttributeTypes: AuditAttrTypes,
 						},
 					},
 				},
@@ -120,17 +128,6 @@ func (d *ModelVersionsDataSource) Configure(_ context.Context, req datasource.Co
 	d.client = c
 }
 
-func versionListItemAttrTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"version":    types.StringType,
-		"uri":        types.StringType,
-		"aliases":    types.SetType{ElemType: types.StringType},
-		"comment":    types.StringType,
-		"properties": types.MapType{ElemType: types.StringType},
-		"audit":      types.ObjectType{AttrTypes: dslAuditAttrTypes},
-	}
-}
-
 func (d *ModelVersionsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config ModelVersionsDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -138,27 +135,44 @@ func (d *ModelVersionsDataSource) Read(ctx context.Context, req datasource.ReadR
 		return
 	}
 
-	versionsResp, err := d.client.ListModelVersions(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Model.ValueString())
+	metalake := config.Metalake.ValueString()
+	catalog := config.Catalog.ValueString()
+	schemaName := config.Schema.ValueString()
+	model := config.Model.ValueString()
+
+	versionsResp, err := d.client.ListModelVersions(ctx, metalake, catalog, schemaName, model, true)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list model versions", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing model versions", model, err)...)
 		return
 	}
 
-	items := make([]attr.Value, 0, len(versionsResp.ModelVersions))
-	for i := range versionsResp.ModelVersions {
-		item, itemDiags := versionListItemToObject(ctx, &versionsResp.ModelVersions[i])
+	versions := versionsResp.Infos
+	// Gravitino answers with version numbers instead of model version objects
+	// when it does not honor details=true; fetch them individually then.
+	if len(versions) == 0 && len(versionsResp.Versions) > 0 {
+		versions = make([]models.ModelVersion, 0, len(versionsResp.Versions))
+		for _, version := range versionsResp.Versions {
+			result, err := d.client.GetModelVersion(ctx, metalake, catalog, schemaName, model, version)
+			if err != nil {
+				resp.Diagnostics.Append(client.NewResourceError("reading model version", fmt.Sprintf("%s version %d", model, version), err)...)
+				return
+			}
+			versions = append(versions, result.ModelVersion)
+		}
+	}
+
+	items := make([]attr.Value, 0, len(versions))
+	for i := range versions {
+		item, itemDiags := modelVersionListItemToObject(ctx, &versions[i])
 		resp.Diagnostics.Append(itemDiags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 		items = append(items, item)
 	}
-	if len(items) == 0 {
-		items = []attr.Value{}
-	}
 
 	listVal, listDiags := types.ListValue(
-		types.ObjectType{AttrTypes: versionListItemAttrTypes()},
+		types.ObjectType{AttrTypes: ModelVersionItemAttrTypes},
 		items,
 	)
 	resp.Diagnostics.Append(listDiags...)
@@ -167,72 +181,22 @@ func (d *ModelVersionsDataSource) Read(ctx context.Context, req datasource.ReadR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }
 
-func versionListItemToObject(ctx context.Context, mv *models.ModelVersion) (types.Object, diag.Diagnostics) {
+func modelVersionListItemToObject(ctx context.Context, mv *models.ModelVersion) (types.Object, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	var aliasesList types.Set
-	if len(mv.Aliases) > 0 {
-		a, aDiags := types.SetValueFrom(ctx, types.StringType, mv.Aliases)
-		diags.Append(aDiags...)
-		aliasesList = a
-	} else {
-		aliasesList = types.SetNull(types.StringType)
-	}
-
-	var props types.Map
-	if len(mv.Properties) > 0 {
-		p, pDiags := types.MapValueFrom(ctx, types.StringType, mv.Properties)
-		diags.Append(pDiags...)
-		props = p
-	} else {
-		props = types.MapNull(types.StringType)
-	}
-
-	ao, aDiags := dslAuditToObject(mv.Audit)
+	ao, aDiags := auditToObject(mv.Audit)
 	diags.Append(aDiags...)
 
-	obj, oDiags := types.ObjectValue(versionListItemAttrTypes(), map[string]attr.Value{
-		"version":    types.StringValue(mv.Version),
-		"uri":        types.StringValue(mv.URI),
-		"aliases":    aliasesList,
-		"comment":    types.StringValue(mv.Comment),
-		"properties": props,
+	obj, oDiags := types.ObjectValue(ModelVersionItemAttrTypes, map[string]attr.Value{
+		"version":    types.Int64Value(int64(mv.Version)),
+		"uri":        optionalString(mv.URI),
+		"uris":       mapValueFrom(ctx, mv.URIs, &diags),
+		"aliases":    setValueFrom(ctx, mv.Aliases, &diags),
+		"comment":    optionalString(mv.Comment),
+		"properties": mapValueFrom(ctx, mv.Properties, &diags),
 		"audit":      ao,
 	})
 	diags.Append(oDiags...)
 
 	return obj, diags
-}
-
-func dslAuditToObject(a *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if a == nil {
-		return types.ObjectNull(dslAuditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if a.Creator != "" {
-		creator = types.StringValue(a.Creator)
-	}
-
-	createTime := types.StringNull()
-	if a.CreateTime != nil {
-		createTime = types.StringValue(a.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if a.LastModifier != "" {
-		lastModifier = types.StringValue(a.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if a.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(a.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(dslAuditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
 }

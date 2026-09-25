@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,9 +17,12 @@ import (
 	"github.com/jcmturner/gokrb5/v8/spnego"
 )
 
+// hasNegotiateChallenge reports whether the response carries an SPNEGO
+// challenge. Real servers answer with `Negotiate <base64-token>`, so a prefix
+// match is required (Gravitino's SPNEGO filter does not send a bare "Negotiate").
 func hasNegotiateChallenge(resp *http.Response) bool {
-	for _, v := range resp.Header["Www-Authenticate"] {
-		if v == "Negotiate" || v == "Negotiate " {
+	for _, v := range resp.Header.Values("Www-Authenticate") {
+		if strings.HasPrefix(strings.TrimSpace(v), "Negotiate") {
 			return true
 		}
 	}
@@ -127,7 +131,10 @@ func (rt *spnegoRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 
-		retryReq := req.Clone(req.Context())
+		retryReq, err := cloneRequestForRetry(req)
+		if err != nil {
+			return nil, fmt.Errorf("kerberos authentication retry failed: %w", err)
+		}
 		if err := spnego.SetSPNEGOHeader(rt.client, retryReq, ""); err != nil {
 			return nil, fmt.Errorf("kerberos authentication retry failed: %w", err)
 		}
@@ -136,6 +143,25 @@ func (rt *spnegoRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	}
 
 	return resp, nil
+}
+
+// cloneRequestForRetry copies req and rewinds its body. req.Clone alone shares
+// the (already consumed) body, which would make a retried POST/PUT send an empty
+// body while still advertising the original Content-Length.
+func cloneRequestForRetry(req *http.Request) (*http.Request, error) {
+	retryReq := req.Clone(req.Context())
+	if req.Body == nil {
+		return retryReq, nil
+	}
+	if req.GetBody == nil {
+		return nil, errors.New("request body is not rewindable")
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, err
+	}
+	retryReq.Body = body
+	return retryReq, nil
 }
 
 func extractRealm(principal string) string {

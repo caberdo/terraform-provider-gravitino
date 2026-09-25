@@ -90,7 +90,7 @@ func (d *LivenessDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.GetLiveness()
+	result, err := d.client.GetLiveness(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read liveness", err.Error())
 		return

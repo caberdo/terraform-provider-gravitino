@@ -27,10 +27,16 @@ curl -fsS -m 5 "${URI}/api/version" >/dev/null || {
 
 go mod download && go mod verify
 
-go test -v -timeout 30m -run "${FILTER}" \
-  ./internal/resources/metalake/ \
-  ./internal/resources/catalog/ \
-  ./internal/resources/tag/ \
-  ./internal/datasources/health/ \
-  ./internal/datasources/metalake/ \
-  ./internal/datasources/authentication/
+# Discover the packages that actually contain live tests, so a new TestLiveAcc* test is
+# picked up without touching this list.
+packages=$(grep -rl --include='*_test.go' -E '^func (TestLiveAcc|TestLiveAcc_)' internal/ \
+  | xargs -n1 dirname | sort -u | sed 's|^|./|' | tr '\n' ' ')
+
+if [ -z "${packages}" ]; then
+  echo "no live test packages found" >&2
+  exit 1
+fi
+
+echo "live test packages: ${packages}"
+# shellcheck disable=SC2086
+go test -v -count=1 -timeout 30m -run "${FILTER}" ${packages}

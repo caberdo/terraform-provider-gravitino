@@ -5,7 +5,7 @@ A Terraform provider for managing [Apache Gravitino](https://gravitino.apache.or
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.22
+- [Go](https://golang.org/doc/install) >= 1.26.4
 
 ## Using the Provider
 
@@ -41,7 +41,7 @@ The provider supports the following arguments:
 | Attribute | Type | Env Variable | Description |
 |-----------|------|-------------|-------------|
 | `uri` | `string` | `GRAVITINO_URI` | Gravitino server URI |
-| `auth` | `string` | `GRAVITINO_AUTH` | Auth method: `simple`, `basic`, `oauth`, or `kerberos` |
+| `auth` | `string` | `GRAVITINO_AUTH` | Auth method: `none`, `simple`, `basic`, `oauth`, or `kerberos` |
 | `username` | `string` | `GRAVITINO_USERNAME` | Username (simple/basic auth) |
 | `password` | `string` (sensitive) | `GRAVITINO_PASSWORD` | Password (basic auth) |
 | `oauth_token` | `string` (sensitive) | `GRAVITINO_OAUTH_TOKEN` | Static OAuth2 bearer token |
@@ -72,8 +72,8 @@ resource "gravitino_metalake" "example" {
 resource "gravitino_catalog" "hive" {
   metalake = gravitino_metalake.example.name
   name     = "my_hive_catalog"
-  type     = "relational"
-  provider = "hive"
+  type             = "relational"
+  catalog_provider = "hive"
   properties = {
     "metastore.uris" = "thrift://localhost:9083"
   }
@@ -119,21 +119,29 @@ data "gravitino_metalake" "example" {
 
 ## Resources
 
-| Resource                | Description                                      |
-|-------------------------|--------------------------------------------------|
-| `gravitino_metalake`    | Manage a Gravitino metalake.                     |
-| `gravitino_catalog`     | Manage a catalog within a metalake.              |
-| `gravitino_schema`      | Manage a schema within a catalog.                |
-| `gravitino_table`       | Manage a table within a schema.                  |
-| `gravitino_tag`         | Manage a tag.                                    |
-| `gravitino_fileset`     | Manage a fileset.                                |
-| `gravitino_topic`       | Manage a messaging topic.                        |
-| `gravitino_view`        | Manage a view.                                   |
-| `gravitino_function`    | Manage a function.                               |
-| `gravitino_model`       | Manage a model.                                  |
-| `gravitino_partition`   | Manage a table partition.                        |
-| `gravitino_policy`      | Manage an access control policy.                 |
-| `gravitino_job`         | Manage a job.                                    |
+| Resource                 | Description                                      |
+|--------------------------|--------------------------------------------------|
+| `gravitino_metalake`     | Manage a Gravitino metalake.                     |
+| `gravitino_catalog`      | Manage a catalog within a metalake.              |
+| `gravitino_schema`       | Manage a schema within a catalog.                |
+| `gravitino_table`        | Manage a table within a schema.                  |
+| `gravitino_fileset`      | Manage a fileset.                                |
+| `gravitino_topic`        | Manage a messaging topic.                        |
+| `gravitino_view`         | Manage a view.                                   |
+| `gravitino_function`     | Manage a function.                               |
+| `gravitino_model`        | Manage a model.                                  |
+| `gravitino_model_version`| Manage a model version.                          |
+| `gravitino_partition`    | Manage a table partition.                        |
+| `gravitino_tag`          | Manage a tag.                                    |
+| `gravitino_policy`       | Manage an access control policy.                 |
+| `gravitino_role`         | Manage a role and its privileges.                |
+| `gravitino_user`         | Manage a user.                                   |
+| `gravitino_group`        | Manage a group.                                  |
+| `gravitino_owner`        | Manage the owner of a metadata object.           |
+| `gravitino_job`          | Run a job template.                              |
+| `gravitino_job_template` | Manage a job template.                           |
+| `gravitino_idp_user`     | Manage an identity provider user.                |
+| `gravitino_idp_group`    | Manage an identity provider group.               |
 
 ## Data Sources
 
@@ -144,121 +152,65 @@ data "gravitino_metalake" "example" {
 | `gravitino_metalakes`     | List all metalakes.            |
 | `gravitino_metalake`      | Get a specific metalake.       |
 
-### Catalogs
+### Catalogs, schemas, tables, filesets, topics, views
 
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_catalogs`      | List all catalogs.             |
-| `gravitino_catalog`       | Get a specific catalog.        |
+| Data Source                 | Description                                     |
+|-----------------------------|-------------------------------------------------|
+| `gravitino_catalogs`        | List catalogs of a metalake.                     |
+| `gravitino_catalog`         | Get a specific catalog.                          |
+| `gravitino_schemas`         | List schemas of a catalog.                       |
+| `gravitino_schema`          | Get a specific schema.                           |
+| `gravitino_tables`          | List tables of a schema.                         |
+| `gravitino_table`           | Get a specific table.                            |
+| `gravitino_partitions`      | List partitions of a table.                      |
+| `gravitino_partition`       | Get a specific partition.                        |
+| `gravitino_filesets`        | List filesets of a schema.                       |
+| `gravitino_fileset`         | Get a specific fileset.                          |
+| `gravitino_topics`          | List topics of a schema.                         |
+| `gravitino_topic`           | Get a specific topic.                            |
+| `gravitino_views`           | List views of a schema.                          |
+| `gravitino_view`            | Get a specific view.                             |
+| `gravitino_functions`       | List functions of a schema.                      |
+| `gravitino_function`        | Get a specific function.                         |
+| `gravitino_models`          | List models of a schema.                         |
+| `gravitino_model`           | Get a specific model.                            |
+| `gravitino_model_versions`  | List versions of a model.                        |
+| `gravitino_model_version`   | Get a specific model version.                    |
 
-### Schemas
+### Tags, policies, roles, statistics, credentials
 
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_schemas`       | List all schemas.              |
-| `gravitino_schema`        | Get a specific schema.         |
+| Data Source                     | Description                                        |
+|---------------------------------|----------------------------------------------------|
+| `gravitino_tags`                | List tags of a metalake.                            |
+| `gravitino_tag`                 | Get a specific tag.                                 |
+| `gravitino_policies`            | List policies of a metalake.                        |
+| `gravitino_roles`               | List roles of a metadata object.                    |
+| `gravitino_roles_list`          | List roles of a metalake.                           |
+| `gravitino_role`                | Get a specific role.                                |
+| `gravitino_owner`               | Get the owner of a metadata object.                 |
+| `gravitino_credentials`         | Get the credentials of a metadata object.           |
+| `gravitino_secrets`             | Get the resolved secrets of a metadata object (Gravitino 1.4+). |
+| `gravitino_statistics`          | Get the statistics of a metadata object.            |
+| `gravitino_partition_statistics`| Get the partition statistics of a metadata object.  |
 
-### Tables
+### Users, groups, jobs and health
 
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_tables`        | List all tables.               |
-| `gravitino_table`         | Get a specific table.          |
-
-### Tags
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_tags`          | List all tags.                 |
-| `gravitino_tag`           | Get a specific tag.            |
-
-### Filesets
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_filesets`      | List all filesets.             |
-| `gravitino_fileset`       | Get a specific fileset.        |
-
-### Topics
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_topics`        | List all topics.               |
-| `gravitino_topic`         | Get a specific topic.          |
-
-### Views
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_views`         | List all views.                |
-| `gravitino_view`          | Get a specific view.           |
-
-### Functions
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_functions`     | List all functions.            |
-| `gravitino_function`      | Get a specific function.       |
-
-### Models
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_models`        | List all models.               |
-| `gravitino_model`         | Get a specific model.          |
-
-### Partitions
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_partitions`    | List all partitions.           |
-| `gravitino_partition`     | Get a specific partition.      |
-
-### Policies
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_policies`      | List all access control policies. |
-
-### Jobs
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_jobs`          | List all jobs.                 |
-| `gravitino_job`           | Get a specific job.            |
-
-### Health
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_health`        | Get server health status.      |
-| `gravitino_liveness`      | Get server liveness status.    |
-| `gravitino_readiness`     | Get server readiness status.   |
-
-### Credentials
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_credentials`   | Get credential information.    |
-
-### Roles
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_roles`         | List all roles.                |
-
-### Statistics
-
-| Data Source                        | Description                      |
-|------------------------------------|----------------------------------|
-| `gravitino_statistics`             | Get table statistics.            |
-| `gravitino_partition_statistics`   | Get partition-level statistics.  |
-
-### Principal
-
-| Data Source               | Description                    |
-|---------------------------|--------------------------------|
-| `gravitino_principal`     | Get the current principal.     |
+| Data Source                 | Description                                     |
+|-----------------------------|-------------------------------------------------|
+| `gravitino_users`           | List users of a metalake.                        |
+| `gravitino_user`            | Get a specific user.                             |
+| `gravitino_groups`          | List groups of a metalake.                       |
+| `gravitino_group`           | Get a specific group.                            |
+| `gravitino_idp_user`        | Get an identity provider user.                   |
+| `gravitino_idp_group`       | Get an identity provider group.                  |
+| `gravitino_jobs`            | List job runs of a metalake.                     |
+| `gravitino_job`             | Get a specific job run.                          |
+| `gravitino_job_templates`   | List job templates of a metalake.                |
+| `gravitino_job_template`    | Get a specific job template.                     |
+| `gravitino_principal`       | Get the authenticated principal.                 |
+| `gravitino_health`          | Get the aggregate server health.                 |
+| `gravitino_liveness`        | Get the server liveness.                         |
+| `gravitino_readiness`       | Get the server readiness.                        |
 
 ## Testing
 

@@ -18,7 +18,7 @@ import (
 var _ datasource.DataSource = &ModelDataSource{}
 var _ datasource.DataSourceWithConfigure = &ModelDataSource{}
 
-var dsAuditAttrTypes = map[string]attr.Type{
+var AuditAttrTypes = map[string]attr.Type{
 	"creator":            types.StringType,
 	"create_time":        types.StringType,
 	"last_modifier":      types.StringType,
@@ -30,18 +30,22 @@ type ModelDataSource struct {
 }
 
 type ModelDataSourceModel struct {
-	Metalake   types.String `tfsdk:"metalake"`
-	Catalog    types.String `tfsdk:"catalog"`
-	Schema     types.String `tfsdk:"schema"`
-	Name       types.String `tfsdk:"name"`
-	Comment    types.String `tfsdk:"comment"`
-	ModelURI   types.String `tfsdk:"model_uri"`
-	Properties types.Map    `tfsdk:"properties"`
-	Audit      types.Object `tfsdk:"audit"`
+	Metalake      types.String `tfsdk:"metalake"`
+	Catalog       types.String `tfsdk:"catalog"`
+	Schema        types.String `tfsdk:"schema"`
+	Name          types.String `tfsdk:"name"`
+	Comment       types.String `tfsdk:"comment"`
+	LatestVersion types.Int64  `tfsdk:"latest_version"`
+	Properties    types.Map    `tfsdk:"properties"`
+	Audit         types.Object `tfsdk:"audit"`
 }
 
 func NewModelDataSource() datasource.DataSource {
 	return &ModelDataSource{}
+}
+
+func (d *ModelDataSource) SetClient(c *client.Client) {
+	d.client = c
 }
 
 func (d *ModelDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -50,7 +54,7 @@ func (d *ModelDataSource) Metadata(_ context.Context, _ datasource.MetadataReque
 
 func (d *ModelDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Retrieves a single Gravitino model by name.",
+		Description: "Retrieves a single Gravitino model by name. Model artifacts are attached to the model versions of the model, not to the model itself.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -72,8 +76,8 @@ func (d *ModelDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Description: "The model comment.",
 				Computed:    true,
 			},
-			"model_uri": schema.StringAttribute{
-				Description: "The URI of the model artifact.",
+			"latest_version": schema.Int64Attribute{
+				Description: "The latest version number of the model.",
 				Computed:    true,
 			},
 			"properties": schema.MapAttribute{
@@ -84,7 +88,7 @@ func (d *ModelDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 			"audit": schema.ObjectAttribute{
 				Description:    "Audit information for the model.",
 				Computed:       true,
-				AttributeTypes: dsAuditAttrTypes,
+				AttributeTypes: AuditAttrTypes,
 			},
 		},
 	}
@@ -109,22 +113,15 @@ func (d *ModelDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	modelResp, err := d.client.GetModel(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
+	modelResp, err := d.client.GetModel(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to read model", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("reading model", config.Name.ValueString(), err)...)
 		return
 	}
 
-	config.Comment = types.StringValue(modelResp.Model.Comment)
-	config.ModelURI = types.StringValue(modelResp.Model.ModelURI)
-
-	if len(modelResp.Model.Properties) > 0 {
-		props, propsDiags := types.MapValueFrom(ctx, types.StringType, modelResp.Model.Properties)
-		resp.Diagnostics.Append(propsDiags...)
-		config.Properties = props
-	} else {
-		config.Properties = types.MapNull(types.StringType)
-	}
+	config.Comment = optionalString(modelResp.Model.Comment)
+	config.LatestVersion = types.Int64Value(int64(modelResp.Model.LatestVersion))
+	config.Properties = mapValueFrom(ctx, modelResp.Model.Properties, &resp.Diagnostics)
 
 	auditObj, auditDiags := auditToObject(modelResp.Model.Audit)
 	resp.Diagnostics.Append(auditDiags...)
@@ -133,9 +130,25 @@ func (d *ModelDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }
 
+func optionalString(apiValue string) types.String {
+	if apiValue != "" {
+		return types.StringValue(apiValue)
+	}
+	return types.StringNull()
+}
+
+func mapValueFrom(ctx context.Context, values map[string]string, diags *diag.Diagnostics) types.Map {
+	if len(values) > 0 {
+		value, d := types.MapValueFrom(ctx, types.StringType, values)
+		diags.Append(d...)
+		return value
+	}
+	return types.MapNull(types.StringType)
+}
+
 func auditToObject(a *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
 	if a == nil {
-		return types.ObjectNull(dsAuditAttrTypes), nil
+		return types.ObjectNull(AuditAttrTypes), nil
 	}
 
 	creator := types.StringNull()
@@ -158,7 +171,7 @@ func auditToObject(a *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
 		lastModifiedTime = types.StringValue(a.LastModifiedTime.Format(time.RFC3339))
 	}
 
-	return types.ObjectValue(dsAuditAttrTypes, map[string]attr.Value{
+	return types.ObjectValue(AuditAttrTypes, map[string]attr.Value{
 		"creator":            creator,
 		"create_time":        createTime,
 		"last_modifier":      lastModifier,

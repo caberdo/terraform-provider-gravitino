@@ -86,13 +86,5 @@ jobs:
           echo "| New Tag  | **${{ steps.version.outputs.new }}** |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit   | **${{ github.sha }}** |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The Release workflow has been triggered and will build and publish the provider." >> $GITHUB_STEP_SUMMARY
+          echo "The pushed tag triggers the Release workflow, which will build and publish the provider." >> $GITHUB_STEP_SUMMARY
 
-  release:
-    needs: create-tag
-    permissions:
-      contents: write
-    uses: ./.github/workflows/release.yml
-    with:
-      tag: ${{ needs.create-tag.outputs.tag }}
-    secrets: inherit

@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -81,22 +82,33 @@ func (r *UserResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			},
 			"metalake": schema.StringAttribute{
 				Required:    true,
-				Description: "The metalake name.",
+				Description: "The metalake name. Changing it requires creating a new user.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
-				Description: "The user name.",
+				Description: "The user name. The API has no rename endpoint, so changing it requires creating a new user.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"roles": schema.SetAttribute{
 				Computed:    true,
 				Optional:    true,
 				ElementType: types.StringType,
-				Description: "The roles assigned to the user.",
+				Description: "The roles assigned to the user. Mutated in-place through the permissions grant/revoke endpoints.",
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"audit": schema.ObjectAttribute{
 				Computed:       true,
 				AttributeTypes: AuditAttrTypes,
-				Description:    "Audit information for the user.",
+				// No UseStateForUnknown: the server updates the audit fields on
+				// every modify, so the value must be known only after apply.
+				Description: "Audit information for the user.",
 			},
 		},
 	}
@@ -111,13 +123,26 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	tflog.Debug(ctx, "Creating user", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "name": plan.Name.ValueString()})
 
-	result, err := r.client.AddUser(plan.Metalake.ValueString(), plan.Name.ValueString())
+	metalake := plan.Metalake.ValueString()
+
+	result, err := r.client.AddUser(ctx, metalake, plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating user", plan.Name.ValueString(), err)...)
 		return
 	}
 
-	setStateFromUser(ctx, &resp.Diagnostics, plan.Metalake.ValueString(), &result.User, &plan)
+	plannedRoles := listFromTF(plan.Roles)
+	if len(plannedRoles) > 0 {
+		grantResult, err := r.client.GrantRolesToUser(ctx, metalake, plan.Name.ValueString(), plannedRoles)
+		if err != nil {
+			resp.Diagnostics.Append(client.NewResourceError("granting roles to user", plan.Name.ValueString(), err)...)
+			return
+		}
+		setStateFromUser(ctx, &resp.Diagnostics, metalake, &grantResult.User, &plan)
+	} else {
+		setStateFromUser(ctx, &resp.Diagnostics, metalake, &result.User, &plan)
+	}
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -136,7 +161,7 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	tflog.Debug(ctx, "Reading user", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	result, err := r.client.GetUser(state.Metalake.ValueString(), state.Name.ValueString())
+	result, err := r.client.GetUser(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -152,6 +177,8 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+
+	tflog.Debug(ctx, "Read user", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 }
 
 func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -164,37 +191,43 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 	tflog.Debug(ctx, "Updating user", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
+	metalake := state.Metalake.ValueString()
+	name := state.Name.ValueString()
+
 	oldRoles := listFromTF(state.Roles)
 	newRoles := listFromTF(plan.Roles)
 
 	rolesToGrant := diffRoles(newRoles, oldRoles)
 	rolesToRevoke := diffRoles(oldRoles, newRoles)
 
+	// Roles are the only mutable attribute: the API exposes no user update
+	// endpoint, only the permissions grant/revoke endpoints.
+	var updatedUser *models.User
+
 	if len(rolesToGrant) > 0 {
-		_, err := r.client.GrantRolesToUser(state.Metalake.ValueString(), state.Name.ValueString(), rolesToGrant)
+		grantResult, err := r.client.GrantRolesToUser(ctx, metalake, name, rolesToGrant)
 		if err != nil {
-			resp.Diagnostics.Append(client.NewResourceError("granting roles to user", state.Name.ValueString(), err)...)
+			resp.Diagnostics.Append(client.NewResourceError("granting roles to user", name, err)...)
 			return
 		}
+		updatedUser = &grantResult.User
 	}
 
 	if len(rolesToRevoke) > 0 {
-		_, err := r.client.RevokeRolesFromUser(state.Metalake.ValueString(), state.Name.ValueString(), rolesToRevoke)
+		revokeResult, err := r.client.RevokeRolesFromUser(ctx, metalake, name, rolesToRevoke)
 		if err != nil {
-			resp.Diagnostics.Append(client.NewResourceError("revoking roles from user", state.Name.ValueString(), err)...)
+			resp.Diagnostics.Append(client.NewResourceError("revoking roles from user", name, err)...)
 			return
 		}
+		updatedUser = &revokeResult.User
 	}
 
-	if len(rolesToGrant) > 0 || len(rolesToRevoke) > 0 {
-		result, err := r.client.GetUser(state.Metalake.ValueString(), state.Name.ValueString())
-		if err != nil {
-			resp.Diagnostics.Append(client.NewResourceError("reading user after update", state.Name.ValueString(), err)...)
-			return
-		}
-		setStateFromUser(ctx, &resp.Diagnostics, plan.Metalake.ValueString(), &result.User, &plan)
+	if updatedUser != nil {
+		setStateFromUser(ctx, &resp.Diagnostics, metalake, updatedUser, &plan)
 	} else {
-		setStateFromUser(ctx, &resp.Diagnostics, plan.Metalake.ValueString(), nil, &plan)
+		// Nothing was sent to the server: every computed value must still be
+		// known, so fall back to the values recorded in state.
+		stateToModelUser(&plan, &state)
 	}
 
 	if resp.Diagnostics.HasError() {
@@ -203,7 +236,7 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 
-	tflog.Debug(ctx, "Updated user", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "name": plan.Name.ValueString()})
+	tflog.Debug(ctx, "Updated user", map[string]interface{}{"metalake": metalake, "name": plan.Name.ValueString()})
 }
 
 func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -215,8 +248,13 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 	tflog.Debug(ctx, "Deleting user", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.RemoveUser(state.Metalake.ValueString(), state.Name.ValueString())
+	_, err := r.client.RemoveUser(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
+		if client.IsNotFoundError(err) {
+			// Already gone: deletion is idempotent.
+			tflog.Debug(ctx, "User already deleted", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
+			return
+		}
 		resp.Diagnostics.Append(client.NewResourceError("deleting user", state.Name.ValueString(), err)...)
 		return
 	}
@@ -225,8 +263,8 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 }
 
 func (r *UserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	idx := strings.LastIndex(req.ID, ".")
-	if idx == -1 {
+	parts := strings.Split(req.ID, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		resp.Diagnostics.AddError(
 			"Invalid import ID",
 			fmt.Sprintf("Expected 'metalake.user_name', got: %s", req.ID),
@@ -234,8 +272,7 @@ func (r *UserResource) ImportState(ctx context.Context, req resource.ImportState
 		return
 	}
 
-	metalake := req.ID[:idx]
-	name := req.ID[idx+1:]
+	metalake, name := parts[0], parts[1]
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("metalake"), metalake)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), name)...)
@@ -253,18 +290,40 @@ func setStateFromUser(ctx context.Context, diags *diag.Diagnostics, metalake str
 			model.Roles = roles
 		}
 
-		if user.Audit != nil {
-			auditObj, d := auditToObjectValue(ctx, user.Audit)
-			diags.Append(d...)
-			if !diags.HasError() {
-				model.Audit = auditObj
-			}
+		auditObj, d := auditToObjectValue(ctx, user.Audit)
+		diags.Append(d...)
+		if !diags.HasError() {
+			model.Audit = auditObj
 		}
 	} else {
 		model.ID = types.StringValue(metalake + "." + model.Name.ValueString())
 	}
 
 	model.Metalake = types.StringValue(metalake)
+
+	// A response that omitted a section must not leave a computed attribute
+	// unknown in state.
+	if model.Roles.IsUnknown() {
+		model.Roles = types.SetNull(types.StringType)
+	}
+	if model.Audit.IsUnknown() {
+		model.Audit = types.ObjectNull(AuditAttrTypes)
+	}
+}
+
+// stateToModelUser fills computed values that were not provided by an API
+// response (for example on an Update that sent nothing) with the values
+// recorded in state, so that no computed attribute is left unknown.
+func stateToModelUser(model, state *UserResourceModel) {
+	model.Metalake = state.Metalake
+	model.ID = types.StringValue(state.Metalake.ValueString() + "." + model.Name.ValueString())
+
+	if model.Roles.IsUnknown() {
+		model.Roles = state.Roles
+	}
+	if model.Audit.IsUnknown() {
+		model.Audit = state.Audit
+	}
 }
 
 func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {

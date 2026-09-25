@@ -34,6 +34,7 @@ type TagDataSourceModel struct {
 	Comment    types.String `tfsdk:"comment"`
 	Properties types.Map    `tfsdk:"properties"`
 	Audit      types.Object `tfsdk:"audit"`
+	Inherited  types.Bool   `tfsdk:"inherited"`
 }
 
 func (d *TagDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -80,6 +81,10 @@ func (d *TagDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, re
 				AttributeTypes: AuditAttrTypes,
 				Description:    "Audit information for the tag.",
 			},
+			"inherited": schema.BoolAttribute{
+				Computed:    true,
+				Description: "Whether the tag is inherited from a parent metadata object. Null when the server does not report it.",
+			},
 		},
 	}
 }
@@ -91,9 +96,16 @@ func (d *TagDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 		return
 	}
 
-	result, err := d.client.GetTag(config.Metalake.ValueString(), config.Name.ValueString())
+	result, err := d.client.GetTag(ctx, config.Metalake.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get tag", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Tag not found",
+				fmt.Sprintf("No Gravitino tag %q exists in metalake %q.", config.Name.ValueString(), config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading tag", config.Name.ValueString(), err)...)
 		return
 	}
 
@@ -105,20 +117,34 @@ func (d *TagDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func setDataSourceStateFromTag(_ context.Context, diags *diag.Diagnostics, tag *models.Tag, model *TagDataSourceModel) {
-	model.Comment = types.StringValue(tag.Comment)
-
-	props, d := types.MapValueFrom(context.TODO(), types.StringType, tag.Properties)
-	diags.Append(d...)
-	if diags.HasError() {
-		return
+func setDataSourceStateFromTag(ctx context.Context, diags *diag.Diagnostics, tag *models.Tag, model *TagDataSourceModel) {
+	if tag.Comment != "" {
+		model.Comment = types.StringValue(tag.Comment)
+	} else {
+		model.Comment = types.StringNull()
 	}
-	model.Properties = props
 
-	auditObj, d := auditToObjectValueForDS(context.TODO(), tag.Audit)
+	if len(tag.Properties) > 0 {
+		props, d := types.MapValueFrom(ctx, types.StringType, tag.Properties)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		model.Properties = props
+	} else {
+		model.Properties = types.MapNull(types.StringType)
+	}
+
+	auditObj, d := auditToObjectValueForDS(ctx, tag.Audit)
 	diags.Append(d...)
 	if diags.HasError() {
 		return
 	}
 	model.Audit = auditObj
+
+	if tag.Inherited != nil {
+		model.Inherited = types.BoolValue(*tag.Inherited)
+	} else {
+		model.Inherited = types.BoolNull()
+	}
 }

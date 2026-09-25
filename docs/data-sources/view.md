@@ -33,9 +33,12 @@ data "gravitino_view" "example" {
 ### Read-Only
 
 - `audit` (Object) Audit information for the view. (see [below for nested schema](#nestedatt--audit))
+- `column` (Attributes List) The output columns of the view. (see [below for nested schema](#nestedatt--column))
 - `comment` (String) The view comment.
+- `default_catalog` (String) The default catalog used to resolve unqualified identifiers in the view representations.
+- `default_schema` (String) The default schema used to resolve unqualified identifiers in the view representations.
 - `properties` (Map of String) Key-value properties for the view.
-- `view_def` (String) The SQL view definition.
+- `representation` (Attributes List) The representations of the view body, keyed by dialect. (see [below for nested schema](#nestedatt--representation))
 
 <a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`
@@ -46,3 +49,26 @@ Read-Only:
 - `creator` (String)
 - `last_modified_time` (String)
 - `last_modifier` (String)
+
+
+<a id="nestedatt--column"></a>
+### Nested Schema for `column`
+
+Read-Only:
+
+- `auto_increment` (Boolean) Whether the column is auto increment.
+- `comment` (String) The column comment.
+- `default_value` (String) The default value of the column, using the data type of the column.
+- `name` (String) The column name.
+- `nullable` (Boolean) Whether the column is nullable.
+- `type` (String) The column data type.
+
+
+<a id="nestedatt--representation"></a>
+### Nested Schema for `representation`
+
+Read-Only:
+
+- `dialect` (String) The SQL dialect of this representation.
+- `sql` (String) The SQL text of the view.
+- `type` (String) The representation type discriminator.

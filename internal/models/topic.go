@@ -22,16 +22,6 @@ type TopicUpdateRequest struct {
 	Updates []interface{} `json:"updates"`
 }
 
-func NewRenameTopicRequest(newName string) interface{} {
-	return struct {
-		Type    string `json:"@type"`
-		NewName string `json:"newName"`
-	}{
-		Type:    "rename",
-		NewName: newName,
-	}
-}
-
 func NewUpdateTopicCommentRequest(newComment string) interface{} {
 	return struct {
 		Type       string `json:"@type"`

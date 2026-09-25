@@ -1,4 +1,6 @@
-## Unreleased
+## 0.7.0 (2026-09-25)
+
+_Releases 0.5.0 through 0.6.2 were tagged without changelog entries._
 
 BREAKING CHANGES:
 - **Order-insensitive collections are now `set` attributes.** Attributes that
@@ -9,6 +11,57 @@ BREAKING CHANGES:
   `gravitino_group` `roles`, `gravitino_idp_user` `groups`,
   `gravitino_idp_group` `users`, `gravitino_policy` `supported_object_types`,
   `gravitino_model_version` `aliases` (resources and data sources).
+- **`gravitino_credentials` now models the real credential list.**
+  `GET /metalakes/{metalake}/objects/{type}/{name}/credentials` returns
+  `credentials`, a list of `{credentialType, expireTimeInMs, credentialInfo}`
+  objects. The data source read a single `credential` object with
+  `type`/`value`/`expireTime`, so against a real Gravitino every attribute came
+  back empty. The data source now exposes `credentials` (list of objects) with
+  `credential_type`, `expire_time_in_ms` (number, `0` means no expiry) and
+  `credential_info` (sensitive map of credential type specific key/values). The
+  attributes `type`, `value` and `expire_time` no longer exist.
+- **`gravitino_principal` no longer exposes `roles`.** `GET /api/authn/me` returns
+  `{code, principal}` only, so `roles` could never be populated (it was always an
+  empty list). Use `data.gravitino_roles` for role information.
+- **`gravitino_roles` now exposes `names`.** `GET
+  /metalakes/{metalake}/objects/{metadataObjectType}/{metadataObjectFullName}/roles`
+  returns a `NameListResponse` (`{code, names}`), not role objects. The data source
+  decoded a non-existent `roles` list of `{name, privileges, securable_object}`
+  objects, so against a real Gravitino every result was empty. The `roles` attribute
+  no longer exists; use `names` (list of role names).
+- **`gravitino_role` `properties` and `name` force replacement.** Gravitino v1.3.0
+  has no role rename or role property update endpoint (the only role write endpoint
+  is `PUT /metalakes/{metalake}/permissions/roles/{role}` for a privilege override),
+  so changing `name` or `properties` now destroys and recreates the role. Previously
+  a `properties` change was silently dropped, which produced a perpetual diff and
+  failed applies.
+
+- **`gravitino_job` now models a job *run*.** Gravitino models jobs as job runs of a
+  job template: `POST /metalakes/{metalake}/jobs/runs` starts one and the server
+  assigns the id, so a user-supplied job name cannot exist. The resource is configured
+  with `metalake`, `job_template` and `job_conf`, exposes `job_id`, `status`,
+  `queued_at`, `started_at`, `finished_at` and `audit` as computed values, and uses
+  `metalake.<job_id>` as its id (import with `metalake.job_id`); `name`, `template`,
+  `parameters` and `schedule` no longer exist. Every configured attribute forces a
+  replacement (a new run) and destroy *cancels* the run, because the API has no delete
+  (`DELETE /jobs/runs/{jobId}` answers 405).
+- **`gravitino_job_template` now models the real template object.** Registering sends
+  `{"jobTemplate": {...}}` with `job_type` (`shell`/`spark`) plus that variant's fields
+  (`executable`, `arguments`, `environments`, `custom_fields`, `scripts` for shell;
+  `class_name`, `jars`, `files`, `archives`, `configs` for spark). The attributes
+  `template`, `parameters` and `properties` are gone: the previous body was rejected by
+  a real server with `Unrecognized field "name" (class ...JobTemplateRegisterRequest)`,
+  and the register response is a bare `{code}`, so create now reads the template back.
+  Updates use rename/updateComment/updateTemplate and `job_type` forces replacement
+  (the variants are distinct object types). Gravitino refuses to delete a template that
+  still has active job runs (HTTP 409 `InUseException`), so destroy the jobs first.
+- **`gravitino_job`/`gravitino_jobs` data sources follow the run model:** the get data
+  source takes `job_id` instead of `name`; the list data source returns job runs.
+- **Internal design notes moved out of `docs/`** (`docs/superpowers/**`,
+  `docs/live-acceptance-tests.md` → `contributing/`), because the Terraform Registry
+  publishes everything under `docs/` as provider documentation.
+- **Dead `/bulk` client and models removed** (no corresponding endpoint in the Gravitino
+  v1.3.0 API and no callers).
 
 FIXES:
 - **Fix `Malformed json request` when updating schema, topic, view or function.**
@@ -42,6 +95,101 @@ FIXES:
   catalog properties (`in-use`, `gravitino.bypass.*`) that are absent from the
   config. The resource now keeps only configured/known properties in state, so
   apply no longer fails with `.properties: new element "in-use" has appeared`.
+- **`gravitino_credentials` object type enum is credential-specific.** The
+  `resource_type` validator borrowed the statistics object type list; it now uses
+  the exact `metadataObjectType` enum of the credentials endpoint
+  (`models.CredentialObjectTypes`: METALAKE, CATALOG, SCHEMA, TABLE, COLUMN,
+  FILESET, TOPIC, MODEL, ROLE), so future changes to the statistics list can no
+  longer silently change which object types the data source accepts. Both
+  `gravitino_credentials` and `gravitino_principal` now report failures through
+  `client.NewResourceError`, so a Gravitino 404/401 diagnostic carries the real
+  HTTP status plus the server error type and message.
+- **Fix `gravitino_role` against real Gravitino.** The Go model decoded a role body
+  with a singular `securableObject` plus a role level `privileges` array, which the
+  API never returns: every securable object and privilege was lost (empty state, no
+  drift detection). `gravitino_role` and `data.gravitino_role` now use the real
+  `Role` model (`name`, `properties`, `securableObjects[].{fullName, type,
+  privileges[].{name, condition}}`) plus the `audit` block the server always returns.
+  Also:
+  - the create request always contains `securableObjects` (verified against
+    Gravitino: a request without it is rejected with HTTP 400
+    `"securableObjects" can't null`), and may be an empty array;
+  - privilege overrides send the complete desired list of securable objects, since
+    `PUT /permissions/roles/{role}` replaces the whole set (verified live: an object
+    omitted from `overrides` is removed from the role);
+  - the values the server returns are always lower case (`metalake`,
+    `create_catalog`, `allow`), although input is case-insensitive; the provider
+    upper-cases them into state, which removes the "Provider produced inconsistent
+    result after apply" failure for real servers;
+  - `properties` uses `UseStateForUnknown` plus `RequiresReplaceIfConfigured`, so an
+    unconfigured `properties` no longer turns any privilege update into a
+    destroy/recreate cycle;
+  - `Read` removes the role from state on a Gravitino 404 and `Delete` treats a 404
+    as success, both reporting through `client.NewResourceError`; import guards
+    against malformed `metalake.role` identifiers instead of panicking;
+  - `securable_objects[].full_name` is documented as relative to the metalake
+    (verified live: `my_catalog` is accepted for a CATALOG, while the prefixed
+    `my_metalake.my_catalog` is rejected with HTTP 400
+    `IllegalNamespaceException`), and the example plus a unit test pin the fact
+    that the provider never adds a metalake prefix;
+  - the object type validators (`gravitino_role.securable_objects[].type` and
+    `data.gravitino_roles.resource_type`) use the exact `metadataObjectType` enum
+    (`METALAKE`, `CATALOG`, `SCHEMA`, `TABLE`, `FILESET`, `TOPIC`, `ROLE`, `MODEL`,
+    `FUNCTION`, `TAG`, `POLICY`, `JOB_TEMPLATE`). Verified against a live server:
+    any casing of these values is accepted, while the plural form is rejected with
+    HTTP 400 `No enum constant org.apache.gravitino.MetadataObject.Type.CATALOGS`.
+    The description of both attributes no longer suggests `catalogs`/`schemas`/
+    `tables`. Covered by new unit tests (create body equals the spec example, exact
+    override payload, 404 handling, import guards) and acceptance tests against a
+    spec-faithful fake server that returns lower case enums like the real one.
+
+- **404 handling now works against a real Gravitino server.** `client.IsNotFoundError`
+  matched the substrings `"404"`/`"Not Found"` in the error text, but a Gravitino error
+  payload carries an application code in the 1000-1100 range and a message such as
+  `Failed to operate metalake(s) [x] operation [LOAD], reason [NoSuchMetalakeException]`,
+  which contains neither. A resource deleted out of band therefore produced a hard error
+  instead of being removed from state (and any message containing "404" would have
+  removed the resource from state by accident). Errors are now typed
+  (`client.HTTPError`) and carry the real HTTP status; reads drop the resource from
+  state, deletes treat 404 as success. Regression tests use the error payload from
+  Gravitino's own OpenAPI examples.
+- **Server errors keep their status, type and stack trace.** `NewResourceError` called
+  `errors.As` with a value target while the client returns a pointer, so the structured
+  branch was dead code and every failure degraded to `message (type)`. Diagnostics now
+  include the HTTP status, the Gravitino exception type, the message and the server stack
+  trace, plus a bounded body excerpt for non-JSON error responses (proxies, gateways).
+- **The request context is no longer discarded.** Client methods take `ctx` and pass it
+  to the HTTP request and to the auth provider, so a cancelled provider run aborts
+  in-flight requests instead of waiting for the 30s client timeout.
+- **Path segments are escaped consistently.** The metalake/user/group/role/owner and
+  job-template request paths were built by string interpolation, so a name containing
+  `/`, a space or `?` corrupted the request URL — owner and role use dotted object full
+  names, which are especially likely to contain such characters.
+- **Kerberos: the SPNEGO retry works again.** `hasNegotiateChallenge` only matched a bare
+  `Negotiate` header while real servers send `Negotiate <token>`, and the retry reused an
+  already consumed request body, sending an empty body with the original
+  `Content-Length` on POST/PUT. Both fixed; the body is rewound via `req.GetBody`.
+- **`GRAVITINO_KERBEROS_USE_TICKET_CACHE` reports invalid values** instead of silently
+  falling back to `false`.
+- **Releases ship the Terraform Registry manifest.** `.github/goreleaser.yml` did not
+  include `terraform-registry-manifest.json` in the checksums or release assets, so the
+  Registry could not read `protocol_versions`; it is now published as
+  `terraform-provider-gravitino_<version>_manifest.json`.
+- **The release workflow no longer runs twice per tag.** `create-release-tag.yml` pushed
+  a `v*` tag (triggering `release.yml`) *and* called it via `workflow_call`, so two
+  GoReleaser runs raced on the same release assets.
+- **CI and tooling hardening.** `make lint`/`make lint-fix` use `.github/golangci.yml`
+  (they previously ran with golangci-lint's default set, so local lint was weaker than
+  CI); the test job runs `go build ./...` and `go vet ./...` over the whole module;
+  gosec no longer excludes hardcoded credentials (G101); the compose test service fails
+  fast (`set -e`) and enforces `GRAVITINO_EXPECT_VERSION`; the Gravitino service enables
+  authorization so roles, owners, users and groups are covered by live tests;
+  `.gitignore` covers key material (`*.pem`, `*.key`, `*.keytab`, …) and any
+  `*.tfstate`; dependabot tracks the pinned container images.
+- **Documentation corrections.** `README.md` claimed Go >= 1.22 (go.mod requires 1.26.4),
+  used the reserved `provider` argument in its catalog example instead of
+  `catalog_provider`, listed 13 of 21 resources and 34 of 47 data sources, and omitted
+  the `none` auth method.
 
 ENHANCEMENTS:
 - Live acceptance tests (`TestLiveAcc*`) that run against a **real** Gravitino
@@ -49,6 +197,46 @@ ENHANCEMENTS:
   covering metalake, catalog, tag, and the health/principal/metalake data sources.
   `acceptance.LivePreCheck` requires `GRAVITINO_URI` to answer `GET /api/version`
   so the tests never silently pass against a mock.
+- **Example validation in CI.** `scripts/validate-examples.sh` (also
+  `make validate-examples`) builds the provider, points Terraform at it through
+  `dev_overrides` and runs `terraform validate` in every module under `examples/`.
+  The resource snippets are embedded verbatim in the generated Registry documentation,
+  so an example referencing a removed attribute published a broken snippet to users —
+  and the script also surfaces provider schema errors. It runs in the test job.
+- **Every resource ships an `import.sh`**, so the generated pages document import for
+  all of them instead of silently omitting the section.
+- **The provider index documents the server requirements per resource**:
+  `gravitino_role`/`gravitino_owner`/`gravitino_user`/`gravitino_group` need
+  `gravitino.authorization.enable=true`; `gravitino_idp_user`/`gravitino_idp_group` need
+  the built-in IDP plugin plus the `basic` authenticator; `gravitino_secrets` needs
+  Gravitino 1.4 or newer (the secrets API does not exist in 1.3.x); tables, views,
+  functions, partitions and statistics need a lakehouse catalog.
+- **Live coverage extended to 23 `TestLiveAcc*` tests.** New live tests cover
+  `gravitino_job`/`gravitino_job_template` (shell + spark variants, rename, payload
+  assertions), `gravitino_model`/`gravitino_model_version`, `gravitino_role`,
+  `gravitino_policy`, `gravitino_user`, `gravitino_group` and `gravitino_owner`, next to
+  the existing metalake/catalog/schema/fileset/tag/health/principal tests. They run
+  against a real Gravitino 1.3.0 (`make testacc-live`), which now discovers the packages
+  containing live tests instead of using a fixed list, so new live tests run in CI
+  automatically; `docker-compose.yml` enables
+  authorization so the role/owner/user/group endpoints are reachable. The suite already
+  caught behaviour the mocks missed: Gravitino serialises enum values in lower case, and
+  `securable_objects[].fullName` / the owner `object_full_name` are relative to the
+  metalake.
+- **Example validation is exact.** `scripts/validate-examples.sh` (Python helper
+  `scripts/validate-examples.py`) validates the complete example modules in place and
+  concatenates the per-resource snippets into one synthetic module, so every reference
+  resolves and Terraform performs its full validation on each snippet. Validating the
+  snippets on their own silently skipped "missing required argument" checks — that is how
+  a `gravitino_partition` example shipped without the required `type` and a
+  `gravitino_table` example kept using the removed `columns` argument.
+
+- **Live test matrix documented** in `contributing/live-acceptance-tests.md`, including
+  which catalog provider can host which resource, the measured case handling of enum
+  values (accepted case-insensitively, always serialised lower case, so providers must
+  canonicalise what they read) and short curl recipes to verify a payload against a
+  running server.
+
 - `client.GetVersion()` and `models.VersionResponse` for server-version verification.
 
 ## 0.4.6 (2026-09-09)

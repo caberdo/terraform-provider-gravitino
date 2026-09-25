@@ -11,6 +11,7 @@ import (
 
 func TestLiveAccMetalakeResource(t *testing.T) {
 	mlName := acceptance.UniqueName("metalive")
+	renamedName := mlName + "_renamed"
 
 	cfgCreate := fmt.Sprintf(`
 resource "gravitino_metalake" "this" {
@@ -22,6 +23,9 @@ resource "gravitino_metalake" "this" {
 data "gravitino_principal" "me" {}
 `, mlName)
 
+	// The second step also renames the metalake in place: the id is the name, so
+	// the provider must plan the id as unknown (ModifyPlan) or Terraform rejects
+	// the apply with "Provider produced inconsistent result after apply".
 	cfgUpdate := fmt.Sprintf(`
 resource "gravitino_metalake" "this" {
   name       = %[1]q
@@ -30,7 +34,7 @@ resource "gravitino_metalake" "this" {
 }
 
 data "gravitino_principal" "me" {}
-`, mlName)
+`, renamedName)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 acceptance.LivePreCheck(t),
@@ -52,6 +56,8 @@ data "gravitino_principal" "me" {}
 			{
 				Config: cfgUpdate,
 				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "name", renamedName),
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "id", renamedName),
 					resource.TestCheckResourceAttr("gravitino_metalake.this", "comment", "live acceptance metalake (updated)"),
 					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.%", "1"),
 					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.env", "prod"),
@@ -60,7 +66,7 @@ data "gravitino_principal" "me" {}
 			{
 				ResourceName:      "gravitino_metalake.this",
 				ImportState:       true,
-				ImportStateId:     mlName,
+				ImportStateId:     renamedName,
 				ImportStateVerify: true,
 			},
 		},

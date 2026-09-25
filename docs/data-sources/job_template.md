@@ -2,12 +2,12 @@
 page_title: "gravitino_job_template Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  
+  Looks up a single Gravitino job template.
 ---
 
 # gravitino_job_template Data Source
 
-
+Looks up a single Gravitino job template.
 
 ## Example Usage
 
@@ -28,11 +28,19 @@ data "gravitino_job_template" "example" {
 
 ### Read-Only
 
+- `archives` (List of String) The archives of a spark job template.
+- `arguments` (List of String) The arguments of the job template.
 - `audit` (Object) Audit information for the job template. (see [below for nested schema](#nestedatt--audit))
-- `comment` (String) The job template comment.
-- `parameters` (Map of String) The job template parameters.
-- `properties` (Map of String) The job template properties.
-- `template` (String) The template definition.
+- `class_name` (String) The main class of a spark job template.
+- `comment` (String) A comment about the job template.
+- `configs` (Map of String) The spark configurations.
+- `custom_fields` (Map of String) Custom fields for the job template.
+- `environments` (Map of String) Environment variables for the job template.
+- `executable` (String) The executable command of the job template.
+- `files` (List of String) The files of a spark job template.
+- `jars` (List of String) The jars of a spark job template.
+- `job_type` (String) The job template type (shell or spark).
+- `scripts` (List of String) The scripts of a shell job template.
 
 <a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`

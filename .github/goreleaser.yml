@@ -25,6 +25,11 @@ archives:
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
+  # The Terraform Registry reads protocol_versions from this asset; without it the
+  # released version cannot be published.
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
 
 signs:
   - artifacts: checksum
@@ -39,6 +44,9 @@ signs:
 
 release:
   mode: replace
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
   header: |
     ## Terraform Provider for Apache Gravitino {{ .Tag }}
 

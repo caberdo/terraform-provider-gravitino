@@ -79,9 +79,16 @@ func (d *MetalakeDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.GetMetalake(state.Name.ValueString())
+	result, err := d.client.GetMetalake(ctx, state.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to read metalake", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Metalake not found",
+				fmt.Sprintf("No metalake %q exists.", state.Name.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading metalake", state.Name.ValueString(), err)...)
 		return
 	}
 

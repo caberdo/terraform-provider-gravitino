@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -29,13 +30,14 @@ func (d *JobDataSource) SetClient(c *client.Client) {
 }
 
 type JobDataSourceModel struct {
-	Metalake   types.String `tfsdk:"metalake"`
-	Name       types.String `tfsdk:"name"`
-	Template   types.String `tfsdk:"template"`
-	Parameters types.Map    `tfsdk:"parameters"`
-	Schedule   types.String `tfsdk:"schedule"`
-	Status     types.String `tfsdk:"status"`
-	Audit      types.Object `tfsdk:"audit"`
+	Metalake    types.String `tfsdk:"metalake"`
+	JobID       types.String `tfsdk:"job_id"`
+	JobTemplate types.String `tfsdk:"job_template"`
+	Status      types.String `tfsdk:"status"`
+	QueuedAt    types.String `tfsdk:"queued_at"`
+	StartedAt   types.String `tfsdk:"started_at"`
+	FinishedAt  types.String `tfsdk:"finished_at"`
+	Audit       types.Object `tfsdk:"audit"`
 }
 
 func (d *JobDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -45,7 +47,7 @@ func (d *JobDataSource) Configure(_ context.Context, req datasource.ConfigureReq
 	c, ok := req.ProviderData.(*client.Client)
 	if !ok {
 		resp.Diagnostics.AddError(
-			"Unexpected DataSource Configure Type",
+			"Unexpected Data Source Configure Type",
 			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
 		)
 		return
@@ -59,36 +61,40 @@ func (d *JobDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest
 
 func (d *JobDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Looks up a single job run by its server-generated job id.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Required:    true,
 				Description: "The metalake name.",
 			},
-			"name": schema.StringAttribute{
+			"job_id": schema.StringAttribute{
 				Required:    true,
-				Description: "The job name.",
+				Description: "The unique identifier of the job run.",
 			},
-			"template": schema.StringAttribute{
+			"job_template": schema.StringAttribute{
 				Computed:    true,
-				Description: "The job template name.",
-			},
-			"parameters": schema.MapAttribute{
-				Computed:    true,
-				ElementType: types.StringType,
-				Description: "The job parameters.",
-			},
-			"schedule": schema.StringAttribute{
-				Computed:    true,
-				Description: "The job schedule.",
+				Description: "The name of the job template the job runs.",
 			},
 			"status": schema.StringAttribute{
 				Computed:    true,
-				Description: "The current status of the job.",
+				Description: "The current status of the job run.",
+			},
+			"queued_at": schema.StringAttribute{
+				Computed:    true,
+				Description: "The time the job was queued (RFC3339).",
+			},
+			"started_at": schema.StringAttribute{
+				Computed:    true,
+				Description: "The time the job started (RFC3339).",
+			},
+			"finished_at": schema.StringAttribute{
+				Computed:    true,
+				Description: "The time the job finished (RFC3339).",
 			},
 			"audit": schema.ObjectAttribute{
 				Computed:       true,
 				AttributeTypes: AuditAttrTypes,
-				Description:    "Audit information for the job.",
+				Description:    "Audit information for the job run.",
 			},
 		},
 	}
@@ -101,9 +107,18 @@ func (d *JobDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 		return
 	}
 
-	result, err := d.client.GetJob(config.Metalake.ValueString(), config.Name.ValueString())
+	jobID := config.JobID.ValueString()
+
+	result, err := d.client.GetJob(ctx, config.Metalake.ValueString(), jobID)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get job", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				fmt.Sprintf("Job %q not found", jobID),
+				fmt.Sprintf("No job run with id %q exists in metalake %q.", jobID, config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading job", jobID, err)...)
 		return
 	}
 
@@ -116,16 +131,12 @@ func (d *JobDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 }
 
 func setDataSourceStateFromJob(ctx context.Context, diags *diag.Diagnostics, job *models.Job, model *JobDataSourceModel) {
-	model.Template = types.StringValue(job.Template)
-	model.Schedule = types.StringValue(job.Schedule)
+	model.JobID = types.StringValue(job.JobID)
+	model.JobTemplate = types.StringValue(job.JobTemplateName)
 	model.Status = types.StringValue(job.Status)
-
-	props, d := types.MapValueFrom(ctx, types.StringType, strMapFromInterface(job.Parameters))
-	diags.Append(d...)
-	if diags.HasError() {
-		return
-	}
-	model.Parameters = props
+	model.QueuedAt = dataSourceTimeToString(job.QueuedAt)
+	model.StartedAt = dataSourceTimeToString(job.StartedAt)
+	model.FinishedAt = dataSourceTimeToString(job.FinishedAt)
 
 	auditObj, d := auditToObjectValueForDS(ctx, job.Audit)
 	diags.Append(d...)
@@ -133,4 +144,11 @@ func setDataSourceStateFromJob(ctx context.Context, diags *diag.Diagnostics, job
 		return
 	}
 	model.Audit = auditObj
+}
+
+func dataSourceTimeToString(t *time.Time) types.String {
+	if t == nil {
+		return types.StringNull()
+	}
+	return types.StringValue(t.Format(time.RFC3339))
 }

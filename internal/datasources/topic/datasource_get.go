@@ -2,6 +2,7 @@ package topic
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
@@ -104,13 +105,24 @@ func (ds *TopicDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	topicResp, err := ds.client.GetTopic(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
+	topicResp, err := ds.client.GetTopic(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to read topic", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Topic not found",
+				fmt.Sprintf("No Gravitino topic %q exists in %s.%s.%s.", config.Name.ValueString(), config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading topic", config.Name.ValueString(), err)...)
 		return
 	}
 
-	config.Comment = types.StringValue(topicResp.Topic.Comment)
+	if topicResp.Topic.Comment != "" {
+		config.Comment = types.StringValue(topicResp.Topic.Comment)
+	} else {
+		config.Comment = types.StringNull()
+	}
 
 	if len(topicResp.Topic.Properties) > 0 {
 		props, d := types.MapValueFrom(ctx, types.StringType, topicResp.Topic.Properties)

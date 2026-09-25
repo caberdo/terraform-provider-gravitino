@@ -1,5 +1,6 @@
 package models
 
+// Metalake mirrors the `Metalake` schema of metalakes.yaml (Apache Gravitino v1.3.0).
 type Metalake struct {
 	Name       string            `json:"name"`
 	Comment    string            `json:"comment,omitempty"`
@@ -17,79 +18,61 @@ type MetalakeResponse struct {
 	Metalake Metalake `json:"metalake"`
 }
 
+// MetalakeCreateRequest mirrors `MetalakeCreateRequest`.
 type MetalakeCreateRequest struct {
 	Name       string            `json:"name"`
 	Comment    string            `json:"comment,omitempty"`
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
-type MetalakeUpdate struct {
-	Type string `json:"@type"`
+// MetalakeSetRequest mirrors `MetalakeSetRequest`, used by
+// PATCH /metalakes/{metalake} to mark a metalake in-use (or not).
+type MetalakeSetRequest struct {
+	InUse bool `json:"inUse"`
 }
 
-type RenameMetalakeRequest struct {
-	MetalakeUpdate
-	NewName string `json:"newName"`
-}
-
-type UpdateMetalakeCommentRequest struct {
-	MetalakeUpdate
-	NewComment string `json:"newComment"`
-}
-
-type SetMetalakePropertyRequest struct {
-	MetalakeUpdate
-	Property string `json:"property"`
-	Value    string `json:"value"`
-}
-
-type RemoveMetalakePropertyRequest struct {
-	MetalakeUpdate
-	Property string `json:"property"`
-}
-
+// MetalakeUpdateRequest mirrors `MetalakeUpdatesRequest`.
 type MetalakeUpdateRequest struct {
 	Updates []interface{} `json:"updates"`
 }
 
-func NewRenameMetalakeRequest(newName string) interface{} {
-	return struct {
-		Type    string `json:"@type"`
-		NewName string `json:"newName"`
-	}{
-		Type:    "rename",
-		NewName: newName,
-	}
+// RenameMetalakeRequest mirrors `RenameMetalakeRequest`.
+type RenameMetalakeRequest struct {
+	Type    string `json:"@type"`
+	NewName string `json:"newName"`
 }
 
-func NewUpdateMetalakeCommentRequest(newComment string) interface{} {
-	return struct {
-		Type       string `json:"@type"`
-		NewComment string `json:"newComment"`
-	}{
-		Type:       "updateComment",
-		NewComment: newComment,
-	}
+// UpdateMetalakeCommentRequest mirrors `UpdateMetalakeCommentRequest`.
+type UpdateMetalakeCommentRequest struct {
+	Type       string `json:"@type"`
+	NewComment string `json:"newComment"`
 }
 
-func NewSetMetalakePropertyRequest(property, value string) interface{} {
-	return struct {
-		Type     string `json:"@type"`
-		Property string `json:"property"`
-		Value    string `json:"value"`
-	}{
-		Type:     "setProperty",
-		Property: property,
-		Value:    value,
-	}
+// SetMetalakePropertyRequest mirrors `SetMetalakePropertyRequest`.
+type SetMetalakePropertyRequest struct {
+	Type     string `json:"@type"`
+	Property string `json:"property"`
+	Value    string `json:"value"`
 }
 
-func NewRemoveMetalakePropertyRequest(property string) interface{} {
-	return struct {
-		Type     string `json:"@type"`
-		Property string `json:"property"`
-	}{
-		Type:     "removeProperty",
-		Property: property,
-	}
+// RemoveMetalakePropertyRequest mirrors `RemoveMetalakePropertyRequest`.
+type RemoveMetalakePropertyRequest struct {
+	Type     string `json:"@type"`
+	Property string `json:"property"`
+}
+
+func NewRenameMetalakeRequest(newName string) RenameMetalakeRequest {
+	return RenameMetalakeRequest{Type: "rename", NewName: newName}
+}
+
+func NewUpdateMetalakeCommentRequest(newComment string) UpdateMetalakeCommentRequest {
+	return UpdateMetalakeCommentRequest{Type: "updateComment", NewComment: newComment}
+}
+
+func NewSetMetalakePropertyRequest(property, value string) SetMetalakePropertyRequest {
+	return SetMetalakePropertyRequest{Type: "setProperty", Property: property, Value: value}
+}
+
+func NewRemoveMetalakePropertyRequest(property string) RemoveMetalakePropertyRequest {
+	return RemoveMetalakePropertyRequest{Type: "removeProperty", Property: property}
 }

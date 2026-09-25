@@ -7,12 +7,12 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 )
 
 var _ datasource.DataSource = &StatisticsDataSource{}
@@ -124,7 +124,7 @@ func (d *StatisticsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	result, err := d.client.ListStatistics(
+	result, err := d.client.ListStatistics(ctx,
 		config.Metalake.ValueString(),
 		config.ResourceType.ValueString(),
 		config.Resource.ValueString(),

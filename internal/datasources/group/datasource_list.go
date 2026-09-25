@@ -73,9 +73,16 @@ func (d *GroupsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	result, err := d.client.ListGroups(config.Metalake.ValueString())
+	result, err := d.client.ListGroups(ctx, config.Metalake.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list groups", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Metalake not found",
+				fmt.Sprintf("No metalake %q exists; cannot list its groups.", config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("listing groups", config.Metalake.ValueString(), err)...)
 		return
 	}
 

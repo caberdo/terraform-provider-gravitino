@@ -75,6 +75,20 @@ func NewRemoveTagPropertyRequest(property string) interface{} {
 	}
 }
 
-type TagAssociationRequest struct {
-	Tags []string `json:"tags"`
+// TagsAssociateRequest associates and/or disassociates tags with a metadata object
+// (POST /metalakes/{metalake}/objects/{metadataObjectType}/{metadataObjectFullName}/tags).
+type TagsAssociateRequest struct {
+	TagsToAdd    []string `json:"tagsToAdd,omitempty"`
+	TagsToRemove []string `json:"tagsToRemove,omitempty"`
+}
+
+// MetadataObject identifies a metadata object a tag is associated with.
+type MetadataObject struct {
+	FullName string `json:"fullName,omitempty"`
+	Type     string `json:"type,omitempty"`
+}
+
+type MetadataObjectListResponse struct {
+	Code            int              `json:"code"`
+	MetadataObjects []MetadataObject `json:"metadataObjects"`
 }

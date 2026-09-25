@@ -132,7 +132,7 @@ func (d *PartitionStatisticsDataSource) Read(ctx context.Context, req datasource
 		return
 	}
 
-	result, err := d.client.ListPartitionStatistics(
+	result, err := d.client.ListPartitionStatistics(ctx,
 		config.Metalake.ValueString(),
 		"TABLE",
 		fmt.Sprintf("%s.%s.%s", config.Catalog.ValueString(), config.Schema.ValueString(), config.Table.ValueString()),

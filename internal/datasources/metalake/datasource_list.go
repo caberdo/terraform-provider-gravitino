@@ -84,9 +84,9 @@ func (d *MetalakesDataSource) Configure(_ context.Context, req datasource.Config
 func (d *MetalakesDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var state MetalakesDataSourceModel
 
-	result, err := d.client.ListMetalakes()
+	result, err := d.client.ListMetalakes(ctx)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list metalakes", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing metalakes", "metalakes", err)...)
 		return
 	}
 

@@ -2,12 +2,12 @@
 page_title: "gravitino_jobs Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  
+  Lists the job runs of a metalake, optionally filtered by job template name.
 ---
 
 # gravitino_jobs Data Source
 
-
+Lists the job runs of a metalake, optionally filtered by job template name.
 
 ## Example Usage
 
@@ -24,6 +24,10 @@ data "gravitino_jobs" "example" {
 
 - `metalake` (String) The metalake name.
 
+### Optional
+
+- `job_template` (String) Only return job runs of this job template.
+
 ### Read-Only
 
 - `jobs` (Attributes List) (see [below for nested schema](#nestedatt--jobs))
@@ -33,12 +37,13 @@ data "gravitino_jobs" "example" {
 
 Read-Only:
 
-- `audit` (Object) Audit information for the job. (see [below for nested schema](#nestedatt--jobs--audit))
-- `name` (String) The job name.
-- `parameters` (Map of String) The job parameters.
-- `schedule` (String) The job schedule.
-- `status` (String) The current status of the job.
-- `template` (String) The job template name.
+- `audit` (Object) Audit information for the job run. (see [below for nested schema](#nestedatt--jobs--audit))
+- `finished_at` (String) The time the job finished (RFC3339).
+- `job_id` (String) The unique identifier of the job run.
+- `job_template` (String) The name of the job template the job runs.
+- `queued_at` (String) The time the job was queued (RFC3339).
+- `started_at` (String) The time the job started (RFC3339).
+- `status` (String) The current status of the job run.
 
 <a id="nestedatt--jobs--audit"></a>
 ### Nested Schema for `jobs.audit`

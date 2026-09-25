@@ -1,9 +1,13 @@
 package client
 
-import "github.com/gravitino/terraform-provider-gravitino/internal/models"
+import (
+	"context"
 
-func (c *Client) GetVersion() (*models.VersionResponse, error) {
+	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+)
+
+func (c *Client) GetVersion(ctx context.Context) (*models.VersionResponse, error) {
 	var result models.VersionResponse
-	err := c.Get("/version", &result)
+	err := c.Get(ctx, "/version", &result)
 	return &result, err
 }

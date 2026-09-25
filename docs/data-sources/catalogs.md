@@ -37,7 +37,7 @@ Read-Only:
 - `catalog_provider` (String) The catalog provider.
 - `comment` (String) The catalog comment.
 - `name` (String) The catalog name.
-- `properties` (Map of String) The catalog properties.
+- `properties` (Map of String, Sensitive) The catalog properties.
 - `type` (String) The catalog type.
 
 <a id="nestedatt--catalogs--audit"></a>

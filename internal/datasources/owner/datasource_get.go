@@ -7,11 +7,11 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 )
 
 var _ datasource.DataSource = &OwnerDataSource{}
@@ -63,16 +63,16 @@ func (d *OwnerDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Required:    true,
 				Description: "The metalake name.",
 			},
-		"object_type": schema.StringAttribute{
-			Required:    true,
-			Description: "The object type (e.g. CATALOG, SCHEMA, TABLE, etc.).",
-			Validators: []validator.String{
-				stringvalidator.OneOf(models.OwnerObjectTypes...),
+			"object_type": schema.StringAttribute{
+				Required:    true,
+				Description: "The metadata object type. One of: METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE (upper case singular, as required by the API path).",
+				Validators: []validator.String{
+					stringvalidator.OneOf(models.OwnerObjectTypes...),
+				},
 			},
-		},
 			"object_full_name": schema.StringAttribute{
 				Required:    true,
-				Description: "The full object name (dot-separated).",
+				Description: "The name of the metadata object, relative to the metalake (the API rejects a metalake prefix with HTTP 400 IllegalNamespaceException): METALAKE = the metalake name, CATALOG = the catalog name, SCHEMA = 'catalog.schema', TABLE = 'catalog.schema.table', and likewise for FILESET, TOPIC and ROLE.",
 			},
 			"owner_name": schema.StringAttribute{
 				Computed:    true,
@@ -80,7 +80,7 @@ func (d *OwnerDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 			},
 			"owner_type": schema.StringAttribute{
 				Computed:    true,
-				Description: "The owner type (USER or GROUP).",
+				Description: "The owner type (USER or GROUP). Gravitino matches this case-insensitively and always answers in lowercase; the provider normalises responses back to upper case.",
 			},
 		},
 	}
@@ -93,18 +93,25 @@ func (d *OwnerDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	result, err := d.client.GetOwner(
+	result, err := d.client.GetOwner(ctx,
 		config.Metalake.ValueString(),
 		config.ObjectType.ValueString(),
 		config.ObjectFullName.ValueString(),
 	)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get owner", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Owner not found",
+				fmt.Sprintf("No owner is set for %s %q in metalake %q.", config.ObjectType.ValueString(), config.ObjectFullName.ValueString(), config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading owner", config.ObjectFullName.ValueString(), err)...)
 		return
 	}
 
 	config.OwnerName = types.StringValue(result.Owner.Name)
-	config.OwnerType = types.StringValue(result.Owner.Type)
+	config.OwnerType = types.StringValue(models.NormalizeOwnerType(result.Owner.Type))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }

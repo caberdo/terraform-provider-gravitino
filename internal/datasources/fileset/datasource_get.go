@@ -111,9 +111,16 @@ func (d *FilesetDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	result, err := d.client.GetFileset(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
+	result, err := d.client.GetFileset(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get fileset", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Fileset not found",
+				fmt.Sprintf("No fileset %q exists in metalake %q, catalog %q, schema %q.", config.Name.ValueString(), config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading fileset", config.Name.ValueString(), err)...)
 		return
 	}
 
@@ -125,19 +132,19 @@ func (d *FilesetDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func setDataSourceStateFromFileset(_ context.Context, diags *diag.Diagnostics, fileset *models.Fileset, model *FilesetDataSourceModel) {
+func setDataSourceStateFromFileset(ctx context.Context, diags *diag.Diagnostics, fileset *models.Fileset, model *FilesetDataSourceModel) {
 	model.Comment = types.StringValue(fileset.Comment)
 	model.Type = types.StringValue(fileset.Type)
 	model.StorageLocation = types.StringValue(fileset.StorageLocation)
 
-	props, d := types.MapValueFrom(context.TODO(), types.StringType, fileset.Properties)
+	props, d := types.MapValueFrom(ctx, types.StringType, fileset.Properties)
 	diags.Append(d...)
 	if diags.HasError() {
 		return
 	}
 	model.Properties = props
 
-	auditObj, d := auditToObjectValueForDS(context.TODO(), fileset.Audit)
+	auditObj, d := auditToObjectValueForDS(ctx, fileset.Audit)
 	diags.Append(d...)
 	if diags.HasError() {
 		return

@@ -6,6 +6,8 @@ services:
       - "9001:9001"
     environment:
       GRAVITINO_SERVER_HTTP_PORT: 8090
+      # Roles, owners and permissions are only served when authorization is enabled.
+      GRAVITINO_AUTHORIZATION_ENABLE: "true"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
       interval: 10s
@@ -28,6 +30,7 @@ services:
     environment:
       TF_ACC: "1"
       GRAVITINO_URI: "http://gravitino:8090"
+      GRAVITINO_EXPECT_VERSION: "1.3.0"
       GRAVITINO_AUTH: "none"
       GRAVITINO_USERNAME: ""
       GRAVITINO_PASSWORD: ""

@@ -16,6 +16,18 @@ import (
 var _ datasource.DataSource = &IdpUserDataSource{}
 var _ datasource.DataSourceWithConfigure = &IdpUserDataSource{}
 
+// IdpUserDataSourceDescription is the schema description shown in the generated docs.
+// The built-in IDP REST API is not part of a default Gravitino 1.3.0 server:
+// it needs `gravitino.authenticators = basic` (without `simple`),
+// `gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`
+// and a service admin from `gravitino.authorization.serviceAdmins`. Without
+// that configuration every IDP endpoint answers HTTP 404.
+const IdpUserDataSourceDescription = "Gets a built-in IDP user; the built-in IDP REST API needs " +
+	"`gravitino.authenticators = basic` (without `simple`) and " +
+	"`gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`, " +
+	"and calls must come from a `gravitino.authorization.serviceAdmins` service admin, " +
+	"otherwise the endpoint answers HTTP 404."
+
 type IdpUserDataSource struct {
 	client *client.Client
 }
@@ -29,9 +41,8 @@ func (d *IdpUserDataSource) SetClient(c *client.Client) {
 }
 
 type IdpUserDataSourceModel struct {
-	Name    types.String `tfsdk:"name"`
-	Enabled types.Bool   `tfsdk:"enabled"`
-	Groups  types.Set    `tfsdk:"groups"`
+	Name   types.String `tfsdk:"name"`
+	Groups types.Set    `tfsdk:"groups"`
 }
 
 func (d *IdpUserDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -55,15 +66,11 @@ func (d *IdpUserDataSource) Metadata(_ context.Context, _ datasource.MetadataReq
 
 func (d *IdpUserDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Gets a built-in IDP user.",
+		Description: IdpUserDataSourceDescription,
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:    true,
 				Description: "The username.",
-			},
-			"enabled": schema.BoolAttribute{
-				Computed:    true,
-				Description: "Whether the user is enabled.",
 			},
 			"groups": schema.SetAttribute{
 				Computed:    true,
@@ -81,18 +88,13 @@ func (d *IdpUserDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	result, err := d.client.GetIdpUser(config.Name.ValueString())
+	result, err := d.client.GetIdpUser(ctx, config.Name.ValueString())
 	if err != nil {
-		if client.IsNotFoundError(err) {
-			resp.Diagnostics.AddError("IDP user not found", fmt.Sprintf("IDP user %q does not exist", config.Name.ValueString()))
-			return
-		}
 		resp.Diagnostics.Append(client.NewResourceError("reading IDP user", config.Name.ValueString(), err)...)
 		return
 	}
 
 	config.Name = types.StringValue(result.User.Name)
-	config.Enabled = types.BoolValue(result.User.Enabled != nil && *result.User.Enabled)
 	groups, diags := stringSliceToList(ctx, result.User.Groups)
 	resp.Diagnostics.Append(diags...)
 	config.Groups = groups

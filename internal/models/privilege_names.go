@@ -1,5 +1,7 @@
 package models
 
+import "strings"
+
 const (
 	PrivilegeCreateCatalog    = "CREATE_CATALOG"
 	PrivilegeUseCatalog       = "USE_CATALOG"
@@ -82,6 +84,16 @@ const (
 	ObjectTypeJobTemplate = "JOB_TEMPLATE"
 )
 
+// AllObjectTypes holds the metadata object types accepted in the
+// `metadataObjectType` path parameter and in SecurableObject.type, exactly as listed
+// in the enums of roles.yaml (metadataObjectTypeOfRole) and openapi.yaml
+// (metadataObjectType): METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE,
+// MODEL, FUNCTION, TAG, POLICY and JOB_TEMPLATE.
+//
+// Gravitino is case-insensitive on input (it parses the value with
+// `MetadataObject.Type.valueOf(type.toUpperCase(Locale.ROOT))`) but always serialises
+// lower case in its responses, so resources and data sources normalise the values of a
+// response with CanonicalObjectType before they reach the Terraform state.
 var AllObjectTypes = []string{
 	ObjectTypeMetalake,
 	ObjectTypeCatalog,
@@ -95,6 +107,20 @@ var AllObjectTypes = []string{
 	ObjectTypeTag,
 	ObjectTypePolicy,
 	ObjectTypeJobTemplate,
+}
+
+// CanonicalObjectType returns the upper-case spelling of a metadata object type. It is
+// the spelling of the spec enums and the spelling this provider reports in the state:
+// Gravitino accepts any casing on input but always answers with lower case, which would
+// otherwise cause "Provider produced inconsistent result after apply".
+func CanonicalObjectType(objectType string) string {
+	return strings.ToUpper(strings.TrimSpace(objectType))
+}
+
+// CanonicalPrivilege returns the upper-case spelling of a privilege name or condition
+// (Privilege.name and Privilege.condition), for the same reason as CanonicalObjectType.
+func CanonicalPrivilege(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
 }
 
 const (

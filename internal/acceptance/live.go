@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -27,7 +28,7 @@ func LivePreCheck(t *testing.T) func() {
 			t.Fatalf("invalid GRAVITINO_URI %q: %v", uri, err)
 		}
 
-		ver, err := c.GetVersion()
+		ver, err := c.GetVersion(context.Background())
 		if err != nil {
 			t.Fatalf("server at %s is not reachable or not Gravitino: %v", uri, err)
 		}

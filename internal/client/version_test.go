@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,7 @@ func TestGetVersion(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	got, err := c.GetVersion()
+	got, err := c.GetVersion(context.Background())
 	if err != nil {
 		t.Fatalf("GetVersion() error = %v", err)
 	}

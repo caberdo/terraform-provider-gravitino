@@ -171,9 +171,16 @@ func (d *FilesetsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.ListFilesetsDetails(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
+	result, err := d.client.ListFilesetsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list filesets", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Metalake, catalog or schema not found",
+				fmt.Sprintf("No metalake %q, catalog %q or schema %q exists.", config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("listing filesets", config.Schema.ValueString(), err)...)
 		return
 	}
 
@@ -218,7 +225,8 @@ func filesetToItemModel(ctx context.Context, fs *models.Fileset, diags *diag.Dia
 	}
 
 	props, d := types.MapValueFrom(ctx, types.StringType, fs.Properties)
-	if d.HasError() {
+	diags.Append(d...)
+	if diags.HasError() {
 		return nil
 	}
 	item.Properties = props

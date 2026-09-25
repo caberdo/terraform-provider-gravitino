@@ -78,9 +78,16 @@ func (d *UsersDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	result, err := d.client.ListUsers(config.Metalake.ValueString())
+	result, err := d.client.ListUsers(ctx, config.Metalake.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list users", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Metalake not found",
+				fmt.Sprintf("No metalake %q exists; cannot list its users.", config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("listing users", config.Metalake.ValueString(), err)...)
 		return
 	}
 

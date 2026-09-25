@@ -1,53 +1,56 @@
 package metalake
 
 import (
-	"context"
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
-
-	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func TestMetalakeToState_FiltersReservedProperties(t *testing.T) {
-	state := MetalakeResourceModel{
-		Name:       types.StringValue("ml"),
-		Properties: types.MapNull(types.StringType),
+// TestPropertyUpdates_SkipsReservedProperties: 'in-use' is managed by Gravitino
+// through PATCH /metalakes/{name} and must never be sent as a regular
+// setProperty/removeProperty update.
+func TestPropertyUpdates_SkipsReservedProperties(t *testing.T) {
+	r := &MetalakeResource{}
+
+	updates := r.propertyUpdates(
+		map[string]string{"in-use": "true", "env": "dev", "gone": "x"},
+		map[string]string{"in-use": "false", "env": "prod"},
+	)
+
+	var sawSet, sawRemove bool
+	for _, u := range updates {
+		switch v := u.(type) {
+		case models.SetMetalakePropertyRequest:
+			if v.Property == "in-use" {
+				t.Fatalf("setProperty must not touch the reserved property: %#v", v)
+			}
+			if v.Property != "env" || v.Value != "prod" {
+				t.Fatalf("unexpected setProperty update: %#v", v)
+			}
+			sawSet = true
+		case models.RemoveMetalakePropertyRequest:
+			if v.Property == "in-use" {
+				t.Fatalf("removeProperty must not touch the reserved property: %#v", v)
+			}
+			if v.Property != "gone" {
+				t.Fatalf("unexpected removeProperty update: %#v", v)
+			}
+			sawRemove = true
+		default:
+			t.Fatalf("unexpected update type %T", u)
+		}
 	}
 
-	metalakeToState(&models.Metalake{
-		Name:       "ml",
-		Properties: map[string]string{"in-use": "true", "env": "dev"},
-	}, &state, nil)
-
-	props := make(map[string]string)
-	if d := state.Properties.ElementsAs(context.Background(), &props, false); d.HasError() {
-		t.Fatalf("failed to read properties: %v", d)
-	}
-	if _, ok := props["in-use"]; ok {
-		t.Fatalf("reserved property 'in-use' must not appear in state, got %#v", props)
-	}
-	if props["env"] != "dev" {
-		t.Fatalf("expected env=dev preserved, got %#v", props)
+	if !sawSet || !sawRemove {
+		t.Fatalf("expected both a setProperty and a removeProperty update, got %#v", updates)
 	}
 }
 
-func TestMetalakeResource_UpdateSkipsReservedProperties(t *testing.T) {
-	r := &MetalakeResource{}
-
-	var updates []interface{}
-	oldProps := map[string]string{"in-use": "true", "env": "dev"}
-	newProps := map[string]string{"env": "dev"}
-
-	updates = r.propertyUpdates(oldProps, newProps)
-
-	for _, u := range updates {
-		m, ok := u.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if m["property"] == "in-use" {
-			t.Fatalf("update must not touch reserved property 'in-use', got %#v", updates)
-		}
+// TestFilterReservedProperties keeps the request-side filter honest: reserved
+// keys never leave the provider towards the API.
+func TestFilterReservedProperties(t *testing.T) {
+	got := filterReservedProperties(map[string]string{"in-use": "true", "env": "dev"})
+	if len(got) != 1 || got["env"] != "dev" {
+		t.Fatalf("expected only env=dev, got %#v", got)
 	}
 }

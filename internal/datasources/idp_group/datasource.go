@@ -16,6 +16,18 @@ import (
 var _ datasource.DataSource = &IdpGroupDataSource{}
 var _ datasource.DataSourceWithConfigure = &IdpGroupDataSource{}
 
+// IdpGroupDataSourceDescription is the schema description shown in the generated docs.
+// The built-in IDP REST API is not part of a default Gravitino 1.3.0 server:
+// it needs `gravitino.authenticators = basic` (without `simple`),
+// `gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`
+// and a service admin from `gravitino.authorization.serviceAdmins`. Without
+// that configuration every IDP endpoint answers HTTP 404.
+const IdpGroupDataSourceDescription = "Gets a built-in IDP group; the built-in IDP REST API needs " +
+	"`gravitino.authenticators = basic` (without `simple`) and " +
+	"`gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`, " +
+	"and calls must come from a `gravitino.authorization.serviceAdmins` service admin, " +
+	"otherwise the endpoint answers HTTP 404."
+
 type IdpGroupDataSource struct {
 	client *client.Client
 }
@@ -29,9 +41,8 @@ func (d *IdpGroupDataSource) SetClient(c *client.Client) {
 }
 
 type IdpGroupDataSourceModel struct {
-	Name    types.String `tfsdk:"name"`
-	Comment types.String `tfsdk:"comment"`
-	Users   types.Set    `tfsdk:"users"`
+	Name  types.String `tfsdk:"name"`
+	Users types.Set    `tfsdk:"users"`
 }
 
 func (d *IdpGroupDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -55,15 +66,11 @@ func (d *IdpGroupDataSource) Metadata(_ context.Context, _ datasource.MetadataRe
 
 func (d *IdpGroupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Gets a built-in IDP group.",
+		Description: IdpGroupDataSourceDescription,
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:    true,
 				Description: "The group name.",
-			},
-			"comment": schema.StringAttribute{
-				Computed:    true,
-				Description: "Optional description of the group.",
 			},
 			"users": schema.SetAttribute{
 				Computed:    true,
@@ -81,18 +88,13 @@ func (d *IdpGroupDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.GetIdpGroup(config.Name.ValueString())
+	result, err := d.client.GetIdpGroup(ctx, config.Name.ValueString())
 	if err != nil {
-		if client.IsNotFoundError(err) {
-			resp.Diagnostics.AddError("IDP group not found", fmt.Sprintf("IDP group %q does not exist", config.Name.ValueString()))
-			return
-		}
 		resp.Diagnostics.Append(client.NewResourceError("reading IDP group", config.Name.ValueString(), err)...)
 		return
 	}
 
 	config.Name = types.StringValue(result.Group.Name)
-	config.Comment = types.StringValue(result.Group.Comment)
 	users, diags := stringSliceToList(ctx, result.Group.Users)
 	resp.Diagnostics.Append(diags...)
 	config.Users = users

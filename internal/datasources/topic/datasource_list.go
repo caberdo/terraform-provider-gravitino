@@ -2,6 +2,7 @@ package topic
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
@@ -109,9 +110,16 @@ func (ds *TopicsDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	topics, err := ds.client.ListTopicsDetails(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
+	topics, err := ds.client.ListTopicsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list topics", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Metalake, catalog or schema not found",
+				fmt.Sprintf("Cannot list topics of %s.%s.%s: it does not exist.", config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("listing topics", config.Schema.ValueString(), err)...)
 		return
 	}
 
@@ -164,13 +172,22 @@ func dslTopicListItemToObject(ctx context.Context, t *models.Topic) (types.Objec
 
 	obj, d := types.ObjectValue(dslTopicListItemAttrTypes(), map[string]attr.Value{
 		"name":       types.StringValue(t.Name),
-		"comment":    types.StringValue(t.Comment),
+		"comment":    commentToValue(t.Comment),
 		"properties": props,
 		"audit":      auditObj,
 	})
 	diags.Append(d...)
 
 	return obj, diags
+}
+
+// commentToValue maps an absent/empty server comment to null so the data source
+// never invents an empty string where the API reports no value.
+func commentToValue(comment string) types.String {
+	if comment == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(comment)
 }
 
 func dslAuditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {

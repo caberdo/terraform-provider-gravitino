@@ -7,11 +7,11 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 )
 
 var _ datasource.DataSource = &SecretsDataSource{}
@@ -57,7 +57,8 @@ func (d *SecretsDataSource) Metadata(_ context.Context, _ datasource.MetadataReq
 
 func (d *SecretsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Gets the resolved secrets for a metadata object.",
+		Description: "Gets the resolved secrets for a metadata object. Requires Gravitino 1.4 or newer: the " +
+			"secrets API does not exist in 1.3.x, where this data source fails with a 404.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Required:    true,
@@ -91,7 +92,7 @@ func (d *SecretsDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	result, err := d.client.GetSecrets(
+	result, err := d.client.GetSecrets(ctx,
 		config.Metalake.ValueString(),
 		config.ResourceType.ValueString(),
 		config.Resource.ValueString(),

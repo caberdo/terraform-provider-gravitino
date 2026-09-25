@@ -2,12 +2,12 @@
 page_title: "gravitino_secrets Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Gets the resolved secrets for a metadata object.
+  Gets the resolved secrets for a metadata object. Requires Gravitino 1.4 or newer: the secrets API does not exist in 1.3.x, where this data source fails with a 404.
 ---
 
 # gravitino_secrets Data Source
 
-Gets the resolved secrets for a metadata object.
+Gets the resolved secrets for a metadata object. Requires Gravitino 1.4 or newer: the secrets API does not exist in 1.3.x, where this data source fails with a 404.
 
 ## Example Usage
 

@@ -2,7 +2,6 @@ package partition
 
 import (
 	"context"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -10,25 +9,18 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var _ datasource.DataSource = &PartitionsDataSource{}
 var _ datasource.DataSourceWithConfigure = &PartitionsDataSource{}
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
-
 type PartitionsDataSource struct {
 	client *client.Client
 }
 
+// PartitionsDataSourceModel is the Terraform model of the gravitino_partitions
+// data source.
 type PartitionsDataSourceModel struct {
 	Metalake   types.String `tfsdk:"metalake"`
 	Catalog    types.String `tfsdk:"catalog"`
@@ -37,6 +29,7 @@ type PartitionsDataSourceModel struct {
 	Partitions types.List   `tfsdk:"partitions"`
 }
 
+// NewPartitionsDataSource returns the gravitino_partitions data source.
 func NewPartitionsDataSource() datasource.DataSource {
 	return &PartitionsDataSource{}
 }
@@ -47,42 +40,66 @@ func (d *PartitionsDataSource) Metadata(_ context.Context, _ datasource.Metadata
 
 func (d *PartitionsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Lists all partitions within a Gravitino table.",
+		Description: "Lists the partitions of a Gravitino table with their details.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
-				Description: "The metalake name.",
+				Description: "The metalake the partitions belong to.",
 				Required:    true,
 			},
 			"catalog": schema.StringAttribute{
-				Description: "The catalog name.",
+				Description: "The catalog the partitions belong to.",
 				Required:    true,
 			},
 			"schema": schema.StringAttribute{
-				Description: "The schema name.",
+				Description: "The schema the partitions belong to.",
 				Required:    true,
 			},
 			"table": schema.StringAttribute{
-				Description: "The table name.",
+				Description: "The table the partitions belong to.",
 				Required:    true,
 			},
 			"partitions": schema.ListNestedAttribute{
-				Description: "List of partitions with their details.",
+				Description: "The partitions of the table, as reported by Gravitino.",
 				Computed:    true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
-							Description: "The partition name.",
+						"type": schema.StringAttribute{
+							Description: "The partition type: identity, range or list.",
 							Computed:    true,
+						},
+						"name": schema.StringAttribute{
+							Description: "The name of the partition.",
+							Computed:    true,
+						},
+						"field_names": schema.ListAttribute{
+							Description: "The identity partition fields, each entry holding the path segments of a field.",
+							Computed:    true,
+							ElementType: types.ListType{ElemType: types.StringType},
+						},
+						"values": schema.ListAttribute{
+							Description: "The identity partition values, one literal per entry of field_names.",
+							Computed:    true,
+							ElementType: types.ObjectType{AttrTypes: models.PartitionLiteralAttrTypes},
+						},
+						"upper": schema.ObjectAttribute{
+							Description:    "The exclusive upper bound of a range partition.",
+							Computed:       true,
+							AttributeTypes: models.PartitionLiteralAttrTypes,
+						},
+						"lower": schema.ObjectAttribute{
+							Description:    "The inclusive lower bound of a range partition.",
+							Computed:       true,
+							AttributeTypes: models.PartitionLiteralAttrTypes,
+						},
+						"lists": schema.ListAttribute{
+							Description: "The value lists of a list partition, one entry per list.",
+							Computed:    true,
+							ElementType: types.ListType{ElemType: types.ObjectType{AttrTypes: models.PartitionLiteralAttrTypes}},
 						},
 						"properties": schema.MapAttribute{
-							Description: "Key-value properties for the partition.",
+							Description: "The properties of the partition as reported by Gravitino.",
 							Computed:    true,
 							ElementType: types.StringType,
-						},
-						"audit": schema.ObjectAttribute{
-							Description:    "Audit information for the partition.",
-							Computed:       true,
-							AttributeTypes: AuditAttrTypes,
 						},
 					},
 				},
@@ -91,6 +108,7 @@ func (d *PartitionsDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 	}
 }
 
+// SetClient sets the API client of the data source.
 func (d *PartitionsDataSource) SetClient(c *client.Client) {
 	d.client = c
 }
@@ -114,95 +132,37 @@ func (d *PartitionsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	partitions, err := d.client.ListPartitionsDetails(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Table.ValueString())
+	partitions, err := d.client.ListPartitions(
+		ctx,
+		config.Metalake.ValueString(),
+		config.Catalog.ValueString(),
+		config.Schema.ValueString(),
+		config.Table.ValueString(),
+	)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list partitions", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing partitions", config.Table.ValueString(), err)...)
 		return
 	}
 
 	items := make([]attr.Value, 0, len(partitions))
 	for i := range partitions {
-		item, d := dslPartitionListItemToObject(ctx, &partitions[i])
-		resp.Diagnostics.Append(d...)
+		item, itemDiags := models.PartitionToObjectValue(ctx, &partitions[i])
+		resp.Diagnostics.Append(itemDiags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 		items = append(items, item)
 	}
-	if len(items) == 0 {
-		items = []attr.Value{}
-	}
 
-	listVal, listDiags := types.ListValue(
-		types.ObjectType{AttrTypes: PartitionItemAttrTypes},
+	list, listDiags := types.ListValue(
+		types.ObjectType{AttrTypes: models.PartitionSpecAttrTypes},
 		items,
 	)
 	resp.Diagnostics.Append(listDiags...)
-	config.Partitions = listVal
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	config.Partitions = list
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
-}
-
-var PartitionItemAttrTypes = map[string]attr.Type{
-	"name":       types.StringType,
-	"properties": types.MapType{ElemType: types.StringType},
-	"audit":      types.ObjectType{AttrTypes: AuditAttrTypes},
-}
-
-func dslPartitionListItemToObject(ctx context.Context, p *models.Partition) (types.Object, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	var props types.Map
-	if len(p.Properties) > 0 {
-		mp, d := types.MapValueFrom(ctx, types.StringType, p.Properties)
-		diags.Append(d...)
-		props = mp
-	} else {
-		props = types.MapNull(types.StringType)
-	}
-
-	auditObj, d := dslAuditToObject(p.Audit)
-	diags.Append(d...)
-
-	obj, d := types.ObjectValue(PartitionItemAttrTypes, map[string]attr.Value{
-		"name":       types.StringValue(p.Name),
-		"properties": props,
-		"audit":      auditObj,
-	})
-	diags.Append(d...)
-
-	return obj, diags
-}
-
-func dslAuditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if audit.Creator != "" {
-		creator = types.StringValue(audit.Creator)
-	}
-
-	createTime := types.StringNull()
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if audit.LastModifier != "" {
-		lastModifier = types.StringValue(audit.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(AuditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
 }

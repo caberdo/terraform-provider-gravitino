@@ -30,6 +30,7 @@ data "gravitino_tag" "example" {
 
 - `audit` (Object) Audit information for the tag. (see [below for nested schema](#nestedatt--audit))
 - `comment` (String) The tag comment.
+- `inherited` (Boolean) Whether the tag is inherited from a parent metadata object. Null when the server does not report it.
 - `properties` (Map of String) The tag properties.
 
 <a id="nestedatt--audit"></a>

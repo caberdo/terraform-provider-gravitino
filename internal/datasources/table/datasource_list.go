@@ -76,13 +76,13 @@ func (d *tablesDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	listResp, err := d.client.ListTables(
+	listResp, err := d.client.ListTables(ctx,
 		config.Metalake.ValueString(),
 		config.Catalog.ValueString(),
 		config.Schema.ValueString(),
 	)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list tables", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing tables", config.Schema.ValueString(), err)...)
 		return
 	}
 

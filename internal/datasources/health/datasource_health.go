@@ -96,7 +96,7 @@ func (d *HealthDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	result, err := d.client.GetHealth()
+	result, err := d.client.GetHealth(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read health", err.Error())
 		return

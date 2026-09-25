@@ -7,10 +7,12 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
@@ -30,18 +32,24 @@ type FunctionDataSource struct {
 }
 
 type FunctionDataSourceModel struct {
-	Metalake     types.String `tfsdk:"metalake"`
-	Catalog      types.String `tfsdk:"catalog"`
-	Schema       types.String `tfsdk:"schema"`
-	Name         types.String `tfsdk:"name"`
-	Comment      types.String `tfsdk:"comment"`
-	FunctionBody types.String `tfsdk:"function_body"`
-	Properties   types.Map    `tfsdk:"properties"`
-	Audit        types.Object `tfsdk:"audit"`
+	Metalake      types.String `tfsdk:"metalake"`
+	Catalog       types.String `tfsdk:"catalog"`
+	Schema        types.String `tfsdk:"schema"`
+	Name          types.String `tfsdk:"name"`
+	FunctionType  types.String `tfsdk:"function_type"`
+	Deterministic types.Bool   `tfsdk:"deterministic"`
+	Comment       types.String `tfsdk:"comment"`
+	Definitions   types.List   `tfsdk:"definitions"`
+	Audit         types.Object `tfsdk:"audit"`
 }
 
 func NewFunctionDataSource() datasource.DataSource {
 	return &FunctionDataSource{}
+}
+
+// SetClient injects the API client; used by tests.
+func (d *FunctionDataSource) SetClient(c *client.Client) {
+	d.client = c
 }
 
 func (d *FunctionDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -68,18 +76,134 @@ func (d *FunctionDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 				Description: "The function name.",
 				Required:    true,
 			},
+			"function_type": schema.StringAttribute{
+				Description: "The type of the function (SCALAR, AGGREGATE or TABLE).",
+				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(models.AllFunctionTypes...),
+				},
+			},
+			"deterministic": schema.BoolAttribute{
+				Description: "Whether the function is deterministic.",
+				Computed:    true,
+			},
 			"comment": schema.StringAttribute{
 				Description: "The function comment.",
 				Computed:    true,
 			},
-			"function_body": schema.StringAttribute{
-				Description: "The function body.",
+			"definitions": schema.ListNestedAttribute{
+				Description: "The definitions of the function, including their implementations.",
 				Computed:    true,
-			},
-			"properties": schema.MapAttribute{
-				Description: "Key-value properties for the function.",
-				Computed:    true,
-				ElementType: types.StringType,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"parameters": schema.ListNestedAttribute{
+							Description: "The parameters of the definition.",
+							Computed:    true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"name": schema.StringAttribute{
+										Description: "The name of the parameter.",
+										Computed:    true,
+									},
+									"data_type": schema.StringAttribute{
+										Description: "The Gravitino data type of the parameter.",
+										Computed:    true,
+									},
+									"comment": schema.StringAttribute{
+										Description: "The comment of the parameter.",
+										Computed:    true,
+									},
+									"default_value": schema.StringAttribute{
+										Description: "The default value expression of the parameter.",
+										Computed:    true,
+									},
+								},
+							},
+						},
+						"return_type": schema.StringAttribute{
+							Description: "The return type of the definition (SCALAR and AGGREGATE functions).",
+							Computed:    true,
+						},
+						"return_columns": schema.ListNestedAttribute{
+							Description: "The return columns of the definition (TABLE functions).",
+							Computed:    true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"name": schema.StringAttribute{
+										Description: "The name of the return column.",
+										Computed:    true,
+									},
+									"data_type": schema.StringAttribute{
+										Description: "The Gravitino data type of the return column.",
+										Computed:    true,
+									},
+									"comment": schema.StringAttribute{
+										Description: "The comment of the return column.",
+										Computed:    true,
+									},
+								},
+							},
+						},
+						"impls": schema.ListNestedAttribute{
+							Description: "The implementations of the definition.",
+							Computed:    true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"language": schema.StringAttribute{
+										Description: "The implementation language (SQL, JAVA or PYTHON).",
+										Computed:    true,
+									},
+									"runtime": schema.StringAttribute{
+										Description: "The runtime of the implementation (SPARK or TRINO).",
+										Computed:    true,
+									},
+									"sql": schema.StringAttribute{
+										Description: "The SQL expression of a SQL implementation.",
+										Computed:    true,
+									},
+									"class_name": schema.StringAttribute{
+										Description: "The class name of a JAVA implementation.",
+										Computed:    true,
+									},
+									"handler": schema.StringAttribute{
+										Description: "The handler of a PYTHON implementation.",
+										Computed:    true,
+									},
+									"code_block": schema.StringAttribute{
+										Description: "The code block of a PYTHON implementation.",
+										Computed:    true,
+									},
+									"resources": schema.SingleNestedAttribute{
+										Description: "External resources required by the implementation.",
+										Computed:    true,
+										Attributes: map[string]schema.Attribute{
+											"jars": schema.ListAttribute{
+												Description: "JAR file URIs.",
+												Computed:    true,
+												ElementType: types.StringType,
+											},
+											"files": schema.ListAttribute{
+												Description: "File URIs.",
+												Computed:    true,
+												ElementType: types.StringType,
+											},
+											"archives": schema.ListAttribute{
+												Description: "Archive URIs.",
+												Computed:    true,
+												ElementType: types.StringType,
+											},
+										},
+									},
+									"properties": schema.MapAttribute{
+										Description: "Additional properties of the implementation.",
+										Computed:    true,
+										ElementType: types.StringType,
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			"audit": schema.ObjectAttribute{
 				Description:    "Audit information for the function.",
@@ -90,7 +214,7 @@ func (d *FunctionDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 	}
 }
 
-func (ds *FunctionDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *FunctionDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -99,36 +223,40 @@ func (ds *FunctionDataSource) Configure(_ context.Context, req datasource.Config
 		resp.Diagnostics.AddError("Invalid provider data", "Expected *client.Client, got unexpected type.")
 		return
 	}
-	ds.client = c
+	d.client = c
 }
 
-func (ds *FunctionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *FunctionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config FunctionDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	functionResp, err := ds.client.GetFunction(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
+	functionResponse, err := d.client.GetFunction(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to read function", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("reading function", config.Name.ValueString(), err)...)
 		return
 	}
 
-	config.Comment = types.StringValue(functionResp.Function.Comment)
-	config.FunctionBody = types.StringValue(functionResp.Function.FunctionBody)
-
-	if len(functionResp.Function.Properties) > 0 {
-		props, d := types.MapValueFrom(ctx, types.StringType, functionResp.Function.Properties)
-		resp.Diagnostics.Append(d...)
-		config.Properties = props
-	} else {
-		config.Properties = types.MapNull(types.StringType)
+	function := &functionResponse.Function
+	config.FunctionType = types.StringValue(models.NormalizeFunctionType(function.FunctionType))
+	config.Deterministic = types.BoolValue(function.Deterministic)
+	config.Comment = types.StringNull()
+	if function.Comment != "" {
+		config.Comment = types.StringValue(function.Comment)
 	}
 
-	auditObj, d := dsAuditToObject(functionResp.Function.Audit)
-	resp.Diagnostics.Append(d...)
-	config.Audit = auditObj
+	definitions, diags := models.FunctionDefinitionsToTF(ctx, function.Definitions)
+	resp.Diagnostics.Append(diags...)
+	config.Definitions = definitions
+
+	audit, diags := dsAuditToObject(function.Audit)
+	resp.Diagnostics.Append(diags...)
+	config.Audit = audit
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }

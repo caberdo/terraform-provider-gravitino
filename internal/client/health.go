@@ -1,23 +1,25 @@
 package client
 
 import (
+	"context"
+
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
-func (c *Client) GetHealth() (*models.HealthResponse, error) {
+func (c *Client) GetHealth(ctx context.Context) (*models.HealthResponse, error) {
 	var result models.HealthResponse
-	err := c.Get("/health", &result)
+	err := c.Get(ctx, "/health", &result)
 	return &result, err
 }
 
-func (c *Client) GetLiveness() (*models.HealthResponse, error) {
+func (c *Client) GetLiveness(ctx context.Context) (*models.HealthResponse, error) {
 	var result models.HealthResponse
-	err := c.Get("/health/live", &result)
+	err := c.Get(ctx, "/health/live", &result)
 	return &result, err
 }
 
-func (c *Client) GetReadiness() (*models.HealthResponse, error) {
+func (c *Client) GetReadiness(ctx context.Context) (*models.HealthResponse, error) {
 	var result models.HealthResponse
-	err := c.Get("/health/ready", &result)
+	err := c.Get(ctx, "/health/ready", &result)
 	return &result, err
 }

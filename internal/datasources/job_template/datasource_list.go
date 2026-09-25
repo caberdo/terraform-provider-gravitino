@@ -3,7 +3,6 @@ package job_template
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -15,6 +14,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
+
+// timeFormat matches the timestamp format used by the other resources.
+const timeFormat = "2006-01-02T15:04:05Z07:00"
 
 var _ datasource.DataSource = &JobTemplatesDataSource{}
 var _ datasource.DataSourceWithConfigure = &JobTemplatesDataSource{}
@@ -32,33 +34,25 @@ func (d *JobTemplatesDataSource) SetClient(c *client.Client) {
 }
 
 type JobTemplatesDataSourceModel struct {
-	Metalake  types.String `tfsdk:"metalake"`
-	Templates types.List   `tfsdk:"templates"`
-}
-
-type jobTemplateItemModel struct {
-	Name       types.String `tfsdk:"name"`
-	Template   types.String `tfsdk:"template"`
-	Parameters types.Map    `tfsdk:"parameters"`
-	Comment    types.String `tfsdk:"comment"`
-	Properties types.Map    `tfsdk:"properties"`
-	Audit      types.Object `tfsdk:"audit"`
+	Metalake     types.String `tfsdk:"metalake"`
+	JobTemplates types.List   `tfsdk:"job_templates"`
 }
 
 var JobTemplateItemAttrTypes = map[string]attr.Type{
-	"name":       types.StringType,
-	"template":   types.StringType,
-	"parameters": types.MapType{ElemType: types.StringType},
-	"comment":    types.StringType,
-	"properties": types.MapType{ElemType: types.StringType},
-	"audit":      types.ObjectType{AttrTypes: AuditAttrTypes},
-}
-
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
+	"name":          types.StringType,
+	"job_type":      types.StringType,
+	"comment":       types.StringType,
+	"executable":    types.StringType,
+	"arguments":     types.ListType{ElemType: types.StringType},
+	"environments":  types.MapType{ElemType: types.StringType},
+	"custom_fields": types.MapType{ElemType: types.StringType},
+	"scripts":       types.ListType{ElemType: types.StringType},
+	"class_name":    types.StringType,
+	"jars":          types.ListType{ElemType: types.StringType},
+	"files":         types.ListType{ElemType: types.StringType},
+	"archives":      types.ListType{ElemType: types.StringType},
+	"configs":       types.MapType{ElemType: types.StringType},
+	"audit":         types.ObjectType{AttrTypes: AuditAttrTypes},
 }
 
 func (d *JobTemplatesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -68,7 +62,7 @@ func (d *JobTemplatesDataSource) Configure(_ context.Context, req datasource.Con
 	c, ok := req.ProviderData.(*client.Client)
 	if !ok {
 		resp.Diagnostics.AddError(
-			"Unexpected DataSource Configure Type",
+			"Unexpected Data Source Configure Type",
 			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
 		)
 		return
@@ -81,44 +75,23 @@ func (d *JobTemplatesDataSource) Metadata(_ context.Context, _ datasource.Metada
 }
 
 func (d *JobTemplatesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	itemAttributes := jobTemplateAttributes()
+	itemAttributes["name"] = schema.StringAttribute{
+		Computed:    true,
+		Description: "The job template name.",
+	}
+
 	resp.Schema = schema.Schema{
+		Description: "Lists the job templates of a metalake.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Required:    true,
 				Description: "The metalake name.",
 			},
-			"templates": schema.ListNestedAttribute{
+			"job_templates": schema.ListNestedAttribute{
 				Computed: true,
 				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
-							Computed:    true,
-							Description: "The job template name.",
-						},
-						"template": schema.StringAttribute{
-							Computed:    true,
-							Description: "The template definition.",
-						},
-						"parameters": schema.MapAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
-							Description: "The job template parameters.",
-						},
-						"comment": schema.StringAttribute{
-							Computed:    true,
-							Description: "The job template comment.",
-						},
-						"properties": schema.MapAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
-							Description: "The job template properties.",
-						},
-						"audit": schema.ObjectAttribute{
-							Computed:       true,
-							AttributeTypes: AuditAttrTypes,
-							Description:    "Audit information for the job template.",
-						},
-					},
+					Attributes: itemAttributes,
 				},
 			},
 		},
@@ -132,93 +105,62 @@ func (d *JobTemplatesDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	result, err := d.client.ListJobTemplates(config.Metalake.ValueString())
+	metalake := config.Metalake.ValueString()
+
+	result, err := d.client.ListJobTemplates(ctx, metalake)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list job templates", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing job templates", metalake, err)...)
 		return
 	}
 
 	items := make([]attr.Value, 0, len(result.JobTemplates))
-	for _, jt := range result.JobTemplates {
-		t := jt
-		item := jobTemplateToItemModel(ctx, &t, &resp.Diagnostics)
+	for i := range result.JobTemplates {
+		item, itemDiags := jobTemplateItem(ctx, &result.JobTemplates[i])
+		resp.Diagnostics.Append(itemDiags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if item == nil {
-			continue
-		}
-		obj, objDiags := types.ObjectValueFrom(ctx, JobTemplateItemAttrTypes, item)
-		resp.Diagnostics.Append(objDiags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		items = append(items, obj)
+		items = append(items, item)
 	}
 
-	templatesList, listDiags := types.ListValue(types.ObjectType{AttrTypes: JobTemplateItemAttrTypes}, items)
+	list, listDiags := types.ListValue(types.ObjectType{AttrTypes: JobTemplateItemAttrTypes}, items)
 	resp.Diagnostics.Append(listDiags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	config.JobTemplates = list
 
-	config.Templates = templatesList
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func jobTemplateToItemModel(ctx context.Context, jt *models.JobTemplate, diags *diag.Diagnostics) *jobTemplateItemModel {
-	if jt == nil {
-		return nil
-	}
+func jobTemplateItem(ctx context.Context, t *models.JobTemplate) (basetypes.ObjectValue, diag.Diagnostics) {
+	var diags diag.Diagnostics
 
-	item := &jobTemplateItemModel{
-		Name:     types.StringValue(jt.Name),
-		Template: types.StringValue(jt.Template),
-		Comment:  types.StringValue(jt.Comment),
-	}
-
-	params, d := types.MapValueFrom(ctx, types.StringType, jt.Parameters)
-	if d.HasError() {
-		return nil
-	}
-	item.Parameters = params
-
-	props, d := types.MapValueFrom(ctx, types.StringType, jt.Properties)
-	if d.HasError() {
-		return nil
-	}
-	item.Properties = props
-
-	auditObj, d := auditToObjectValueForDS(ctx, jt.Audit)
-	diags.Append(d...)
+	flat := JobTemplateDataSourceModel{}
+	setDiags := setJobTemplateState(ctx, t, &flat)
+	diags.Append(setDiags...)
 	if diags.HasError() {
-		return nil
-	}
-	item.Audit = auditObj
-
-	return item
-}
-
-func auditToObjectValueForDS(ctx context.Context, audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
+		return basetypes.ObjectValue{}, diags
 	}
 
 	attrs := map[string]attr.Value{
-		"creator":       types.StringValue(audit.Creator),
-		"last_modifier": types.StringValue(audit.LastModifier),
+		"name":          flat.Name,
+		"job_type":      flat.JobType,
+		"comment":       flat.Comment,
+		"executable":    flat.Executable,
+		"arguments":     flat.Arguments,
+		"environments":  flat.Environments,
+		"custom_fields": flat.CustomFields,
+		"scripts":       flat.Scripts,
+		"class_name":    flat.ClassName,
+		"jars":          flat.Jars,
+		"files":         flat.Files,
+		"archives":      flat.Archives,
+		"configs":       flat.Configs,
+		"audit":         flat.Audit,
 	}
 
-	if audit.CreateTime != nil {
-		attrs["create_time"] = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	} else {
-		attrs["create_time"] = types.StringNull()
-	}
-	if audit.LastModifiedTime != nil {
-		attrs["last_modified_time"] = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	} else {
-		attrs["last_modified_time"] = types.StringNull()
-	}
-
-	return types.ObjectValue(AuditAttrTypes, attrs)
+	obj, d := types.ObjectValue(JobTemplateItemAttrTypes, attrs)
+	diags.Append(d...)
+	return obj, diags
 }

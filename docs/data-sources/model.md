@@ -2,12 +2,12 @@
 page_title: "gravitino_model Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Retrieves a single Gravitino model by name.
+  Retrieves a single Gravitino model by name. Model artifacts are attached to the model versions of the model, not to the model itself.
 ---
 
 # gravitino_model Data Source
 
-Retrieves a single Gravitino model by name.
+Retrieves a single Gravitino model by name. Model artifacts are attached to the model versions of the model, not to the model itself.
 
 ## Example Usage
 
@@ -17,6 +17,11 @@ data "gravitino_model" "example" {
   catalog  = "ml_catalog"
   schema   = "example_schema"
   name     = "fraud_detector"
+}
+
+output "latest_version" {
+  description = "The latest version number of the model. Model artifacts live on the model versions."
+  value       = data.gravitino_model.example.latest_version
 }
 ```
 
@@ -34,7 +39,7 @@ data "gravitino_model" "example" {
 
 - `audit` (Object) Audit information for the model. (see [below for nested schema](#nestedatt--audit))
 - `comment` (String) The model comment.
-- `model_uri` (String) The URI of the model artifact.
+- `latest_version` (Number) The latest version number of the model.
 - `properties` (Map of String) Key-value properties for the model.
 
 <a id="nestedatt--audit"></a>

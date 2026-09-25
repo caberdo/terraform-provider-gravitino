@@ -31,7 +31,7 @@ data "gravitino_catalog" "example" {
 - `audit` (Object) Audit information for the catalog. (see [below for nested schema](#nestedatt--audit))
 - `catalog_provider` (String) The catalog provider.
 - `comment` (String) The catalog comment.
-- `properties` (Map of String) The catalog properties.
+- `properties` (Map of String, Sensitive) The catalog properties.
 - `type` (String) The catalog type.
 
 <a id="nestedatt--audit"></a>

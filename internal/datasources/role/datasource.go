@@ -3,7 +3,6 @@ package role
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -35,19 +34,7 @@ type RolesDataSourceModel struct {
 	Metalake     types.String `tfsdk:"metalake"`
 	ResourceType types.String `tfsdk:"resource_type"`
 	Resource     types.String `tfsdk:"resource"`
-	Roles        types.List   `tfsdk:"roles"`
-}
-
-type roleItemModel struct {
-	Name            types.String `tfsdk:"name"`
-	Privileges      types.Set    `tfsdk:"privileges"`
-	SecurableObject types.String `tfsdk:"securable_object"`
-}
-
-var RoleItemAttrTypes = map[string]attr.Type{
-	"name":             types.StringType,
-	"privileges":       types.SetType{ElemType: types.StringType},
-	"securable_object": types.StringType,
+	Names        types.List   `tfsdk:"names"`
 }
 
 func (d *RolesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -78,35 +65,22 @@ func (d *RolesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 			},
 			"resource_type": schema.StringAttribute{
 				Required:    true,
-				Description: "The resource type (e.g. catalogs, schemas, tables).",
+				Description: "The type of the metadata object that owns the roles: METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE, MODEL, FUNCTION, TAG, POLICY or JOB_TEMPLATE.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(models.AllObjectTypes...),
 				},
 			},
 			"resource": schema.StringAttribute{
-				Required:    true,
-				Description: "The resource name.",
+				Required: true,
+				Description: "The full name of the metadata object, relative to the metalake (without the metalake prefix): " +
+					"the metalake name itself for a METALAKE, 'my_catalog' for a CATALOG, 'my_catalog.my_schema' for a " +
+					"SCHEMA and 'my_catalog.my_schema.my_table' for a TABLE. Gravitino rejects a metalake prefix on " +
+					"anything but a METALAKE with HTTP 400 IllegalNamespaceException.",
 			},
-			"roles": schema.ListNestedAttribute{
+			"names": schema.ListAttribute{
 				Computed:    true,
-				Description: "The roles for the resource.",
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
-							Computed:    true,
-							Description: "The role name.",
-						},
-						"privileges": schema.SetAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
-							Description: "The privileges assigned to the role.",
-						},
-						"securable_object": schema.StringAttribute{
-							Computed:    true,
-							Description: "The securable object associated with the role.",
-						},
-					},
-				},
+				ElementType: types.StringType,
+				Description: "The names of the roles attached to the metadata object (GET /metalakes/{metalake}/objects/{metadataObjectType}/{metadataObjectFullName}/roles returns a plain name list).",
 			},
 		},
 	}
@@ -119,64 +93,26 @@ func (d *RolesDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	result, err := d.client.ListRoles(
-		config.Metalake.ValueString(),
-		config.ResourceType.ValueString(),
-		config.Resource.ValueString(),
-	)
+	metalake := config.Metalake.ValueString()
+	resource := config.Resource.ValueString()
+
+	result, err := d.client.ListRoles(ctx, metalake, config.ResourceType.ValueString(), resource)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list roles", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing roles for", resource, err)...)
 		return
 	}
 
-	items := make([]attr.Value, 0, len(result.Roles))
-	for _, role := range result.Roles {
-		r := role
-		item := roleToItemModel(ctx, &r)
-		if item == nil {
-			continue
-		}
-		obj, objDiags := types.ObjectValueFrom(ctx, RoleItemAttrTypes, item)
-		resp.Diagnostics.Append(objDiags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		items = append(items, obj)
+	items := make([]attr.Value, 0, len(result.Names))
+	for _, name := range result.Names {
+		items = append(items, types.StringValue(name))
 	}
 
-	rolesList, listDiags := types.ListValue(types.ObjectType{AttrTypes: RoleItemAttrTypes}, items)
+	names, listDiags := types.ListValue(types.StringType, items)
 	resp.Diagnostics.Append(listDiags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	config.Roles = rolesList
+	config.Names = names
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
-}
-
-func roleToItemModel(ctx context.Context, r *models.Role) *roleItemModel {
-	if r == nil {
-		return nil
-	}
-
-	item := &roleItemModel{
-		Name:            types.StringValue(r.Name),
-		SecurableObject: types.StringValue(r.SecurableObject),
-	}
-
-	if r.Privileges != nil {
-		privileges := make([]attr.Value, 0, len(r.Privileges))
-		for _, p := range r.Privileges {
-			privileges = append(privileges, types.StringValue(strings.ToUpper(p)))
-		}
-		privSet, d := types.SetValue(types.StringType, privileges)
-		if d.HasError() {
-			return nil
-		}
-		item.Privileges = privSet
-	} else {
-		item.Privileges = types.SetNull(types.StringType)
-	}
-
-	return item
 }

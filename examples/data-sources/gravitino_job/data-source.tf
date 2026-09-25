@@ -1,4 +1,4 @@
 data "gravitino_job" "example" {
   metalake = "example_metalake"
-  name     = "daily_etl"
+  job_id   = "job-1234567890"
 }

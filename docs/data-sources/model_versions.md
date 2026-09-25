@@ -2,12 +2,12 @@
 page_title: "gravitino_model_versions Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Lists all model versions within a Gravitino model.
+  Lists all model versions of a Gravitino model.
 ---
 
 # gravitino_model_versions Data Source
 
-Lists all model versions within a Gravitino model.
+Lists all model versions of a Gravitino model.
 
 ## Example Usage
 
@@ -39,12 +39,13 @@ data "gravitino_model_versions" "all" {
 
 Read-Only:
 
-- `aliases` (Set of String) Aliases for this model version.
+- `aliases` (Set of String) Aliases of the model version.
 - `audit` (Object) Audit information for the model version. (see [below for nested schema](#nestedatt--versions--audit))
 - `comment` (String) The model version comment.
 - `properties` (Map of String) Key-value properties for the model version.
-- `uri` (String) The URI of the model version artifact.
-- `version` (String) The model version identifier.
+- `uri` (String) The unnamed URI of the model artifact.
+- `uris` (Map of String) The URIs of the model artifact, keyed by URI name.
+- `version` (Number) The model version number.
 
 <a id="nestedatt--versions--audit"></a>
 ### Nested Schema for `versions.audit`

@@ -48,14 +48,14 @@ Read-Only:
 
 Read-Only:
 
-- `full_name` (String) The full name of the securable object.
+- `full_name` (String) The full name of the securable object, relative to the metalake (e.g. 'my_catalog' for a CATALOG, the metalake name for a METALAKE).
 - `privileges` (Attributes Set) The privileges for the securable object. (see [below for nested schema](#nestedatt--securable_objects--privileges))
-- `type` (String) The type of the securable object.
+- `type` (String) The type of the securable object, e.g. CATALOG, SCHEMA or TABLE.
 
 <a id="nestedatt--securable_objects--privileges"></a>
 ### Nested Schema for `securable_objects.privileges`
 
 Read-Only:
 
-- `condition` (String) The privilege condition.
-- `name` (String) The privilege name.
+- `condition` (String) The privilege condition, ALLOW or DENY, reported in the canonical upper-case spelling (Gravitino serialises lower case).
+- `name` (String) The privilege name, reported in the canonical upper-case spelling (Gravitino serialises lower case).

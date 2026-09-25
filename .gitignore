@@ -31,11 +31,19 @@ vendor/
 # Terraform
 **/.terraform/*
 .terraform.lock.hcl
-terraform.tfstate
-terraform.tfstate.*
+*.tfstate
+*.tfstate.*
 terraform-provider-*
 plan.bin
 *.tfvars
 *.log
 *.env
 dev.tfrc
+
+# Secrets / key material
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.keytab

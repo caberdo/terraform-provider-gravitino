@@ -2,13 +2,11 @@ package role_test
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/role"
-	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 
@@ -27,33 +25,28 @@ func TestRolesDataSource_Schema(t *testing.T) {
 	}
 }
 
+// TestRolesDataSource_Read proves the data source decodes the NameListResponse that
+// GET /metalakes/{metalake}/objects/{metadataObjectType}/{metadataObjectFullName}/roles
+// actually returns (roles.yaml), instead of the role objects of a non-existing
+// `roles` list.
 func TestRolesDataSource_Read(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		expectedPath := "/api/metalakes/test_metalake/objects/catalogs/test_catalog/roles"
-		if r.URL.Path != expectedPath {
-			t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
-		}
+	var method, requestPath string
 
-		resp := models.RoleListResponse{
-			Code: 0,
-			Roles: []models.Role{
-				{
-					Name:            "admin",
-					Privileges:      []string{"CREATE_TABLE", "SELECT"},
-					SecurableObject: "catalog",
-				},
-				{
-					Name:            "viewer",
-					Privileges:      []string{"SELECT"},
-					SecurableObject: "catalog",
-				},
-			},
-		}
-		json.NewEncoder(w).Encode(resp)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		requestPath = r.URL.Path
+
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		// NameListResponse example of roles.yaml.
+		_, _ = w.Write([]byte(`{"code": 0, "names": [ "user1", "user2" ]}`))
 	}))
 	defer server.Close()
 
-	c, _ := client.New(server.URL, nil)
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to build client: %v", err)
+	}
+
 	d := ds.New()
 	d.(*ds.RolesDataSource).SetClient(c)
 
@@ -62,39 +55,33 @@ func TestRolesDataSource_Read(t *testing.T) {
 	d.Schema(ctx, datasource.SchemaRequest{}, schemaResp)
 	schemaObj := schemaResp.Schema
 
-	roleItemObjType := types.ObjectType{AttrTypes: ds.RoleItemAttrTypes}
-	rolesListType := types.ListType{ElemType: roleItemObjType}
-
 	attrTypes := map[string]attr.Type{
 		"metalake":      types.StringType,
 		"resource_type": types.StringType,
 		"resource":      types.StringType,
-		"roles":         rolesListType,
+		"names":         types.ListType{ElemType: types.StringType},
 	}
 
 	configModel := ds.RolesDataSourceModel{
-		Metalake:     types.StringValue("test_metalake"),
-		ResourceType: types.StringValue("catalogs"),
-		Resource:     types.StringValue("test_catalog"),
-		Roles:        types.ListNull(roleItemObjType),
+		Metalake: types.StringValue("probe_ml"),
+		// The `metadataObjectType` path parameter is the MetadataObject.Type enum:
+		// upper-case singular (openapi.yaml), e.g. CATALOG, SCHEMA, TABLE.
+		ResourceType: types.StringValue("CATALOG"),
+		Resource:     types.StringValue("probe_cat"),
+		Names:        types.ListNull(types.StringType),
 	}
 
 	configObj, diags := types.ObjectValueFrom(ctx, attrTypes, configModel)
 	if diags.HasError() {
 		t.Fatalf("failed to create config object: %v", diags)
 	}
-
-	tfVal, err := configObj.ToTerraformValue(ctx)
+	raw, err := configObj.ToTerraformValue(ctx)
 	if err != nil {
 		t.Fatalf("failed to convert to terraform value: %v", err)
 	}
 
-	req := datasource.ReadRequest{
-		Config: tfsdk.Config{Schema: schemaObj, Raw: tfVal},
-	}
-	resp := &datasource.ReadResponse{
-		State: tfsdk.State{Schema: schemaObj},
-	}
+	req := datasource.ReadRequest{Config: tfsdk.Config{Schema: schemaObj, Raw: raw}}
+	resp := &datasource.ReadResponse{State: tfsdk.State{Schema: schemaObj}}
 
 	d.Read(ctx, req, resp)
 
@@ -103,5 +90,22 @@ func TestRolesDataSource_Read(t *testing.T) {
 			t.Logf("diag error: %s: %s", diag.Summary(), diag.Detail())
 		}
 		t.Fatal("unexpected diagnostics errors")
+	}
+
+	if method != http.MethodGet || requestPath != "/api/metalakes/probe_ml/objects/CATALOG/probe_cat/roles" {
+		t.Fatalf("expected GET /api/metalakes/probe_ml/objects/CATALOG/probe_cat/roles, got %s %s", method, requestPath)
+	}
+
+	var state ds.RolesDataSourceModel
+	if d := resp.State.Get(ctx, &state); d.HasError() {
+		t.Fatalf("failed to read state: %v", d)
+	}
+
+	if len(state.Names.Elements()) != 2 {
+		t.Fatalf("expected 2 role names, got %d", len(state.Names.Elements()))
+	}
+	if state.Names.Elements()[0].(types.String).ValueString() != "user1" ||
+		state.Names.Elements()[1].(types.String).ValueString() != "user2" {
+		t.Fatalf("unexpected role names: %v", state.Names.Elements())
 	}
 }

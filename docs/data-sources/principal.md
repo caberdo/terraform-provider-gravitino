@@ -2,16 +2,18 @@
 page_title: "gravitino_principal Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  
+  Gets the server-resolved principal of the authenticated user (GET /api/authn/me). The endpoint returns the principal name only, so no roles are exposed.
 ---
 
 # gravitino_principal Data Source
 
-
+Gets the server-resolved principal of the authenticated user (GET /api/authn/me). The endpoint returns the principal name only, so no roles are exposed.
 
 ## Example Usage
 
 ```terraform
+# The authenticated principal, as resolved by the server (GET /api/authn/me).
+# The endpoint returns the principal name only, so no roles are exposed here.
 data "gravitino_principal" "current" {}
 ```
 
@@ -20,5 +22,4 @@ data "gravitino_principal" "current" {}
 
 ### Read-Only
 
-- `name` (String) The principal name.
-- `roles` (List of String) The roles assigned to the principal.
+- `name` (String) The server-resolved principal name of the authenticated user.

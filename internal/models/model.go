@@ -1,11 +1,14 @@
 package models
 
+// Model mirrors the `Model` schema of the Gravitino v1.3.0 OpenAPI spec
+// (docs/open-api/models.yaml). A model does not carry a URI: model artifacts are
+// attached to a model version (see ModelVersion.URIs).
 type Model struct {
-	Name       string            `json:"name"`
-	Comment    string            `json:"comment,omitempty"`
-	Properties map[string]string `json:"properties,omitempty"`
-	ModelURI   string            `json:"modelUri,omitempty"`
-	Audit      *Audit            `json:"audit,omitempty"`
+	Name          string            `json:"name"`
+	LatestVersion int32             `json:"latestVersion"`
+	Comment       string            `json:"comment,omitempty"`
+	Properties    map[string]string `json:"properties,omitempty"`
+	Audit         *Audit            `json:"audit,omitempty"`
 }
 
 type ModelResponse struct {
@@ -13,14 +16,17 @@ type ModelResponse struct {
 	Model Model `json:"model"`
 }
 
-type ModelCreateRequest struct {
+// ModelRegisterRequest mirrors the spec's `ModelRegisterRequest` schema.
+type ModelRegisterRequest struct {
 	Name       string            `json:"name"`
 	Comment    string            `json:"comment,omitempty"`
-	ModelURI   string            `json:"modelUri,omitempty"`
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
-type ModelUpdateRequest struct {
+// ModelUpdatesRequest mirrors the spec's `ModelUpdatesRequest` schema. Gravitino
+// only accepts the update types rename, setProperty, removeProperty and
+// updateComment.
+type ModelUpdatesRequest struct {
 	Updates []interface{} `json:"updates"`
 }
 

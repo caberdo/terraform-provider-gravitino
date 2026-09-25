@@ -74,9 +74,9 @@ func (d *RolesListDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	result, err := d.client.ListAllRoles(config.Metalake.ValueString())
+	result, err := d.client.ListAllRoles(ctx, config.Metalake.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list roles", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing roles in", config.Metalake.ValueString(), err)...)
 		return
 	}
 

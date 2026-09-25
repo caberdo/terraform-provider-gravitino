@@ -94,9 +94,16 @@ func (d *UserDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	result, err := d.client.GetUser(config.Metalake.ValueString(), config.Name.ValueString())
+	result, err := d.client.GetUser(ctx, config.Metalake.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get user", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"User not found",
+				fmt.Sprintf("No user %q exists in metalake %q.", config.Name.ValueString(), config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading user", config.Name.ValueString(), err)...)
 		return
 	}
 

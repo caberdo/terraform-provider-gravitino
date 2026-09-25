@@ -122,7 +122,9 @@ data "gravitino_metalake" "test" {
   name = "nonexistent"
 }
 `,
-				ExpectError: regexp.MustCompile(`Not\s*[Ff]ound`),
+				// The data source turns a Gravitino 404 into a targeted diagnostic
+				// ("Metalake not found") instead of a raw server error.
+				ExpectError: regexp.MustCompile(`(?i)metalake not found`),
 			},
 		},
 	})

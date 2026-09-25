@@ -2,7 +2,7 @@ package model
 
 import (
 	"context"
-	"time"
+	"fmt"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -12,17 +12,18 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var _ datasource.DataSource = &ModelsDataSource{}
 var _ datasource.DataSourceWithConfigure = &ModelsDataSource{}
 
-var dslAuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
+// ModelItemAttrTypes describes one entry of the `models` list.
+var ModelItemAttrTypes = map[string]attr.Type{
+	"name":           types.StringType,
+	"comment":        types.StringType,
+	"latest_version": types.Int64Type,
+	"properties":     types.MapType{ElemType: types.StringType},
+	"audit":          types.ObjectType{AttrTypes: AuditAttrTypes},
 }
 
 type ModelsDataSource struct {
@@ -38,6 +39,10 @@ type ModelsDataSourceModel struct {
 
 func NewModelsDataSource() datasource.DataSource {
 	return &ModelsDataSource{}
+}
+
+func (d *ModelsDataSource) SetClient(c *client.Client) {
+	d.client = c
 }
 
 func (d *ModelsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -73,8 +78,8 @@ func (d *ModelsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 							Description: "The model comment.",
 							Computed:    true,
 						},
-						"model_uri": schema.StringAttribute{
-							Description: "The URI of the model artifact.",
+						"latest_version": schema.Int64Attribute{
+							Description: "The latest version number of the model.",
 							Computed:    true,
 						},
 						"properties": schema.MapAttribute{
@@ -85,7 +90,7 @@ func (d *ModelsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 						"audit": schema.ObjectAttribute{
 							Description:    "Audit information for the model.",
 							Computed:       true,
-							AttributeTypes: dslAuditAttrTypes,
+							AttributeTypes: AuditAttrTypes,
 						},
 					},
 				},
@@ -113,9 +118,9 @@ func (d *ModelsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	mods, err := d.client.ListModelsDetails(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
+	mods, err := d.client.ListModelsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list models", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing models", fmt.Sprintf("%s.%s.%s", config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString()), err)...)
 		return
 	}
 
@@ -128,12 +133,9 @@ func (d *ModelsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		}
 		items = append(items, item)
 	}
-	if len(items) == 0 {
-		items = []attr.Value{}
-	}
 
 	listVal, listDiags := types.ListValue(
-		types.ObjectType{AttrTypes: modelListItemAttrTypes()},
+		types.ObjectType{AttrTypes: ModelItemAttrTypes},
 		items,
 	)
 	resp.Diagnostics.Append(listDiags...)
@@ -142,72 +144,22 @@ func (d *ModelsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }
 
-func modelListItemAttrTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"name":       types.StringType,
-		"comment":    types.StringType,
-		"model_uri":  types.StringType,
-		"properties": types.MapType{ElemType: types.StringType},
-		"audit":      types.ObjectType{AttrTypes: dslAuditAttrTypes},
-	}
-}
-
 func modelListItemToObject(ctx context.Context, m *models.Model) (types.Object, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	var props types.Map
-	if len(m.Properties) > 0 {
-		p, pDiags := types.MapValueFrom(ctx, types.StringType, m.Properties)
-		diags.Append(pDiags...)
-		props = p
-	} else {
-		props = types.MapNull(types.StringType)
-	}
+	props := mapValueFrom(ctx, m.Properties, &diags)
 
-	ao, aDiags := listAuditToObject(m.Audit)
+	ao, aDiags := auditToObject(m.Audit)
 	diags.Append(aDiags...)
 
-	obj, oDiags := types.ObjectValue(modelListItemAttrTypes(), map[string]attr.Value{
-		"name":       types.StringValue(m.Name),
-		"comment":    types.StringValue(m.Comment),
-		"model_uri":  types.StringValue(m.ModelURI),
-		"properties": props,
-		"audit":      ao,
+	obj, oDiags := types.ObjectValue(ModelItemAttrTypes, map[string]attr.Value{
+		"name":           types.StringValue(m.Name),
+		"comment":        optionalString(m.Comment),
+		"latest_version": types.Int64Value(int64(m.LatestVersion)),
+		"properties":     props,
+		"audit":          ao,
 	})
 	diags.Append(oDiags...)
 
 	return obj, diags
-}
-
-func listAuditToObject(a *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if a == nil {
-		return types.ObjectNull(dslAuditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if a.Creator != "" {
-		creator = types.StringValue(a.Creator)
-	}
-
-	createTime := types.StringNull()
-	if a.CreateTime != nil {
-		createTime = types.StringValue(a.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if a.LastModifier != "" {
-		lastModifier = types.StringValue(a.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if a.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(a.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(dslAuditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
 }

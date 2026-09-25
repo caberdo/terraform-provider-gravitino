@@ -2,12 +2,12 @@
 page_title: "gravitino_table Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  
+  Retrieves a single Gravitino table, including the columns, sort orders, distribution, partitioning and indexes reported by Gravitino.
 ---
 
 # gravitino_table Data Source
 
-
+Retrieves a single Gravitino table, including the columns, sort orders, distribution, partitioning and indexes reported by Gravitino.
 
 ## Example Usage
 
@@ -25,23 +25,23 @@ data "gravitino_table" "example" {
 
 ### Required
 
-- `catalog` (String)
-- `metalake` (String)
-- `name` (String)
-- `schema` (String)
+- `catalog` (String) The catalog the table belongs to.
+- `metalake` (String) The metalake the table belongs to.
+- `name` (String) The name of the table.
+- `schema` (String) The schema the table belongs to.
 
 ### Read-Only
 
-- `audit` (Block, Read-only) (see [below for nested schema](#nestedblock--audit))
-- `column` (Block List) (see [below for nested schema](#nestedblock--column))
-- `comment` (String)
-- `distribution` (Block, Read-only) (see [below for nested schema](#nestedblock--distribution))
-- `index` (Block List) (see [below for nested schema](#nestedblock--index))
-- `partitioning` (Block List) (see [below for nested schema](#nestedblock--partitioning))
-- `properties` (Map of String)
-- `sort_order` (Block List) (see [below for nested schema](#nestedblock--sort_order))
+- `audit` (Object) Audit information of the table. (see [below for nested schema](#nestedatt--audit))
+- `column` (Block List) A column of the table. The type is a Gravitino primitive type name such as "varchar(255)", or a JSON object for the structured types. (see [below for nested schema](#nestedblock--column))
+- `comment` (String) The comment of the table.
+- `distribution` (Block, Read-only) How the data of the table is distributed. Absent when the catalog reports no distribution. (see [below for nested schema](#nestedblock--distribution))
+- `index` (Block List) An index of the table. (see [below for nested schema](#nestedblock--index))
+- `partitioning` (Block List) A partitioning strategy of the table. (see [below for nested schema](#nestedblock--partitioning))
+- `properties` (Map of String) The properties of the table as reported by Gravitino.
+- `sort_order` (Block List) A sort order of the table. (see [below for nested schema](#nestedblock--sort_order))
 
-<a id="nestedblock--audit"></a>
+<a id="nestedatt--audit"></a>
 ### Nested Schema for `audit`
 
 Read-Only:
@@ -59,12 +59,9 @@ Read-Only:
 
 - `auto_increment` (Boolean)
 - `comment` (String)
-- `default_value` (String)
-- `length` (Number)
+- `default_value` (String) The value of the column default value literal.
 - `name` (String)
 - `nullable` (Boolean)
-- `precision` (Number)
-- `scale` (Number)
 - `type` (String)
 
 
@@ -73,7 +70,7 @@ Read-Only:
 
 Read-Only:
 
-- `func_args` (List of String)
+- `func_args` (List of String) The distribution arguments as dotted field paths.
 - `number` (Number)
 - `strategy` (String)
 

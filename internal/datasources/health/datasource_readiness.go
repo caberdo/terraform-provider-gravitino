@@ -90,7 +90,7 @@ func (d *ReadinessDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	result, err := d.client.GetReadiness()
+	result, err := d.client.GetReadiness(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read readiness", err.Error())
 		return

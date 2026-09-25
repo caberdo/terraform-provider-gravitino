@@ -2,6 +2,7 @@ package schema
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
@@ -99,9 +100,16 @@ func (ds *SchemaDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	schemaResp, err := ds.client.GetSchema(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Name.ValueString())
+	schemaResp, err := ds.client.GetSchema(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to read schema", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Schema not found",
+				fmt.Sprintf("No schema %q exists in metalake %q, catalog %q.", config.Name.ValueString(), config.Metalake.ValueString(), config.Catalog.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading schema", config.Name.ValueString(), err)...)
 		return
 	}
 

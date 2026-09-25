@@ -2,14 +2,11 @@ package table
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -23,6 +20,7 @@ type tableDataSource struct {
 	client *client.Client
 }
 
+// NewTableDataSource returns the gravitino_table data source.
 func NewTableDataSource() datasource.DataSource {
 	return &tableDataSource{}
 }
@@ -48,52 +46,60 @@ func (d *tableDataSource) Metadata(_ context.Context, req datasource.MetadataReq
 
 func (d *tableDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Retrieves a single Gravitino table, including the columns, sort orders, distribution, " +
+			"partitioning and indexes reported by Gravitino.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
-				Required: true,
+				Description: "The metalake the table belongs to.",
+				Required:    true,
 			},
 			"catalog": schema.StringAttribute{
-				Required: true,
+				Description: "The catalog the table belongs to.",
+				Required:    true,
 			},
 			"schema": schema.StringAttribute{
-				Required: true,
+				Description: "The schema the table belongs to.",
+				Required:    true,
 			},
 			"name": schema.StringAttribute{
-				Required: true,
+				Description: "The name of the table.",
+				Required:    true,
 			},
 			"comment": schema.StringAttribute{
-				Computed: true,
+				Description: "The comment of the table.",
+				Computed:    true,
 			},
 			"properties": schema.MapAttribute{
+				Description: "The properties of the table as reported by Gravitino.",
 				Computed:    true,
 				ElementType: types.StringType,
 			},
+			"audit": schema.ObjectAttribute{
+				Description:    "Audit information of the table.",
+				Computed:       true,
+				AttributeTypes: models.AuditAttrTypes,
+			},
 		},
 		Blocks: map[string]schema.Block{
-			"audit": schema.SingleNestedBlock{
-				Attributes: map[string]schema.Attribute{
-					"creator":            schema.StringAttribute{Computed: true},
-					"create_time":        schema.StringAttribute{Computed: true},
-					"last_modifier":      schema.StringAttribute{Computed: true},
-					"last_modified_time": schema.StringAttribute{Computed: true},
-				},
-			},
 			"column": schema.ListNestedBlock{
+				Description: "A column of the table. The type is a Gravitino primitive type name such as " +
+					"\"varchar(255)\", or a JSON object for the structured types.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"name":           schema.StringAttribute{Computed: true},
 						"type":           schema.StringAttribute{Computed: true},
-						"length":         schema.Int64Attribute{Computed: true},
-						"precision":      schema.Int64Attribute{Computed: true},
-						"scale":          schema.Int64Attribute{Computed: true},
 						"comment":        schema.StringAttribute{Computed: true},
 						"nullable":       schema.BoolAttribute{Computed: true},
 						"auto_increment": schema.BoolAttribute{Computed: true},
-						"default_value":  schema.StringAttribute{Computed: true},
+						"default_value": schema.StringAttribute{
+							Description: "The value of the column default value literal.",
+							Computed:    true,
+						},
 					},
 				},
 			},
 			"sort_order": schema.ListNestedBlock{
+				Description: "A sort order of the table.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"field_name": schema.ListAttribute{
@@ -106,16 +112,19 @@ func (d *tableDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				},
 			},
 			"distribution": schema.SingleNestedBlock{
+				Description: "How the data of the table is distributed. Absent when the catalog reports no distribution.",
 				Attributes: map[string]schema.Attribute{
 					"strategy": schema.StringAttribute{Computed: true},
 					"number":   schema.Int64Attribute{Computed: true},
 					"func_args": schema.ListAttribute{
+						Description: "The distribution arguments as dotted field paths.",
 						Computed:    true,
 						ElementType: types.StringType,
 					},
 				},
 			},
 			"partitioning": schema.ListNestedBlock{
+				Description: "A partitioning strategy of the table.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"strategy": schema.StringAttribute{Computed: true},
@@ -138,6 +147,7 @@ func (d *tableDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				},
 			},
 			"index": schema.ListNestedBlock{
+				Description: "An index of the table.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"index_type": schema.StringAttribute{Computed: true},
@@ -160,14 +170,14 @@ func (d *tableDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	tableResp, err := d.client.GetTable(
+	tableResp, err := d.client.GetTable(ctx,
 		config.Metalake.ValueString(),
 		config.Catalog.ValueString(),
 		config.Schema.ValueString(),
 		config.Name.ValueString(),
 	)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to read table", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("reading table", config.Name.ValueString(), err)...)
 		return
 	}
 
@@ -178,8 +188,7 @@ func (d *tableDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		Name:     config.Name,
 	}
 
-	diags := mapTableResponseToDataSourceState(ctx, tableResp, &state)
-	resp.Diagnostics.Append(diags...)
+	mapTableToDataSourceState(ctx, &tableResp.Table, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -187,241 +196,34 @@ func (d *tableDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func mapTableResponseToDataSourceState(ctx context.Context, resp *models.TableResponse, state *models.TableDataSourceModel) diag.Diagnostics {
-	var diags diag.Diagnostics
-
-	t := resp.Table
-
-	state.Name = types.StringValue(t.Name)
-	state.Comment = types.StringValue(t.Comment)
-
-	if t.Properties != nil {
-		props, d := types.MapValueFrom(ctx, types.StringType, t.Properties)
-		diags.Append(d...)
-		state.Properties = props
+// mapTableToDataSourceState maps a table of tables.yaml into the data source
+// model. The values Gravitino reports back are normalised so that they match
+// the representation of the resource: a distribution reported with the strategy
+// "none" means no distribution, the index types are lower cased, and a column
+// default value reported as the null literal means no default value.
+func mapTableToDataSourceState(ctx context.Context, table *models.Table, state *models.TableDataSourceModel, diags *diag.Diagnostics) {
+	state.Name = types.StringValue(table.Name)
+	if table.Comment == "" {
+		state.Comment = types.StringNull()
 	} else {
+		state.Comment = types.StringValue(table.Comment)
+	}
+
+	if table.Properties == nil {
 		state.Properties = types.MapNull(types.StringType)
-	}
-
-	if t.Audit != nil {
-		audit := &models.AuditTFSDK{
-			Creator:      types.StringValue(t.Audit.Creator),
-			LastModifier: types.StringValue(t.Audit.LastModifier),
-		}
-		if t.Audit.CreateTime != nil {
-			audit.CreateTime = types.StringValue(t.Audit.CreateTime.String())
-		} else {
-			audit.CreateTime = types.StringNull()
-		}
-		if t.Audit.LastModifiedTime != nil {
-			audit.LastModifiedTime = types.StringValue(t.Audit.LastModifiedTime.String())
-		} else {
-			audit.LastModifiedTime = types.StringNull()
-		}
-		state.Audit = audit
 	} else {
-		state.Audit = nil
+		properties, propertyDiags := types.MapValueFrom(ctx, types.StringType, table.Properties)
+		diags.Append(propertyDiags...)
+		state.Properties = properties
 	}
 
-	state.Columns = mapDataSourceColumnsToState(ctx, t.Columns, &diags)
-	state.SortOrders = mapDataSourceSortOrdersToState(ctx, t.SortOrders, &diags)
-	state.Distribution = mapDataSourceDistributionToState(ctx, t.Distribution, &diags)
-	state.Partitioning = mapDataSourcePartitioningToState(ctx, t.Partitioning, &diags)
-	state.Indexes = mapDataSourceIndexesToState(ctx, t.Indexes, &diags)
+	audit, auditDiags := models.AuditToObjectValue(ctx, table.Audit)
+	diags.Append(auditDiags...)
+	state.Audit = audit
 
-	return diags
-}
-
-func mapDataSourceColumnsToState(ctx context.Context, cols []models.Column, diags *diag.Diagnostics) []models.ColumnTFSDK {
-	result := make([]models.ColumnTFSDK, 0, len(cols))
-	for _, col := range cols {
-		m := models.ColumnTFSDK{
-			Name:          types.StringValue(col.Name),
-			Type:          types.StringValue(col.Type.Type),
-			Comment:       types.StringValue(col.Comment),
-			Nullable:      types.BoolValue(col.Nullable),
-			AutoIncrement: types.BoolValue(col.AutoIncrement),
-		}
-
-		if col.Type.Length != nil {
-			m.Length = types.Int64Value(*col.Type.Length)
-		} else {
-			m.Length = types.Int64Null()
-		}
-		if col.Type.Precision != nil {
-			m.Precision = types.Int64Value(*col.Type.Precision)
-		} else {
-			m.Precision = types.Int64Null()
-		}
-		if col.Type.Scale != nil {
-			m.Scale = types.Int64Value(*col.Type.Scale)
-		} else {
-			m.Scale = types.Int64Null()
-		}
-
-		if col.DefaultValue != nil {
-			b, err := json.Marshal(col.DefaultValue)
-			if err == nil {
-				m.DefaultValue = types.StringValue(string(b))
-			} else {
-				m.DefaultValue = types.StringNull()
-			}
-		} else {
-			m.DefaultValue = types.StringNull()
-		}
-
-		result = append(result, m)
-	}
-	return result
-}
-
-func mapDataSourceSortOrdersToState(ctx context.Context, orders []models.SortOrder, diags *diag.Diagnostics) []models.SortOrderTFSDK {
-	result := make([]models.SortOrderTFSDK, 0, len(orders))
-	for _, o := range orders {
-		m := models.SortOrderTFSDK{
-			Direction: types.StringValue(o.Direction),
-		}
-
-		if o.NullOrdering != "" {
-			m.NullOrdering = types.StringValue(o.NullOrdering)
-		} else {
-			m.NullOrdering = types.StringNull()
-		}
-
-		fieldVals := make([]attr.Value, 0, len(o.SortTerm.FieldName))
-		for _, fn := range o.SortTerm.FieldName {
-			fieldVals = append(fieldVals, types.StringValue(fn))
-		}
-		listVal, d := types.ListValue(types.StringType, fieldVals)
-		diags.Append(d...)
-		m.FieldName = listVal
-
-		result = append(result, m)
-	}
-	return result
-}
-
-func mapDataSourceDistributionToState(ctx context.Context, dist *models.Distribution, diags *diag.Diagnostics) *models.DistributionTFSDK {
-	if dist == nil {
-		return nil
-	}
-
-	m := &models.DistributionTFSDK{
-		Strategy: types.StringValue(dist.Strategy),
-		Number:   types.Int64Value(int64(dist.Number)),
-	}
-
-	funcArgVals := make([]attr.Value, 0, len(dist.FuncArgs))
-	for _, expr := range dist.FuncArgs {
-		funcArgVals = append(funcArgVals, types.StringValue(strings.Join(expr.FieldName, ".")))
-	}
-	listVal, d := types.ListValue(types.StringType, funcArgVals)
-	diags.Append(d...)
-	m.FuncArgs = listVal
-
-	return m
-}
-
-func mapDataSourcePartitioningToState(ctx context.Context, parts []models.Partitioning, diags *diag.Diagnostics) []models.PartitioningTFSDK {
-	result := make([]models.PartitioningTFSDK, 0, len(parts))
-	for _, p := range parts {
-		m := models.PartitioningTFSDK{
-			Strategy: types.StringValue(p.Strategy),
-		}
-
-		if len(p.FieldName) > 0 {
-			fieldVals := make([]attr.Value, 0, len(p.FieldName))
-			for _, fn := range p.FieldName {
-				fieldVals = append(fieldVals, types.StringValue(fn))
-			}
-			listVal, d := types.ListValue(types.StringType, fieldVals)
-			diags.Append(d...)
-			m.FieldName = listVal
-		} else {
-			m.FieldName = types.ListNull(types.StringType)
-		}
-
-		if len(p.FieldNames) > 0 {
-			fieldNamesVals := make([]attr.Value, 0, len(p.FieldNames))
-			for _, fns := range p.FieldNames {
-				innerVals := make([]attr.Value, 0, len(fns))
-				for _, fn := range fns {
-					innerVals = append(innerVals, types.StringValue(fn))
-				}
-				innerList, d := types.ListValue(types.StringType, innerVals)
-				diags.Append(d...)
-				fieldNamesVals = append(fieldNamesVals, innerList)
-			}
-			listVal, d := types.ListValue(types.ListType{ElemType: types.StringType}, fieldNamesVals)
-			diags.Append(d...)
-			m.FieldNames = listVal
-		} else {
-			m.FieldNames = types.ListNull(types.ListType{ElemType: types.StringType})
-		}
-
-		if p.NumBuckets > 0 {
-			m.NumBuckets = types.Int64Value(int64(p.NumBuckets))
-		} else {
-			m.NumBuckets = types.Int64Null()
-		}
-
-		if p.Width > 0 {
-			m.Width = types.Int64Value(int64(p.Width))
-		} else {
-			m.Width = types.Int64Null()
-		}
-
-		if p.FuncName != "" {
-			m.FuncName = types.StringValue(p.FuncName)
-		} else {
-			m.FuncName = types.StringNull()
-		}
-
-		if len(p.FuncArgs) > 0 {
-			funcArgVals := make([]attr.Value, 0, len(p.FuncArgs))
-			for _, expr := range p.FuncArgs {
-				funcArgVals = append(funcArgVals, types.StringValue(strings.Join(expr.FieldName, ".")))
-			}
-			listVal, d := types.ListValue(types.StringType, funcArgVals)
-			diags.Append(d...)
-			m.FuncArgs = listVal
-		} else {
-			m.FuncArgs = types.ListNull(types.StringType)
-		}
-
-		result = append(result, m)
-	}
-	return result
-}
-
-func mapDataSourceIndexesToState(ctx context.Context, indexes []models.Index, diags *diag.Diagnostics) []models.IndexTFSDK {
-	result := make([]models.IndexTFSDK, 0, len(indexes))
-	for _, idx := range indexes {
-		m := models.IndexTFSDK{
-			IndexType: types.StringValue(idx.IndexType),
-		}
-
-		if idx.Name != "" {
-			m.Name = types.StringValue(idx.Name)
-		} else {
-			m.Name = types.StringNull()
-		}
-
-		fieldNamesVals := make([]attr.Value, 0, len(idx.FieldNames))
-		for _, fns := range idx.FieldNames {
-			innerVals := make([]attr.Value, 0, len(fns))
-			for _, fn := range fns {
-				innerVals = append(innerVals, types.StringValue(fn))
-			}
-			innerList, d := types.ListValue(types.StringType, innerVals)
-			diags.Append(d...)
-			fieldNamesVals = append(fieldNamesVals, innerList)
-		}
-		listVal, d := types.ListValue(types.ListType{ElemType: types.StringType}, fieldNamesVals)
-		diags.Append(d...)
-		m.FieldNames = listVal
-
-		result = append(result, m)
-	}
-	return result
+	state.Columns = models.TableColumnsToModel(ctx, table.Columns, diags)
+	state.SortOrders = models.TableSortOrdersToModel(ctx, table.SortOrders, diags)
+	state.Distribution = models.TableDistributionToModel(ctx, table.Distribution, diags)
+	state.Partitioning = models.TablePartitioningToModel(ctx, table.Partitioning, diags)
+	state.Indexes = models.TableIndexesToModel(ctx, table.Indexes, diags)
 }

@@ -35,9 +35,9 @@ resource "gravitino_catalog" "iceberg" {
   catalog_provider = "lakehouse-iceberg"
   comment          = "Iceberg lakehouse for transactional data lake"
   properties = {
-    "warehouse"      = "s3a://iceberg-warehouse"
+    "warehouse"       = "s3a://iceberg-warehouse"
     "catalog-backend" = "jdbc"
-    "uri"            = "jdbc:postgresql://iceberg-metastore:5432/iceberg"
+    "uri"             = "jdbc:postgresql://iceberg-metastore:5432/iceberg"
   }
 }
 
@@ -95,13 +95,29 @@ resource "gravitino_table" "customers" {
   schema   = gravitino_schema.analytics.name
   name     = "customers"
   comment  = "Customer master data"
-  columns = [
-    { "name" = "customer_id", "type" = "string", "nullable" = false },
-    { "name" = "name",        "type" = "string", "nullable" = false },
-    { "name" = "email",       "type" = "string" },
-    { "name" = "country",     "type" = "string" },
-    { "name" = "created_at",  "type" = "timestamp" },
-  ]
+
+  column {
+    name     = "customer_id"
+    type     = "string"
+    nullable = false
+  }
+  column {
+    name     = "name"
+    type     = "string"
+    nullable = false
+  }
+  column {
+    name = "email"
+    type = "string"
+  }
+  column {
+    name = "country"
+    type = "string"
+  }
+  column {
+    name = "created_at"
+    type = "timestamp"
+  }
 }
 
 resource "gravitino_table" "orders" {
@@ -110,26 +126,48 @@ resource "gravitino_table" "orders" {
   schema   = gravitino_schema.analytics.name
   name     = "orders"
   comment  = "Customer orders with partitioning and sort order"
-  columns = [
-    { "name" = "order_id",    "type" = "string", "nullable" = false },
-    { "name" = "customer_id", "type" = "string", "nullable" = false },
-    { "name" = "amount",      "type" = "double" },
-    { "name" = "status",      "type" = "string" },
-    { "name" = "order_date",  "type" = "date" },
-  ]
-  partition_strategy = "RANGE"
-  partition_buckets  = 12
-  distribution = {
-    strategy = "HASH"
-    buckets  = 4
-    partition_keys = [
-      { "name" = "customer_id", "type" = "string" },
-    ]
+
+  column {
+    name     = "order_id"
+    type     = "string"
+    nullable = false
   }
-  sort_orders = [
-    { "name" = "order_date", "direction" = "DESC" },
-    { "name" = "amount",     "direction" = "DESC" },
-  ]
+  column {
+    name     = "customer_id"
+    type     = "string"
+    nullable = false
+  }
+  column {
+    name = "amount"
+    type = "double"
+  }
+  column {
+    name = "status"
+    type = "string"
+  }
+  column {
+    name = "order_date"
+    type = "date"
+  }
+
+  partitioning {
+    strategy   = "range"
+    field_name = ["order_date"]
+  }
+
+  distribution {
+    strategy = "hash"
+    number   = 4
+  }
+
+  sort_order {
+    field_name = ["order_date"]
+    direction  = "desc"
+  }
+  sort_order {
+    field_name = ["amount"]
+    direction  = "desc"
+  }
 }
 
 resource "gravitino_table" "events" {
@@ -137,15 +175,30 @@ resource "gravitino_table" "events" {
   catalog  = gravitino_catalog.hive.name
   schema   = gravitino_schema.ingestion.name
   name     = "raw_events"
-  comment  = "Raw event data with hash partitioning"
-  columns = [
-    { "name" = "event_id",   "type" = "string" },
-    { "name" = "event_type", "type" = "string" },
-    { "name" = "payload",    "type" = "string" },
-    { "name" = "event_time", "type" = "timestamp" },
-  ]
-  partition_strategy = "HASH"
-  partition_buckets  = 24
+  comment  = "Raw event data with bucket partitioning"
+
+  column {
+    name = "event_id"
+    type = "string"
+  }
+  column {
+    name = "event_type"
+    type = "string"
+  }
+  column {
+    name = "payload"
+    type = "string"
+  }
+  column {
+    name = "event_time"
+    type = "timestamp"
+  }
+
+  partitioning {
+    strategy    = "bucket"
+    field_name  = ["event_id"]
+    num_buckets = 24
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -156,15 +209,30 @@ resource "gravitino_partition" "q1" {
   catalog  = gravitino_catalog.hive.name
   schema   = gravitino_schema.analytics.name
   table    = gravitino_table.orders.name
-  name     = "2024_q1"
+  type     = "identity"
+  # field_names holds a path per field; values are typed literals.
+  field_names = [["order_date"]]
+  values = [
+    {
+      data_type = "date"
+      value     = "2024-01-01"
+    }
+  ]
 }
 
 resource "gravitino_partition" "q2" {
-  metalake = gravitino_metalake.platform.name
-  catalog  = gravitino_catalog.hive.name
-  schema   = gravitino_schema.analytics.name
-  table    = gravitino_table.orders.name
-  name     = "2024_q2"
+  metalake    = gravitino_metalake.platform.name
+  catalog     = gravitino_catalog.hive.name
+  schema      = gravitino_schema.analytics.name
+  table       = gravitino_table.orders.name
+  type        = "identity"
+  field_names = [["order_date"]]
+  values = [
+    {
+      data_type = "date"
+      value     = "2024-04-01"
+    }
+  ]
 }
 
 # ---------------------------------------------------------------------------
@@ -176,25 +244,77 @@ resource "gravitino_view" "customer_orders" {
   schema   = gravitino_schema.analytics.name
   name     = "customer_order_summary"
   comment  = "Aggregated customer order metrics"
+
+  representation = [
+    {
+      type    = "sql"
+      dialect = "spark"
+      sql     = "SELECT customer_id, COUNT(*) AS orders FROM analytics.orders GROUP BY customer_id"
+    }
+  ]
 }
 
 # ---------------------------------------------------------------------------
 # FUNCTIONS — User-defined functions
 # ---------------------------------------------------------------------------
 resource "gravitino_function" "parse_user_agent" {
-  metalake = gravitino_metalake.platform.name
-  catalog  = gravitino_catalog.hive.name
-  schema   = gravitino_schema.analytics.name
-  name     = "parse_user_agent"
-  comment  = "Parse user agent strings into device, browser, OS"
+  metalake      = gravitino_metalake.platform.name
+  catalog       = gravitino_catalog.hive.name
+  schema        = gravitino_schema.analytics.name
+  name          = "parse_user_agent"
+  function_type = "SCALAR"
+  deterministic = true
+  comment       = "Parse user agent strings into device, browser, OS"
+
+  definitions = [
+    {
+      parameters = [
+        { name = "user_agent", data_type = "string" }
+      ]
+      return_type = "string"
+
+      impls = [
+        {
+          language   = "JAVA"
+          runtime    = "SPARK"
+          class_name = "com.example.udf.ParseUserAgent"
+          resources = {
+            jars = ["hdfs:///path/to/udf.jar"]
+          }
+        }
+      ]
+    }
+  ]
 }
 
 resource "gravitino_function" "geocode" {
-  metalake = gravitino_metalake.platform.name
-  catalog  = gravitino_catalog.hive.name
-  schema   = gravitino_schema.analytics.name
-  name     = "geocode_address"
-  comment  = "Convert address strings to lat/lon coordinates"
+  metalake      = gravitino_metalake.platform.name
+  catalog       = gravitino_catalog.hive.name
+  schema        = gravitino_schema.analytics.name
+  name          = "geocode_address"
+  function_type = "SCALAR"
+  deterministic = true
+  comment       = "Convert address strings to lat/lon coordinates"
+
+  definitions = [
+    {
+      parameters = [
+        { name = "address", data_type = "string" }
+      ]
+      # Structured types use the JSON document form of the Gravitino data type.
+      return_type = jsonencode({
+        type = "struct"
+        fields = [
+          { name = "lat", type = "double" },
+          { name = "lon", type = "double" }
+        ]
+      })
+
+      impls = [
+        { language = "SQL", runtime = "SPARK", sql = "geocode(address)" }
+      ]
+    }
+  ]
 }
 
 # ---------------------------------------------------------------------------
@@ -219,8 +339,8 @@ resource "gravitino_topic" "order_events" {
   name     = "order_events"
   comment  = "Order lifecycle events"
   properties = {
-    "retention.ms" = "2592000000"
-    "partitions"   = "6"
+    "retention.ms"   = "2592000000"
+    "partitions"     = "6"
     "cleanup.policy" = "compact"
   }
 }
@@ -266,7 +386,6 @@ resource "gravitino_model_version" "fraud_v1" {
   catalog  = gravitino_catalog.ml.name
   schema   = gravitino_schema.analytics.name
   model    = gravitino_model.fraud_detector.name
-  version  = "1.0.0"
   uri      = "s3://models/fraud_detection/1.0.0"
   aliases  = ["production"]
   comment  = "Initial production release"
@@ -281,7 +400,6 @@ resource "gravitino_model_version" "fraud_v2" {
   catalog  = gravitino_catalog.ml.name
   schema   = gravitino_schema.analytics.name
   model    = gravitino_model.fraud_detector.name
-  version  = "2.0.0"
   uri      = "s3://models/fraud_detection/2.0.0"
   aliases  = ["staging"]
   comment  = "Improved model with XGBoost"
@@ -303,9 +421,9 @@ resource "gravitino_model" "recommendation" {
 # TAGS — Data classification
 # ---------------------------------------------------------------------------
 resource "gravitino_tag" "pii" {
-  metalake   = gravitino_metalake.platform.name
-  name       = "PII"
-  comment    = "Personally Identifiable Information"
+  metalake = gravitino_metalake.platform.name
+  name     = "PII"
+  comment  = "Personally Identifiable Information"
   properties = {
     "classification" = "restricted"
     "retention"      = "7y"
@@ -313,9 +431,9 @@ resource "gravitino_tag" "pii" {
 }
 
 resource "gravitino_tag" "sensitive" {
-  metalake   = gravitino_metalake.platform.name
-  name       = "SENSITIVE"
-  comment    = "Sensitive business data"
+  metalake = gravitino_metalake.platform.name
+  name     = "SENSITIVE"
+  comment  = "Sensitive business data"
   properties = {
     "classification" = "confidential"
   }
@@ -331,34 +449,49 @@ resource "gravitino_tag" "public" {
 # POLICIES — Access control rules
 # ---------------------------------------------------------------------------
 resource "gravitino_policy" "analytics_read" {
-  metalake      = gravitino_metalake.platform.name
-  resource_type = "SCHEMAS"
-  resource      = gravitino_schema.analytics.name
-  name          = "analytics_readonly"
-  effect        = "allow"
-  actions       = ["read"]
-  subjects      = ["analytics-team", "reporting-users"]
+  metalake    = gravitino_metalake.platform.name
+  name        = "analytics_readonly"
+  comment     = "Read-only access to the analytics schema"
+  policy_type = "custom"
+  enabled     = true
+
+  supported_object_types = ["SCHEMA"]
+  custom_rules = {
+    "effect"   = "allow"
+    "actions"  = "read"
+    "subjects" = "analytics-team,reporting-users"
+  }
 }
 
 resource "gravitino_policy" "ingestion_write" {
-  metalake      = gravitino_metalake.platform.name
-  resource_type = "SCHEMAS"
-  resource      = gravitino_schema.ingestion.name
-  name          = "ingestion_writer"
-  effect        = "allow"
-  actions       = ["write", "read"]
-  subjects      = ["data-engineering"]
+  metalake    = gravitino_metalake.platform.name
+  name        = "ingestion_writer"
+  comment     = "Write access for the ingestion team"
+  policy_type = "custom"
+  enabled     = true
+
+  supported_object_types = ["SCHEMA"]
+  custom_rules = {
+    "effect"   = "allow"
+    "actions"  = "write,read"
+    "subjects" = "data-engineering"
+  }
 }
 
 resource "gravitino_policy" "pii_restrict" {
-  metalake      = gravitino_metalake.platform.name
-  resource_type = "TABLES"
-  resource      = gravitino_table.customers.name
-  name          = "pii_restriction"
-  effect        = "deny"
-  actions       = ["read"]
-  subjects      = ["guest-user", "reporting-users"]
-  condition     = "context.role != 'compliance_officer'"
+  metalake    = gravitino_metalake.platform.name
+  name        = "pii_restriction"
+  comment     = "Deny guest access to customer PII"
+  policy_type = "custom"
+  enabled     = true
+
+  supported_object_types = ["TABLE"]
+  custom_rules = {
+    "effect"    = "deny"
+    "actions"   = "read"
+    "subjects"  = "guest-user,reporting-users"
+    "condition" = "context.role != 'compliance_officer'"
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -408,7 +541,7 @@ resource "gravitino_role" "data_engineer" {
       full_name = gravitino_schema.ingestion.name
       type      = "SCHEMA"
       privileges = [
-        { name = "USE_SCHEMA",   condition = "ALLOW" },
+        { name = "USE_SCHEMA", condition = "ALLOW" },
         { name = "CREATE_TABLE", condition = "ALLOW" },
       ]
     },
@@ -430,7 +563,7 @@ resource "gravitino_role" "analyst" {
       full_name = gravitino_schema.analytics.name
       type      = "SCHEMA"
       privileges = [
-        { name = "USE_SCHEMA",   condition = "ALLOW" },
+        { name = "USE_SCHEMA", condition = "ALLOW" },
         { name = "SELECT_TABLE", condition = "ALLOW" },
       ]
     },
@@ -460,37 +593,33 @@ resource "gravitino_owner" "schema_owner" {
 # JOBS — Scheduled tasks
 # ---------------------------------------------------------------------------
 resource "gravitino_job_template" "spark_etl" {
-  metalake = gravitino_metalake.platform.name
-  name     = "spark_etl_runner"
-  template = "spark"
-  parameters = {
-    "main_class" = "com.platform.etl.Orchestrator"
-    "jar"        = "s3://jars/etl-framework.jar"
-    "args"       = "--env=${environment} --date=${date}"
+  metalake   = gravitino_metalake.platform.name
+  name       = "spark_etl_runner"
+  job_type   = "spark"
+  comment    = "Generic Spark ETL job template"
+  executable = "/opt/spark/bin/spark-submit"
+  arguments  = ["--env", "production"]
+  class_name = "com.platform.etl.Orchestrator"
+  jars       = ["s3://jars/etl-framework.jar"]
+  configs = {
+    "spark.executor.memory" = "2g"
   }
-  comment = "Generic Spark ETL job template"
 }
 
 resource "gravitino_job" "daily_orders" {
-  metalake   = gravitino_metalake.platform.name
-  name       = "daily_orders_etl"
-  template   = gravitino_job_template.spark_etl.name
-  schedule   = "0 2 * * *"
-  parameters = {
-    "environment" = "production"
+  metalake     = gravitino_metalake.platform.name
+  job_template = gravitino_job_template.spark_etl.name
+  job_conf = {
+    environment = "production"
   }
-  comment = "Daily orders ETL pipeline"
 }
 
 resource "gravitino_job" "hourly_events" {
-  metalake   = gravitino_metalake.platform.name
-  name       = "hourly_event_processing"
-  template   = gravitino_job_template.spark_etl.name
-  schedule   = "0 * * * *"
-  parameters = {
-    "environment" = "production"
+  metalake     = gravitino_metalake.platform.name
+  job_template = gravitino_job_template.spark_etl.name
+  job_conf = {
+    environment = "production"
   }
-  comment = "Hourly raw event processing"
 }
 
 # ---------------------------------------------------------------------------

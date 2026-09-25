@@ -9,15 +9,18 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -34,24 +37,36 @@ var auditAttrTypes = map[string]attr.Type{
 	"last_modified_time": types.StringType,
 }
 
+const dataTypeDescription = "The Gravitino data type. Primitive types use the name Gravitino spells " +
+	"(`integer`, `long`, `float`, `double`, `decimal(10,2)`, `date`, `timestamp(3)`, `string`, " +
+	"`varchar(10)`, `binary`, ...). Complex types use the JSON document of the API, produced with " +
+	"jsonencode(), for example jsonencode({type = \"list\", elementType = \"integer\"}) or " +
+	"jsonencode({type = \"struct\", fields = [{name = \"id\", type = \"integer\"}]})."
+
 type FunctionResource struct {
 	client *client.Client
 }
 
 type FunctionResourceModel struct {
-	ID           types.String `tfsdk:"id"`
-	Metalake     types.String `tfsdk:"metalake"`
-	Catalog      types.String `tfsdk:"catalog"`
-	Schema       types.String `tfsdk:"schema"`
-	Name         types.String `tfsdk:"name"`
-	Comment      types.String `tfsdk:"comment"`
-	FunctionBody types.String `tfsdk:"function_body"`
-	Properties   types.Map    `tfsdk:"properties"`
-	Audit        types.Object `tfsdk:"audit"`
+	ID            types.String `tfsdk:"id"`
+	Metalake      types.String `tfsdk:"metalake"`
+	Catalog       types.String `tfsdk:"catalog"`
+	Schema        types.String `tfsdk:"schema"`
+	Name          types.String `tfsdk:"name"`
+	FunctionType  types.String `tfsdk:"function_type"`
+	Deterministic types.Bool   `tfsdk:"deterministic"`
+	Comment       types.String `tfsdk:"comment"`
+	Definitions   types.List   `tfsdk:"definitions"`
+	Audit         types.Object `tfsdk:"audit"`
 }
 
 func New() resource.Resource {
 	return &FunctionResource{}
+}
+
+// SetClient injects the API client; used by tests.
+func (r *FunctionResource) SetClient(c *client.Client) {
+	r.client = c
 }
 
 func (r *FunctionResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -60,7 +75,11 @@ func (r *FunctionResource) Metadata(_ context.Context, _ resource.MetadataReques
 
 func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a Gravitino function within a metalake, catalog, and schema.",
+		Description: "Manages a Gravitino function within a metalake, catalog and schema.\n\n" +
+			"A function is registered with one or more definitions (the parameters plus the return type, " +
+			"or the return columns for table functions) and each definition holds one implementation per " +
+			"runtime. Gravitino can update the comment, add and remove definitions and add, update and " +
+			"remove implementations; every other change replaces the function.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The compound identifier in the format metalake.catalog.schema.function.",
@@ -72,14 +91,23 @@ func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"catalog": schema.StringAttribute{
 				Description: "The catalog name.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"schema": schema.StringAttribute{
 				Description: "The schema name.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"name": schema.StringAttribute{
 				Description: "The function name.",
@@ -88,29 +116,173 @@ func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
+			"function_type": schema.StringAttribute{
+				Description: "The type of the function.",
+				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(models.AllFunctionTypes...),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"deterministic": schema.BoolAttribute{
+				Description: "Whether the function is deterministic. Defaults to false. Gravitino cannot change " +
+					"this after registration, so a function whose deterministic flag differs from the configuration " +
+					"is replaced (declare it explicitly for imported functions).",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.RequiresReplace(),
+				},
+			},
 			"comment": schema.StringAttribute{
-				Description: "A comment describing the function.",
-				Optional:    true,
+				Description: "A comment describing the function. Gravitino updates the comment in place; an " +
+					"empty comment clears it. Clearing an existing comment replaces the function, because " +
+					"the Gravitino alter endpoint rejects a null comment.",
+				Optional: true,
+				PlanModifiers: []planmodifier.String{
+					commentModifier(),
+				},
 			},
-			"function_body": schema.StringAttribute{
-				Description: "The function body.",
-				Optional:    true,
-			},
-			"properties": schema.MapAttribute{
-				Description: "Key-value properties for the function.",
-				Optional:    true,
-				ElementType: types.StringType,
-				PlanModifiers: []planmodifier.Map{
-					mapplanmodifier.RequiresReplace(),
+			"definitions": schema.ListNestedAttribute{
+				Description: "The definitions of the function (at least one). Gravitino identifies a " +
+					"definition by its parameters: changing the parameters, the return type or the return " +
+					"columns removes the old definition and adds the new one. Implementations are added, " +
+					"updated and removed per runtime.",
+				Required: true,
+				Validators: []validator.List{
+					listvalidator.SizeAtLeast(1),
+				},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"parameters": schema.ListNestedAttribute{
+							Description: "The parameters of the definition (SCALAR, AGGREGATE and TABLE functions).",
+							Optional:    true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"name": schema.StringAttribute{
+										Description: "The name of the parameter.",
+										Required:    true,
+									},
+									"data_type": schema.StringAttribute{
+										Description: dataTypeDescription,
+										Required:    true,
+									},
+									"comment": schema.StringAttribute{
+										Description: "The comment of the parameter.",
+										Optional:    true,
+									},
+									"default_value": schema.StringAttribute{
+										Description: "The default value expression of the parameter, as the JSON " +
+											"document of a Gravitino function argument, for example " +
+											"jsonencode({type = \"literal\", dataType = \"integer\", value = \"1\"}).",
+										Optional: true,
+									},
+								},
+							},
+						},
+						"return_type": schema.StringAttribute{
+							Description: "The return type of the definition, for SCALAR and AGGREGATE functions. " +
+								dataTypeDescription,
+							Optional: true,
+						},
+						"return_columns": schema.ListNestedAttribute{
+							Description: "The return columns of the definition, for TABLE functions.",
+							Optional:    true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"name": schema.StringAttribute{
+										Description: "The name of the return column.",
+										Required:    true,
+									},
+									"data_type": schema.StringAttribute{
+										Description: dataTypeDescription,
+										Required:    true,
+									},
+									"comment": schema.StringAttribute{
+										Description: "The comment of the return column.",
+										Optional:    true,
+									},
+								},
+							},
+						},
+						"impls": schema.ListNestedAttribute{
+							Description: "The implementations of the definition. Gravitino stores one " +
+								"implementation per runtime and discriminates them by language.",
+							Optional: true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"language": schema.StringAttribute{
+										Description: "The implementation language (the API discriminator).",
+										Required:    true,
+										Validators: []validator.String{
+											stringvalidator.OneOf(models.AllFunctionLanguages...),
+										},
+									},
+									"runtime": schema.StringAttribute{
+										Description: "The runtime of the implementation. Implementations are " +
+											"identified by their runtime.",
+										Required: true,
+										Validators: []validator.String{
+											stringvalidator.OneOf(models.AllFunctionRuntimes...),
+										},
+									},
+									"sql": schema.StringAttribute{
+										Description: "The SQL expression. Required for a SQL implementation.",
+										Optional:    true,
+									},
+									"class_name": schema.StringAttribute{
+										Description: "The fully qualified class name. Required for a JAVA implementation.",
+										Optional:    true,
+									},
+									"handler": schema.StringAttribute{
+										Description: "The name of the Python handler function (PYTHON implementations).",
+										Optional:    true,
+									},
+									"code_block": schema.StringAttribute{
+										Description: "The Python code block (PYTHON implementations).",
+										Optional:    true,
+									},
+									"resources": schema.SingleNestedAttribute{
+										Description: "External resources required by the implementation.",
+										Optional:    true,
+										Attributes: map[string]schema.Attribute{
+											"jars": schema.ListAttribute{
+												Description: "JAR file URIs.",
+												Optional:    true,
+												ElementType: types.StringType,
+											},
+											"files": schema.ListAttribute{
+												Description: "File URIs.",
+												Optional:    true,
+												ElementType: types.StringType,
+											},
+											"archives": schema.ListAttribute{
+												Description: "Archive URIs.",
+												Optional:    true,
+												ElementType: types.StringType,
+											},
+										},
+									},
+									"properties": schema.MapAttribute{
+										Description: "Additional properties of the implementation.",
+										Optional:    true,
+										ElementType: types.StringType,
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 			"audit": schema.ObjectAttribute{
-				Description:    "Audit information for the function.",
+				Description: "Audit information for the function. Gravitino rewrites it on every " +
+					"alter (lastModifier/lastModifiedTime), so the upstream value is always read back " +
+					"and the attribute is never planned from state.",
 				Computed:       true,
 				AttributeTypes: auditAttrTypes,
-				PlanModifiers: []planmodifier.Object{
-					objectplanmodifier.UseStateForUnknown(),
-				},
 			},
 		},
 	}
@@ -138,37 +310,48 @@ func (r *FunctionResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	tflog.Debug(ctx, "Creating function", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
+	tflog.Debug(ctx, "Registering function", map[string]interface{}{
+		"metalake": plan.Metalake.ValueString(),
+		"catalog":  plan.Catalog.ValueString(),
+		"schema":   plan.Schema.ValueString(),
+		"name":     plan.Name.ValueString(),
+	})
 
-	properties := make(map[string]string)
-	if !plan.Properties.IsNull() && !plan.Properties.IsUnknown() {
-		resp.Diagnostics.Append(plan.Properties.ElementsAs(ctx, &properties, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-	}
-
-	createReq := &models.FunctionCreateRequest{
-		Name:         plan.Name.ValueString(),
-		Comment:      plan.Comment.ValueString(),
-		FunctionBody: plan.FunctionBody.ValueString(),
-		Properties:   properties,
-	}
-
-	functionResp, err := r.client.CreateFunction(plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
-	if err != nil {
-		resp.Diagnostics.Append(client.NewResourceError("creating function", plan.Name.ValueString(), err)...)
+	definitions, d := models.FunctionDefinitionsFromTF(ctx, plan.Definitions)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	r.readFunctionToState(ctx, functionResp, &plan, &resp.Diagnostics)
+	// The registered definitions are also the reference for the values written to
+	// state, so the plan is applied verbatim for everything the server echoes.
+	registerRequest := &models.FunctionRegisterRequest{
+		Name:          plan.Name.ValueString(),
+		FunctionType:  plan.FunctionType.ValueString(),
+		Deterministic: plan.Deterministic.ValueBool(),
+		Comment:       plan.Comment.ValueString(),
+		Definitions:   definitions,
+	}
+
+	functionResponse, err := r.client.RegisterFunction(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), registerRequest)
+	if err != nil {
+		resp.Diagnostics.Append(client.NewResourceError("registering function", plan.Name.ValueString(), err)...)
+		return
+	}
+
+	applyFunctionToModel(ctx, &functionResponse.Function, &plan, definitions, false, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 
-	tflog.Debug(ctx, "Created function", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
+	tflog.Debug(ctx, "Registered function", map[string]interface{}{
+		"metalake": plan.Metalake.ValueString(),
+		"catalog":  plan.Catalog.ValueString(),
+		"schema":   plan.Schema.ValueString(),
+		"name":     plan.Name.ValueString(),
+	})
 }
 
 func (r *FunctionResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -178,11 +361,22 @@ func (r *FunctionResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	tflog.Debug(ctx, "Reading function", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
+	tflog.Debug(ctx, "Reading function", map[string]interface{}{
+		"metalake": state.Metalake.ValueString(),
+		"catalog":  state.Catalog.ValueString(),
+		"schema":   state.Schema.ValueString(),
+		"name":     state.Name.ValueString(),
+	})
 
-	functionResp, err := r.client.GetFunction(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	functionResponse, err := r.client.GetFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
+			tflog.Debug(ctx, "Function no longer exists, removing from state", map[string]interface{}{
+				"metalake": state.Metalake.ValueString(),
+				"catalog":  state.Catalog.ValueString(),
+				"schema":   state.Schema.ValueString(),
+				"name":     state.Name.ValueString(),
+			})
 			resp.State.RemoveResource(ctx)
 			return
 		}
@@ -190,12 +384,29 @@ func (r *FunctionResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	r.readFunctionToState(ctx, functionResp, &state, &resp.Diagnostics)
+	// The server is the source of truth for a refresh; the state of this run keeps
+	// the spelling of the data type documents it already holds, so an equivalent but
+	// reformatted answer (Gravitino re-encodes data type documents) does not produce
+	// a whitespace only diff on every plan.
+	refreshed, d := models.FunctionDefinitionsFromTF(ctx, state.Definitions)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	applyFunctionToModel(ctx, &functionResponse.Function, &state, refreshed, true, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+
+	tflog.Debug(ctx, "Read function", map[string]interface{}{
+		"metalake": state.Metalake.ValueString(),
+		"catalog":  state.Catalog.ValueString(),
+		"schema":   state.Schema.ValueString(),
+		"name":     state.Name.ValueString(),
+	})
 }
 
 func (r *FunctionResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -206,33 +417,66 @@ func (r *FunctionResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	tflog.Debug(ctx, "Updating function", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
+	tflog.Debug(ctx, "Updating function", map[string]interface{}{
+		"metalake": state.Metalake.ValueString(),
+		"catalog":  state.Catalog.ValueString(),
+		"schema":   state.Schema.ValueString(),
+		"name":     state.Name.ValueString(),
+	})
 
-	var updates []interface{}
-
-	if !plan.Comment.Equal(state.Comment) {
-		updates = append(updates, models.NewUpdateFunctionCommentRequest(plan.Comment.ValueString()))
+	updates, d := buildFunctionUpdates(ctx, plan, state)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
+	var function *models.Function
 	if len(updates) > 0 {
-		functionResp, err := r.client.UpdateFunction(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
+		functionResponse, err := r.client.UpdateFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
 		if err != nil {
+			if client.IsNotFoundError(err) {
+				tflog.Debug(ctx, "Function no longer exists, removing from state", map[string]interface{}{"name": state.Name.ValueString()})
+				resp.State.RemoveResource(ctx)
+				return
+			}
 			resp.Diagnostics.Append(client.NewResourceError("updating function", state.Name.ValueString(), err)...)
 			return
 		}
-		r.readFunctionToState(ctx, functionResp, &plan, &resp.Diagnostics)
+		function = &functionResponse.Function
 	} else {
-		functionResp, err := r.client.GetFunction(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+		functionResponse, err := r.client.GetFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 		if err != nil {
+			if client.IsNotFoundError(err) {
+				tflog.Debug(ctx, "Function no longer exists, removing from state", map[string]interface{}{"name": state.Name.ValueString()})
+				resp.State.RemoveResource(ctx)
+				return
+			}
 			resp.Diagnostics.Append(client.NewResourceError("reading function after update", state.Name.ValueString(), err)...)
 			return
 		}
-		r.readFunctionToState(ctx, functionResp, &plan, &resp.Diagnostics)
+		function = &functionResponse.Function
+	}
+
+	// The plan is the reference for the definitions of this apply.
+	planDefinitions, d := models.FunctionDefinitionsFromTF(ctx, plan.Definitions)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	applyFunctionToModel(ctx, function, &plan, planDefinitions, false, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 
-	tflog.Debug(ctx, "Updated function", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
+	tflog.Debug(ctx, "Updated function", map[string]interface{}{
+		"metalake": plan.Metalake.ValueString(),
+		"catalog":  plan.Catalog.ValueString(),
+		"schema":   plan.Schema.ValueString(),
+		"name":     plan.Name.ValueString(),
+	})
 }
 
 func (r *FunctionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -242,21 +486,35 @@ func (r *FunctionResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	tflog.Debug(ctx, "Deleting function", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
+	tflog.Debug(ctx, "Dropping function", map[string]interface{}{
+		"metalake": state.Metalake.ValueString(),
+		"catalog":  state.Catalog.ValueString(),
+		"schema":   state.Schema.ValueString(),
+		"name":     state.Name.ValueString(),
+	})
 
-	_, err := r.client.DropFunction(state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), false)
-	if err != nil {
-		resp.Diagnostics.Append(client.NewResourceError("deleting function", state.Name.ValueString(), err)...)
+	if _, err := r.client.DropFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString()); err != nil {
+		if client.IsNotFoundError(err) {
+			tflog.Debug(ctx, "Function already dropped", map[string]interface{}{"name": state.Name.ValueString()})
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("dropping function", state.Name.ValueString(), err)...)
 		return
 	}
 
-	tflog.Debug(ctx, "Deleted function", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
+	tflog.Debug(ctx, "Dropped function", map[string]interface{}{
+		"metalake": state.Metalake.ValueString(),
+		"catalog":  state.Catalog.ValueString(),
+		"schema":   state.Schema.ValueString(),
+		"name":     state.Name.ValueString(),
+	})
 }
 
 func (r *FunctionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	parts := strings.SplitN(req.ID, ".", 4)
-	if len(parts) != 4 {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected format: metalake.catalog.schema.function")
+	if len(parts) != 4 || parts[0] == "" || parts[1] == "" || parts[2] == "" || parts[3] == "" {
+		resp.Diagnostics.AddError("Invalid import ID",
+			fmt.Sprintf("Expected the format metalake.catalog.schema.function, got %q.", req.ID))
 		return
 	}
 
@@ -267,27 +525,39 @@ func (r *FunctionResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 }
 
-func (r *FunctionResource) readFunctionToState(ctx context.Context, functionResp *models.FunctionResponse, m *FunctionResourceModel, diags *diag.Diagnostics) {
-	m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), m.Schema.ValueString(), functionResp.Function.Name))
-	m.Name = types.StringValue(functionResp.Function.Name)
-	if functionResp.Function.Comment != "" {
-		m.Comment = types.StringValue(functionResp.Function.Comment)
-	} else {
-		m.Comment = types.StringNull()
-	}
-	m.FunctionBody = types.StringValue(functionResp.Function.FunctionBody)
+// applyFunctionToModel copies an API function into the Terraform model.
+//
+// refreshing selects the role of previous:
+//   - refreshing (Read): previous is the state being refreshed, the server decides
+//     the content and a definition it echoed keeps the spelling of the state;
+//   - after an apply (Create/Update): previous is the plan of the apply, which
+//     decides the order, the spelling and the set of definitions.
+func applyFunctionToModel(ctx context.Context, function *models.Function, m *FunctionResourceModel, previous []models.FunctionDefinition, refreshing bool, diags *diag.Diagnostics) {
+	m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s", m.Metalake.ValueString(), m.Catalog.ValueString(), m.Schema.ValueString(), function.Name))
+	m.Name = types.StringValue(function.Name)
+	// The API answers "scalar"/"table" while Terraform (and the API request)
+	// spells the type in upper case.
+	m.FunctionType = types.StringValue(models.NormalizeFunctionType(function.FunctionType))
+	m.Deterministic = types.BoolValue(function.Deterministic)
 
-	if len(functionResp.Function.Properties) > 0 {
-		props, d := types.MapValueFrom(ctx, types.StringType, functionResp.Function.Properties)
+	m.Comment = types.StringNull()
+	if function.Comment != "" {
+		m.Comment = types.StringValue(function.Comment)
+	}
+
+	if refreshing {
+		definitions, d := models.FunctionDefinitionsToTFRefreshed(ctx, function.Definitions, previous)
 		diags.Append(d...)
-		m.Properties = props
+		m.Definitions = definitions
 	} else {
-		m.Properties = types.MapNull(types.StringType)
+		definitions, d := models.FunctionDefinitionsToTFApplied(ctx, function.Definitions, previous)
+		diags.Append(d...)
+		m.Definitions = definitions
 	}
 
-	auditObj, d := auditToObject(functionResp.Function.Audit)
+	audit, d := auditToObject(function.Audit)
 	diags.Append(d...)
-	m.Audit = auditObj
+	m.Audit = audit
 }
 
 func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {

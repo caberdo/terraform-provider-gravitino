@@ -22,6 +22,18 @@ var _ resource.Resource = &IdpGroupResource{}
 var _ resource.ResourceWithImportState = &IdpGroupResource{}
 var _ resource.ResourceWithConfigure = &IdpGroupResource{}
 
+// IdpGroupResourceDescription is the schema description shown in the generated docs.
+// The built-in IDP REST API is not part of a default Gravitino 1.3.0 server:
+// it needs `gravitino.authenticators = basic` (without `simple`),
+// `gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`
+// and a service admin from `gravitino.authorization.serviceAdmins`. Without
+// that configuration every IDP endpoint answers HTTP 404.
+const IdpGroupResourceDescription = "Manages a built-in IDP group for local authentication; the built-in IDP REST API needs " +
+	"`gravitino.authenticators = basic` (without `simple`) and " +
+	"`gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`, " +
+	"and calls must come from a `gravitino.authorization.serviceAdmins` service admin, " +
+	"otherwise the endpoint answers HTTP 404."
+
 type IdpGroupResource struct {
 	client *client.Client
 }
@@ -35,10 +47,9 @@ func (r *IdpGroupResource) SetClient(c *client.Client) {
 }
 
 type IdpGroupResourceModel struct {
-	ID      types.String `tfsdk:"id"`
-	Name    types.String `tfsdk:"name"`
-	Comment types.String `tfsdk:"comment"`
-	Users   types.Set    `tfsdk:"users"`
+	ID    types.String `tfsdk:"id"`
+	Name  types.String `tfsdk:"name"`
+	Users types.Set    `tfsdk:"users"`
 }
 
 func (r *IdpGroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -62,7 +73,7 @@ func (r *IdpGroupResource) Metadata(_ context.Context, _ resource.MetadataReques
 
 func (r *IdpGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a built-in IDP group for local authentication.",
+		Description: IdpGroupResourceDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
@@ -74,11 +85,11 @@ func (r *IdpGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"name": schema.StringAttribute{
 				Required:    true,
 				Description: "The group name.",
-			},
-			"comment": schema.StringAttribute{
-				Optional:    true,
-				Computed:    true,
-				Description: "Optional description of the group.",
+				PlanModifiers: []planmodifier.String{
+					// There is no rename endpoint for IDP groups: a renamed
+					// group has to be recreated.
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"users": schema.SetAttribute{
 				Optional:    true,
@@ -99,12 +110,7 @@ func (r *IdpGroupResource) Create(ctx context.Context, req resource.CreateReques
 
 	tflog.Debug(ctx, "Creating IDP group", map[string]interface{}{"name": plan.Name.ValueString()})
 
-	createReq := &models.IdpAddGroupRequest{
-		Group:   plan.Name.ValueString(),
-		Comment: plan.Comment.ValueString(),
-	}
-
-	result, err := r.client.AddIdpGroup(createReq)
+	result, err := r.client.AddIdpGroup(ctx, &models.IdpAddGroupRequest{Group: plan.Name.ValueString()})
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating IDP group", plan.Name.ValueString(), err)...)
 		return
@@ -112,13 +118,16 @@ func (r *IdpGroupResource) Create(ctx context.Context, req resource.CreateReques
 
 	plan.ID = types.StringValue(result.Group.Name)
 
+	// A new group is always empty; members are added through the dedicated
+	// membership endpoint, which is the only one that accepts them.
 	users := listToSlice(plan.Users)
 	if len(users) > 0 {
-		_, err := r.client.ChangeIdpGroupMembership(plan.Name.ValueString(), &models.IdpGroupMembershipChangeRequest{UsersToAdd: users})
+		membership, err := r.client.ChangeIdpGroupMembership(ctx, plan.Name.ValueString(), &models.IdpGroupMembershipChangeRequest{UsersToAdd: users})
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("adding IDP group members", plan.Name.ValueString(), err)...)
 			return
 		}
+		users = membership.Group.Users
 	}
 
 	usersList, d := stringSliceToList(ctx, users)
@@ -139,7 +148,7 @@ func (r *IdpGroupResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	tflog.Debug(ctx, "Reading IDP group", map[string]interface{}{"name": state.Name.ValueString()})
 
-	result, err := r.client.GetIdpGroup(state.Name.ValueString())
+	result, err := r.client.GetIdpGroup(ctx, state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -151,7 +160,6 @@ func (r *IdpGroupResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	state.ID = types.StringValue(result.Group.Name)
 	state.Name = types.StringValue(result.Group.Name)
-	state.Comment = types.StringValue(result.Group.Comment)
 	users, d := stringSliceToList(ctx, result.Group.Users)
 	resp.Diagnostics.Append(d...)
 	state.Users = users
@@ -185,7 +193,7 @@ func (r *IdpGroupResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	if len(toAdd) > 0 || len(toRemove) > 0 {
-		_, err := r.client.ChangeIdpGroupMembership(state.Name.ValueString(), &models.IdpGroupMembershipChangeRequest{
+		result, err := r.client.ChangeIdpGroupMembership(ctx, state.Name.ValueString(), &models.IdpGroupMembershipChangeRequest{
 			UsersToAdd:    toAdd,
 			UsersToRemove: toRemove,
 		})
@@ -193,9 +201,9 @@ func (r *IdpGroupResource) Update(ctx context.Context, req resource.UpdateReques
 			resp.Diagnostics.Append(client.NewResourceError("updating IDP group membership", state.Name.ValueString(), err)...)
 			return
 		}
+		newUsers = result.Group.Users
 	}
 
-	state.Comment = plan.Comment
 	users, d := stringSliceToList(ctx, newUsers)
 	resp.Diagnostics.Append(d...)
 	state.Users = users
@@ -214,8 +222,15 @@ func (r *IdpGroupResource) Delete(ctx context.Context, req resource.DeleteReques
 
 	tflog.Debug(ctx, "Deleting IDP group", map[string]interface{}{"name": state.Name.ValueString()})
 
-	_, err := r.client.RemoveIdpGroup(state.Name.ValueString(), true)
+	// The group owns its members, so it is removed with force=true: deleting a
+	// non-empty group without force is rejected with a 405.
+	_, err := r.client.RemoveIdpGroup(ctx, state.Name.ValueString(), true)
 	if err != nil {
+		if client.IsNotFoundError(err) {
+			// Already gone: deleting twice is not an error.
+			tflog.Debug(ctx, "IDP group already deleted", map[string]interface{}{"name": state.Name.ValueString()})
+			return
+		}
 		resp.Diagnostics.Append(client.NewResourceError("deleting IDP group", state.Name.ValueString(), err)...)
 		return
 	}
@@ -224,6 +239,16 @@ func (r *IdpGroupResource) Delete(ctx context.Context, req resource.DeleteReques
 }
 
 func (r *IdpGroupResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// ImportStatePassthroughID ignores an empty identifier silently, which
+	// would leave an import without a name: reject it explicitly instead.
+	if req.ID == "" {
+		resp.Diagnostics.AddError(
+			"Unexpected Import Identifier",
+			"Expected the name of an existing built-in IDP group, got an empty identifier.",
+		)
+		return
+	}
+
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 }
 

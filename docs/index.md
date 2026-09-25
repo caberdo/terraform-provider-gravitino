@@ -9,6 +9,23 @@ description: |-
 
 The Gravitino provider allows you to manage [Apache Gravitino](https://gravitino.apache.org) resources including metalakes, catalogs, schemas, tables, filesets, topics, views, functions, models, partitions, tags, policies, and jobs.
 
+## API compatibility
+
+The provider targets the Apache Gravitino **v1.3.0** REST API. Some resources additionally need
+server-side configuration or a newer server:
+
+- `gravitino_role`, `gravitino_owner`, `gravitino_user` and `gravitino_group` require
+  `gravitino.authorization.enable=true` on the server; without it those endpoints answer HTTP 405
+  `UnsupportedOperationException`.
+- `gravitino_idp_user` and `gravitino_idp_group` require the built-in IDP plugin
+  (`gravitino.server.rest.extensionPackages=org.apache.gravitino.idp.web.rest.feature`) together
+  with the `basic` authenticator; on a default server `/api/idp/*` returns 404.
+- `gravitino_secrets` requires Gravitino 1.4 or newer.
+- Tables, views, functions, partitions and statistics require a lakehouse catalog (Hive or
+  Iceberg); a fileset catalog rejects those operations.
+- Jobs require a job executor configured on the server, and a job template can only be deleted
+  once none of its job runs are active.
+
 ## Authentication
 
 The provider supports five authentication methods: `none` (default), `simple`, `basic`, `oauth`, and `kerberos`. Set the `auth` attribute to choose a method.

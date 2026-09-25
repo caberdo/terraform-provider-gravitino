@@ -96,9 +96,16 @@ func (d *GroupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	result, err := d.client.GetGroup(config.Metalake.ValueString(), config.Name.ValueString())
+	result, err := d.client.GetGroup(ctx, config.Metalake.ValueString(), config.Name.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get group", err.Error())
+		if client.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Group not found",
+				fmt.Sprintf("No group %q exists in metalake %q.", config.Name.ValueString(), config.Metalake.ValueString()),
+			)
+			return
+		}
+		resp.Diagnostics.Append(client.NewResourceError("reading group", config.Name.ValueString(), err)...)
 		return
 	}
 

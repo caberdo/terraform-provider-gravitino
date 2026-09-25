@@ -2,16 +2,18 @@
 page_title: "gravitino_credentials Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  
+  Gets the credentials associated with a metadata object.
 ---
 
 # gravitino_credentials Data Source
 
-
+Gets the credentials associated with a metadata object.
 
 ## Example Usage
 
 ```terraform
+# `credentials` is a list of the credential objects held by the metadata object;
+# each entry has credential_type, expire_time_in_ms and (sensitive) credential_info.
 data "gravitino_credentials" "example" {
   metalake      = "example_metalake"
   resource_type = "TABLE"
@@ -25,11 +27,18 @@ data "gravitino_credentials" "example" {
 ### Required
 
 - `metalake` (String) The metalake name.
-- `resource` (String) The resource name.
-- `resource_type` (String) The metadata object type (e.g. CATALOG, SCHEMA, TABLE, COLUMN, FILESET, TOPIC, MODEL, ROLE).
+- `resource` (String) The full name of the metadata object (for example hive_catalog.example_schema.users).
+- `resource_type` (String) The metadata object type (METALAKE, CATALOG, SCHEMA, TABLE, COLUMN, FILESET, TOPIC, MODEL, ROLE).
 
 ### Read-Only
 
-- `expire_time` (String) The credential expiration time.
-- `type` (String) The credential type.
-- `value` (String, Sensitive) The credential value.
+- `credentials` (Attributes List) The credentials associated with the metadata object. (see [below for nested schema](#nestedatt--credentials))
+
+<a id="nestedatt--credentials"></a>
+### Nested Schema for `credentials`
+
+Read-Only:
+
+- `credential_info` (Map of String, Sensitive) The specific information of the credential.
+- `credential_type` (String) The type of the credential, for example s3-token, s3-secret-key, oss-token, oss-secret-key, gcs-token, adls-token, azure-account-key.
+- `expire_time_in_ms` (Number) The expiration time of the credential in milliseconds since the epoch. 0 means the credential does not expire.

@@ -2,42 +2,48 @@ package view
 
 import (
 	"context"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var _ datasource.DataSource = &ViewsDataSource{}
 var _ datasource.DataSourceWithConfigure = &ViewsDataSource{}
 
-var DSLListAuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
-
 type ViewsDataSource struct {
 	client *client.Client
 }
 
+// ViewListEntryModel is one element of the gravitino_views data source.
+type ViewListEntryModel struct {
+	Name            types.String                     `tfsdk:"name"`
+	Comment         types.String                     `tfsdk:"comment"`
+	Columns         []models.ColumnTFSDK             `tfsdk:"column"`
+	Representations []models.ViewRepresentationTFSDK `tfsdk:"representation"`
+	DefaultCatalog  types.String                     `tfsdk:"default_catalog"`
+	DefaultSchema   types.String                     `tfsdk:"default_schema"`
+	Properties      types.Map                        `tfsdk:"properties"`
+	Audit           types.Object                     `tfsdk:"audit"`
+}
+
 type ViewsDataSourceModel struct {
-	Metalake types.String `tfsdk:"metalake"`
-	Catalog  types.String `tfsdk:"catalog"`
-	Schema   types.String `tfsdk:"schema"`
-	Views    types.List   `tfsdk:"views"`
+	Metalake types.String         `tfsdk:"metalake"`
+	Catalog  types.String         `tfsdk:"catalog"`
+	Schema   types.String         `tfsdk:"schema"`
+	Views    []ViewListEntryModel `tfsdk:"views"`
 }
 
 func NewViewsDataSource() datasource.DataSource {
 	return &ViewsDataSource{}
+}
+
+func (d *ViewsDataSource) SetClient(c *client.Client) {
+	d.client = c
 }
 
 func (d *ViewsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -73,8 +79,64 @@ func (d *ViewsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 							Description: "The view comment.",
 							Computed:    true,
 						},
-						"view_def": schema.StringAttribute{
-							Description: "The SQL view definition.",
+						"column": schema.ListNestedAttribute{
+							Description: "The output columns of the view.",
+							Computed:    true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"name": schema.StringAttribute{
+										Description: "The column name.",
+										Computed:    true,
+									},
+									"type": schema.StringAttribute{
+										Description: "The column data type.",
+										Computed:    true,
+									},
+									"comment": schema.StringAttribute{
+										Description: "The column comment.",
+										Computed:    true,
+									},
+									"nullable": schema.BoolAttribute{
+										Description: "Whether the column is nullable.",
+										Computed:    true,
+									},
+									"auto_increment": schema.BoolAttribute{
+										Description: "Whether the column is auto increment.",
+										Computed:    true,
+									},
+									"default_value": schema.StringAttribute{
+										Description: "The default value of the column, using the data type of the column.",
+										Computed:    true,
+									},
+								},
+							},
+						},
+						"representation": schema.ListNestedAttribute{
+							Description: "The representations of the view body, keyed by dialect.",
+							Computed:    true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"type": schema.StringAttribute{
+										Description: "The representation type discriminator.",
+										Computed:    true,
+									},
+									"dialect": schema.StringAttribute{
+										Description: "The SQL dialect of this representation.",
+										Computed:    true,
+									},
+									"sql": schema.StringAttribute{
+										Description: "The SQL text of the view.",
+										Computed:    true,
+									},
+								},
+							},
+						},
+						"default_catalog": schema.StringAttribute{
+							Description: "The default catalog used to resolve unqualified identifiers in the view representations.",
+							Computed:    true,
+						},
+						"default_schema": schema.StringAttribute{
+							Description: "The default schema used to resolve unqualified identifiers in the view representations.",
 							Computed:    true,
 						},
 						"properties": schema.MapAttribute{
@@ -85,7 +147,7 @@ func (d *ViewsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 						"audit": schema.ObjectAttribute{
 							Description:    "Audit information for the view.",
 							Computed:       true,
-							AttributeTypes: DSLListAuditAttrTypes,
+							AttributeTypes: models.AuditAttrTypes,
 						},
 					},
 				},
@@ -113,101 +175,49 @@ func (ds *ViewsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	views, err := ds.client.ListViewsDetails(config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
+	views, err := ds.client.ListViewsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list views", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing views", config.Schema.ValueString(), err)...)
 		return
 	}
 
-	items := make([]attr.Value, 0, len(views))
+	entries := make([]ViewListEntryModel, 0, len(views))
 	for i := range views {
-		item, d := dslViewListItemToObject(ctx, &views[i])
-		resp.Diagnostics.Append(d...)
+		entry, diags := viewListEntryToModel(ctx, &views[i])
+		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		items = append(items, item)
+		entries = append(entries, entry)
 	}
-	if len(items) == 0 {
-		items = []attr.Value{}
-	}
-
-	listVal, d := types.ListValue(
-		types.ObjectType{AttrTypes: dslViewListItemAttrTypes()},
-		items,
-	)
-	resp.Diagnostics.Append(d...)
-	config.Views = listVal
+	config.Views = entries
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }
 
-func dslViewListItemAttrTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"name":       types.StringType,
-		"comment":    types.StringType,
-		"view_def":   types.StringType,
-		"properties": types.MapType{ElemType: types.StringType},
-		"audit":      types.ObjectType{AttrTypes: DSLListAuditAttrTypes},
-	}
-}
-
-func dslViewListItemToObject(ctx context.Context, v *models.View) (types.Object, diag.Diagnostics) {
+func viewListEntryToModel(ctx context.Context, view *models.View) (ViewListEntryModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	var props types.Map
-	if len(v.Properties) > 0 {
-		p, d := types.MapValueFrom(ctx, types.StringType, v.Properties)
+	entry := ViewListEntryModel{
+		Name:            types.StringValue(view.Name),
+		Comment:         types.StringValue(view.Comment),
+		Columns:         models.TableColumnsToModel(ctx, view.Columns, &diags),
+		Representations: models.ViewRepresentationsToState(view.Representations),
+		DefaultCatalog:  types.StringValue(view.DefaultCatalog),
+		DefaultSchema:   types.StringValue(view.DefaultSchema),
+	}
+
+	if len(view.Properties) > 0 {
+		props, d := types.MapValueFrom(ctx, types.StringType, view.Properties)
 		diags.Append(d...)
-		props = p
+		entry.Properties = props
 	} else {
-		props = types.MapNull(types.StringType)
+		entry.Properties = types.MapNull(types.StringType)
 	}
 
-	auditObj, d := dslListAuditToObject(v.Audit)
+	auditObj, d := models.AuditToObjectValue(ctx, view.Audit)
 	diags.Append(d...)
+	entry.Audit = auditObj
 
-	obj, d := types.ObjectValue(dslViewListItemAttrTypes(), map[string]attr.Value{
-		"name":       types.StringValue(v.Name),
-		"comment":    types.StringValue(v.Comment),
-		"view_def":   types.StringValue(v.ViewDef),
-		"properties": props,
-		"audit":      auditObj,
-	})
-	diags.Append(d...)
-
-	return obj, diags
-}
-
-func dslListAuditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(DSLListAuditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if audit.Creator != "" {
-		creator = types.StringValue(audit.Creator)
-	}
-
-	createTime := types.StringNull()
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if audit.LastModifier != "" {
-		lastModifier = types.StringValue(audit.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(DSLListAuditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
+	return entry, diags
 }
