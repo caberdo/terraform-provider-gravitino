@@ -16,7 +16,7 @@ services:
       start_period: 60s
 
   test:
-    image: golang:1.26.4
+    image: golang:1.27.1
     volumes:
       - .:/app
       - go-modules:/go/pkg/mod
@@ -40,7 +40,7 @@ services:
         condition: service_healthy
 
   acc:
-    image: golang:1.26.4
+    image: golang:1.27.1
     volumes:
       - .:/app
       - go-modules:/go/pkg/mod
