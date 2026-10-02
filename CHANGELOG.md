@@ -6,10 +6,21 @@ ENHANCEMENTS:
   so the data source now reports whether the configured credential is a
   Gravitino service administrator. Servers predating 1.3.1 omit the field, so
   `service_admin` is then `false`.
+- **`gravitino_statistics` and `gravitino_credentials` accept `VIEW` and
+  `FUNCTION` as `resource_type`.** Gravitino 1.3.1 added both to the shared
+  `metadataObjectType` path parameter used by the statistics and credentials
+  endpoints (`models.StatisticsObjectTypes`, `models.CredentialObjectTypes`).
+  Both data sources keep static enum validators that accept the union of the
+  1.3.0 and 1.3.1 values and verify the server version at read time
+  (`client.CheckMetadataObjectTypeSupported`, `GET /api/version`): against a
+  server older than 1.3.1 a VIEW/FUNCTION read fails with an explicit
+  "requires Gravitino 1.3.1 or newer" diagnostic instead of the endpoint's
+  opaque 400. The two lists stay separate constants, as the provider
+  deliberately keeps credential-specific enums.
 - **Documented the Gravitino 1.3.0 vs 1.3.1 compatibility matrix.** `AGENTS.md` and the
   provider index page now list which attributes, data sources and endpoints need
-  Gravitino >= 1.3.1 and how the provider behaves on 1.3.0, including the best-effort
-  `GET /api/version` detection that turns a 1.3.1-only value into an explicit diagnostic
+  Gravitino >= 1.3.1 and how the provider behaves on 1.3.0, including the
+  on-demand `GET /api/version` check that turns a 1.3.1-only value into an explicit diagnostic
   instead of an opaque server `400`. The acceptance-test image tag is parameterised through
   `GRAVITINO_VERSION` (default `1.3.0`), and the CI acceptance job runs the suite against
   both 1.3.0 and 1.3.1.
