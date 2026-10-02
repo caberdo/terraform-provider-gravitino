@@ -1,14 +1,25 @@
 # Live acceptance test cases (against a real Gravitino)
 
-These tests run against a **real** Gravitino server (`apache/gravitino:1.3.0`) via podman and
-never start an HTTP mock of their own. They are recognisable by the `TestLiveAcc` prefix.
+These tests run against a **real** Gravitino server (image `apache/gravitino:${GRAVITINO_VERSION:-1.3.0}`,
+default `1.3.0`) via podman and never start an HTTP mock of their own. They are recognisable by
+the `TestLiveAcc` prefix.
 
 ## Running them
 
 ```bash
-make testacc-live                                       # all live tests
+make testacc-live                                       # all live tests against 1.3.0
 make testacc-live-filter F=TestLiveAccMetalakeResource  # a single test
+GRAVITINO_VERSION=1.3.1 make testacc-live               # against 1.3.1
 ```
+
+`GRAVITINO_VERSION` selects the `apache/gravitino` image tag in `docker-compose.yml` and is
+mirrored into `GRAVITINO_EXPECT_VERSION`, so the precheck asserts the version that was
+requested. Both supported versions (1.3.0 and 1.3.1) must pass the same suite; the CI
+acceptance job runs it as a matrix over both.
+
+The supported list is single-sourced in `.github/gravitino-versions.txt`: `make testacc-matrix`
+iterates it, and the CI workflow turns it into its matrix with `jq`. Adding a server version is
+therefore a one-line change there (plus an `apache/gravitino` image tag for that version).
 
 `scripts/testacc-live.sh` discovers every package that contains `TestLiveAcc` tests, so a new
 live test is picked up without editing the script.
