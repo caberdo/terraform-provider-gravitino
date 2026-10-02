@@ -110,6 +110,15 @@ for rejected values/endpoints, `Always false on Gravitino versions before 1.3.1`
 older server simply omits — and MUST fail with a diagnostic naming the required version, never
 an opaque server `400`.
 
+Version-restricted API surface follows a **union schema + runtime version gate**:
+the schema validator accepts the union of every supported server version, and the
+resource/data source calls a `client.Check*` method before the API request, which
+compares the server version with `models.ServerVersionAtLeast` (`GET /api/version`).
+On a server older than the required version the value fails with an explicit
+"requires Gravitino >= 1.3.1" diagnostic instead of the endpoint's opaque 400, and
+the version is queried only when a version-restricted value is actually used. Mark
+such attributes as version-restricted in their schema description.
+
 ## Conventions
 
 ### Quick Reference
