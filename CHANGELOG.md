@@ -1,5 +1,14 @@
 ## Unreleased
 
+FEATURES:
+- **`gravitino_iceberg_rest_service` data source (Gravitino 1.3.1+).** Discovers the
+  Iceberg REST service endpoint the server advertises via `GET /api/system/iceberg-rest`,
+  optionally scoped to a `metalake`; `uri` is null when the server advertises none for the
+  requested metalake. The read verifies the server version
+  (`models.ServerVersionAtLeast`, `GET /api/version`) and a 404 from the endpoint is mapped
+  to the same explicit "requires Gravitino >= 1.3.1" diagnostic, so a 1.3.0 server never
+  surfaces a raw HTTP 404.
+
 ENHANCEMENTS:
 - **`gravitino_principal` exposes `service_admin`.** Gravitino 1.3.1 added
   `serviceAdmin` to `GET /api/authn/me` (operation id `getAuthenticatedUser`),
