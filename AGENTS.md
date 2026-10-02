@@ -90,15 +90,19 @@ version-restricted field.
 The `gravitino_secrets` API only exists on `main` and is documented in its schema as requiring
 Gravitino 1.4 or newer.
 
-**Version detection.** Gating is lazy and per value: an operation that carries a 1.3.1-only
-value asks the server for its version at that moment and compares it — see
-`client.CheckMetadataObjectTypeSupported` (`GET /api/version` +
-`models.ServerVersionAtLeast`), which short-circuits with
-`models.ObjectTypeRequiresGravitino131` so values that exist since 1.3.0 cost no extra request.
-A restricted value MUST fail with a diagnostic naming the required version (e.g. `requires
-Gravitino 1.3.1 or newer`), never with the server's opaque `400`. The check fails closed: when
-`/api/version` cannot be read for a restricted value, return the version-check error instead of
-sending the request (an unparseable version also counts as "too old").
+**Version detection.** There is no cached server version; gating is lazy. An operation that
+carries a 1.3.1-only value reads `GET /api/version` at that moment and compares it with
+`models.ServerVersionAtLeast` (an unparseable version counts as "too old"). A restricted value
+MUST fail with a diagnostic naming the required version, never with the server's opaque `400`.
+Two shapes are in use, and both keep the failure explicit:
+
+- `client.CheckMetadataObjectTypeSupported` (statistics/credentials) fails closed: it
+  short-circuits with `models.ObjectTypeRequiresGravitino131`, so values that exist since 1.3.0
+  cost no request, and it returns the version-lookup error when `/api/version` cannot be read,
+  so a restricted value is never sent to a server of unknown version.
+- `gravitino_iceberg_rest_service` fails open: it logs a failed version lookup with `tflog.Warn`,
+  calls the 1.3.1-only endpoint and maps that endpoint's 404 to the same version diagnostic.
+  Use this shape only when the endpoint response is itself the authoritative signal.
 
 **Marking restricted fields.** Every attribute, data source or endpoint that needs a newer
 server MUST carry the restriction in its schema description — `Requires Gravitino >= 1.3.1`
