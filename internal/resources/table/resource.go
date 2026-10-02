@@ -283,10 +283,17 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"index_type": schema.StringAttribute{
-							Description: "The type of the index.",
-							Required:    true,
+							Description: "The type of the index. The data_skipping_minmax, " +
+								"data_skipping_bloom_filter and data_skipping_set types require Gravitino v1.3.1.",
+							Required: true,
 							Validators: []validator.String{
-								stringvalidator.OneOf("primary_key", "unique_key"),
+								stringvalidator.OneOf(
+									"primary_key",
+									"unique_key",
+									"data_skipping_minmax",
+									"data_skipping_bloom_filter",
+									"data_skipping_set",
+								),
 							},
 						},
 						"name": schema.StringAttribute{
@@ -299,6 +306,12 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 							Description: "The indexed fields, each entry holding the path segments of a field.",
 							Required:    true,
 							ElementType: types.ListType{ElemType: types.StringType},
+						},
+						"properties": schema.MapAttribute{
+							Description: "Extra index properties, for example the granularity of a ClickHouse " +
+								"data-skipping index. Requires Gravitino v1.3.1.",
+							Optional:    true,
+							ElementType: types.StringType,
 						},
 					},
 				},
@@ -1072,7 +1085,8 @@ func partitioningUnknown(parts []models.PartitioningTFSDK) bool {
 
 func indexUnknown(indexes []models.IndexTFSDK) bool {
 	for _, index := range indexes {
-		if index.IndexType.IsUnknown() || index.Name.IsUnknown() || index.FieldNames.IsUnknown() {
+		if index.IndexType.IsUnknown() || index.Name.IsUnknown() || index.FieldNames.IsUnknown() ||
+			index.Properties.IsUnknown() {
 			return true
 		}
 	}

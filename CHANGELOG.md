@@ -1,3 +1,14 @@
+## Unreleased
+
+FEATURES:
+- **`gravitino_table` supports the Gravitino v1.3.1 index additions.** The `index`
+  block gained an optional `properties` map for custom index parameters (for
+  example the `granularity` of a ClickHouse data-skipping index) and the
+  `index_type` validator accepts the new `data_skipping_minmax`,
+  `data_skipping_bloom_filter` and `data_skipping_set` values. Both require
+  Gravitino v1.3.1; v1.3.0 does not accept them. Changing an index still replaces
+  the table, because the API has no index update request.
+
 ## 0.7.0 (2026-09-25)
 
 _Releases 0.5.0 through 0.6.2 were tagged without changelog entries._

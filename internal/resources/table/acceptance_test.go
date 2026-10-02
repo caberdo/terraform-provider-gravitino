@@ -576,6 +576,59 @@ resource "gravitino_table" "this" {
 	})
 }
 
+// TestAccTableResource_DataSkippingIndexProperties asserts a data-skipping
+// index with custom properties is accepted by the schema validators and stored
+// from the create response. The index type and the properties require Gravitino
+// v1.3.1.
+func TestAccTableResource_DataSkippingIndexProperties(t *testing.T) {
+	mock := newTableMock("acc_skip_tbl", []map[string]interface{}{
+		{"name": "id", "type": "long", "nullable": true, "autoIncrement": false},
+	}, map[string]interface{}{
+		"indexes": []interface{}{
+			map[string]interface{}{
+				"indexType":  "DATA_SKIPPING_MINMAX",
+				"name":       "idx_minmax",
+				"fieldNames": []interface{}{[]interface{}{"id"}},
+				"properties": map[string]interface{}{"granularity": "3"},
+			},
+		},
+	})
+	server := mock.server(t)
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_table" "this" {
+  metalake = "ml"
+  catalog  = "cat"
+  schema   = "sch"
+  name     = "acc_skip_tbl"
+
+  column {
+    name = "id"
+    type = "long"
+  }
+
+  index {
+    index_type  = "data_skipping_minmax"
+    field_names = [["id"]]
+    properties  = { granularity = "3" }
+  }
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_table.this", "index.0.index_type", "data_skipping_minmax"),
+					resource.TestCheckResourceAttr("gravitino_table.this", "index.0.name", "idx_minmax"),
+					resource.TestCheckResourceAttr("gravitino_table.this", "index.0.properties.granularity", "3"),
+				),
+			},
+		},
+	})
+}
+
 // TestAccTableResource_ServerAssignedBlockValues asserts the values Gravitino
 // assigns inside sort_order and index blocks (the default null ordering and the
 // index name) are stored instead of leaving an unknown value in the state.

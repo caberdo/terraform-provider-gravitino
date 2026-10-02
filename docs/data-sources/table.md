@@ -83,6 +83,7 @@ Read-Only:
 - `field_names` (List of List of String)
 - `index_type` (String)
 - `name` (String)
+- `properties` (Map of String)
 
 
 <a id="nestedblock--partitioning"></a>

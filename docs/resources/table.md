@@ -172,11 +172,12 @@ Optional:
 Required:
 
 - `field_names` (List of List of String) The indexed fields, each entry holding the path segments of a field.
-- `index_type` (String) The type of the index.
+- `index_type` (String) The type of the index. The data_skipping_minmax, data_skipping_bloom_filter and data_skipping_set types require Gravitino v1.3.1.
 
 Optional:
 
 - `name` (String) The name of the index. Catalogs may assign a name when it is omitted; the name reported by Gravitino is stored in that case.
+- `properties` (Map of String) Extra index properties, for example the granularity of a ClickHouse data-skipping index. Requires Gravitino v1.3.1.
 
 
 <a id="nestedblock--partitioning"></a>

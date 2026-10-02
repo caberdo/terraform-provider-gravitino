@@ -195,6 +195,7 @@ func hivePlan() models.TableResourceModel {
 				IndexType:  types.StringValue("primary_key"),
 				Name:       types.StringValue("PRIMARY"),
 				FieldNames: mustNestedList([][]string{{"id"}}),
+				Properties: types.MapNull(types.StringType),
 			},
 		},
 	}
@@ -339,6 +340,106 @@ func TestTableResource_CreateSendsSpecPayload(t *testing.T) {
 	}
 	if state.Audit.IsNull() || state.Audit.IsUnknown() {
 		t.Error("audit must be known after create")
+	}
+}
+
+// TestTableResource_DataSkippingIndexRoundTrip covers the Gravitino v1.3.1
+// IndexSpec additions: the data_skipping_* index types carry custom properties,
+// for example the granularity of a ClickHouse data-skipping index. The
+// properties must be sent to Gravitino and stored back from the response.
+func TestTableResource_DataSkippingIndexRoundTrip(t *testing.T) {
+	c, recorded := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool {
+		if req.Method != http.MethodPost || req.Path != testPath {
+			return false
+		}
+		writeJSON(t, w, map[string]interface{}{
+			"code": 0,
+			"table": map[string]interface{}{
+				"name": testTable,
+				"columns": []interface{}{
+					map[string]interface{}{"name": "id", "type": "integer", "nullable": true, "autoIncrement": false},
+				},
+				"indexes": []interface{}{
+					map[string]interface{}{
+						"indexType":  "PRIMARY_KEY",
+						"name":       "PRIMARY",
+						"fieldNames": []interface{}{[]interface{}{"id"}},
+					},
+					map[string]interface{}{
+						"indexType":  "DATA_SKIPPING_MINMAX",
+						"name":       "idx_minmax",
+						"fieldNames": []interface{}{[]interface{}{"id"}},
+						"properties": map[string]interface{}{"granularity": "3"},
+					},
+				},
+			},
+		})
+		return true
+	})
+
+	r := NewTableResource().(*tableResource)
+	r.client = c
+
+	plan := hivePlan()
+	plan.Indexes = []models.IndexTFSDK{
+		{
+			IndexType:  types.StringValue("primary_key"),
+			Name:       types.StringValue("PRIMARY"),
+			FieldNames: mustNestedList([][]string{{"id"}}),
+			Properties: types.MapNull(types.StringType),
+		},
+		{
+			IndexType:  types.StringValue("data_skipping_minmax"),
+			Name:       types.StringValue("idx_minmax"),
+			FieldNames: mustNestedList([][]string{{"id"}}),
+			Properties: mustMap(map[string]string{"granularity": "3"}),
+		},
+	}
+
+	schemaObj := tableSchema(t, r)
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(context.Background(), resource.CreateRequest{
+		Plan: planValue(t, schemaObj, plan),
+	}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected create diagnostics: %v", resp.Diagnostics)
+	}
+
+	expected := []interface{}{
+		map[string]interface{}{
+			"indexType":  "primary_key",
+			"name":       "PRIMARY",
+			"fieldNames": []interface{}{[]interface{}{"id"}},
+		},
+		map[string]interface{}{
+			"indexType":  "data_skipping_minmax",
+			"name":       "idx_minmax",
+			"fieldNames": []interface{}{[]interface{}{"id"}},
+			"properties": map[string]interface{}{"granularity": "3"},
+		},
+	}
+	sent, ok := (*recorded)[0].Body["indexes"]
+	if !ok {
+		t.Fatalf("no indexes in %v", (*recorded)[0].Body)
+	}
+	if !reflect.DeepEqual(expected, sent) {
+		expectedJSON, _ := json.Marshal(expected)
+		actualJSON, _ := json.Marshal(sent)
+		t.Errorf("create payload mismatch\nwant: %s\ngot:  %s", expectedJSON, actualJSON)
+	}
+
+	var state models.TableResourceModel
+	modelFromState(t, resp.State, &state)
+
+	if !state.Indexes[0].Properties.IsNull() {
+		t.Errorf("an index without properties must store none, got %v", state.Indexes[0].Properties)
+	}
+	if got := state.Indexes[1].IndexType.ValueString(); got != "data_skipping_minmax" {
+		t.Errorf("index type = %q, want data_skipping_minmax", got)
+	}
+	if !state.Indexes[1].Properties.Equal(mustMap(map[string]string{"granularity": "3"})) {
+		t.Errorf("index properties = %v, want granularity 3", state.Indexes[1].Properties)
 	}
 }
 
@@ -706,6 +807,13 @@ func TestTableResource_ModifyPlanRequiresReplace(t *testing.T) {
 			name: "index",
 			mutate: func(plan *models.TableResourceModel) {
 				plan.Indexes = nil
+			},
+			wantPath: "index",
+		},
+		{
+			name: "index properties",
+			mutate: func(plan *models.TableResourceModel) {
+				plan.Indexes[0].Properties = mustMap(map[string]string{"granularity": "3"})
 			},
 			wantPath: "index",
 		},
