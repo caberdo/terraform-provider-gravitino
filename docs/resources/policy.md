@@ -54,7 +54,7 @@ terraform import gravitino_policy.example my_metalake.my_policy
 
 - `metalake` (String) The metalake name.
 - `name` (String) The policy name. Renaming is performed in-place via the API's rename update.
-- `supported_object_types` (Set of String) The object types this policy supports. One or more of: CATALOG, SCHEMA, TABLE, FILESET, TOPIC, MODEL. Updated in-place through the API's updateContent request.
+- `supported_object_types` (Set of String) The object types this policy supports. One or more of: CATALOG, SCHEMA, TABLE, FILESET, TOPIC, MODEL, VIEW, FUNCTION. VIEW and FUNCTION require Gravitino >= 1.3.1 and are rejected at create/update time on older servers. Updated in-place through the API's updateContent request.
 
 ### Optional
 
