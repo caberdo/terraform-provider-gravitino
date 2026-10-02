@@ -44,6 +44,19 @@ func TestObjectTypeRequiresGravitino131(t *testing.T) {
 	}
 }
 
+func TestIndexTypeRequiresGravitino131(t *testing.T) {
+	for _, indexType := range []string{"data_skipping_minmax", "DATA_SKIPPING_MINMAX", " data_skipping_bloom_filter ", "data_skipping_set"} {
+		if !IndexTypeRequiresGravitino131(indexType) {
+			t.Errorf("IndexTypeRequiresGravitino131(%q) = false, want true", indexType)
+		}
+	}
+	for _, indexType := range []string{"primary_key", "unique_key", "PRIMARY_KEY", ""} {
+		if IndexTypeRequiresGravitino131(indexType) {
+			t.Errorf("IndexTypeRequiresGravitino131(%q) = true, want false", indexType)
+		}
+	}
+}
+
 // TestStatisticsObjectTypesMatchSpec pins the statistics metadataObjectType
 // enum to the Gravitino v1.3.1 openapi.yaml parameter order.
 func TestStatisticsObjectTypesMatchSpec(t *testing.T) {

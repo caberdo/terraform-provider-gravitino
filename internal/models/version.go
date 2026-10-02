@@ -49,6 +49,19 @@ func ObjectTypeRequiresGravitino131(objectType string) bool {
 	}
 }
 
+// IndexTypeRequiresGravitino131 reports whether an indexes.yaml#/IndexSpec
+// `indexType` value only exists from Gravitino 1.3.1 on: the data-skipping index
+// types were added to the v1.3.0 enum (which stops at unique_key) in v1.3.1,
+// together with the optional `properties` of an index.
+func IndexTypeRequiresGravitino131(indexType string) bool {
+	switch strings.ToLower(strings.TrimSpace(indexType)) {
+	case "data_skipping_minmax", "data_skipping_bloom_filter", "data_skipping_set":
+		return true
+	default:
+		return false
+	}
+}
+
 // parseServerVersion splits a version string into its major, minor and patch
 // numbers, ignoring a leading "v" and any "-suffix"/"+build" metadata.
 func parseServerVersion(version string) ([3]int, bool) {
