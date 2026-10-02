@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -601,6 +602,71 @@ func TestViewAuditModelConversion(t *testing.T) {
 	}
 	if attrs["create_time"].(types.String).ValueString() != "2024-01-01T00:00:00Z" {
 		t.Errorf("create_time = %v", attrs["create_time"])
+	}
+}
+
+// TestViewResourceCreateRejectsExternalColumnTypeOnOlderServer asserts the view
+// resource refuses an external column type on a Gravitino 1.3.0 server, before
+// the view is sent.
+func TestViewResourceCreateRejectsExternalColumnTypeOnOlderServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/version" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"code":    0,
+			"version": map[string]string{"version": "1.3.0"},
+		})
+	}))
+	defer server.Close()
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("client.New() error = %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	r := resourceview.NewViewResource().(*resourceview.ViewResource)
+	r.SetClient(c)
+
+	ctx := context.Background()
+	schemaObj := viewSchema(t, r)
+	planModel := viewCreateModel()
+	planModel.Columns = []models.ColumnTFSDK{
+		{
+			Name:          types.StringValue("custom"),
+			Type:          types.StringValue(`{"catalogString":"user-defined","type":"external"}`),
+			Comment:       types.StringValue("custom column"),
+			Nullable:      types.BoolValue(true),
+			AutoIncrement: types.BoolValue(false),
+		},
+	}
+
+	planObj, diags := types.ObjectValueFrom(ctx, viewObjectType(t, schemaObj).AttributeTypes(), planModel)
+	if diags.HasError() {
+		t.Fatalf("failed to build plan: %v", diags)
+	}
+	tfVal, err := planObj.ToTerraformValue(ctx)
+	if err != nil {
+		t.Fatalf("failed to convert plan: %v", err)
+	}
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan{Schema: schemaObj, Raw: tfVal}}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an external column type diagnostic")
+	}
+	if !strings.Contains(resp.Diagnostics[0].Summary(), "1.3.1") {
+		t.Errorf("summary = %q, want the required server version", resp.Diagnostics[0].Summary())
+	}
+	if !strings.Contains(resp.Diagnostics[0].Detail(), "custom") {
+		t.Errorf("detail = %q, want the offending column", resp.Diagnostics[0].Detail())
 	}
 }
 

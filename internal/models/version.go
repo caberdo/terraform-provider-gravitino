@@ -49,6 +49,14 @@ func ObjectTypeRequiresGravitino131(objectType string) bool {
 	}
 }
 
+// ValidServerVersion reports whether version is a Gravitino version string that
+// ServerVersionAtLeast can compare: a leading "v" and a pre-release or build
+// suffix are accepted, a missing component counts as zero.
+func ValidServerVersion(version string) bool {
+	_, ok := parseServerVersion(version)
+	return ok
+}
+
 // IndexTypeRequiresGravitino131 reports whether an indexes.yaml#/IndexSpec
 // `indexType` value only exists from Gravitino 1.3.1 on: the data-skipping index
 // types were added to the v1.3.0 enum (which stops at unique_key) in v1.3.1,

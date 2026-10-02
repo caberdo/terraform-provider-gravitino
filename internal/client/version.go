@@ -20,21 +20,21 @@ func (c *Client) GetVersion(ctx context.Context) (*models.VersionResponse, error
 // `metadataObjectType` path parameter (VIEW, FUNCTION, used by the statistics
 // and credentials endpoints) and the server reports an older version.
 //
-// GET /api/version is queried only for those two types, so the check costs
-// nothing for the types that exist since 1.3.0.
+// The version detected at provider.Configure is used when it is known, so the
+// check normally costs no request of its own.
 func (c *Client) CheckMetadataObjectTypeSupported(ctx context.Context, objectType string) error {
 	if !models.ObjectTypeRequiresGravitino131(objectType) {
 		return nil
 	}
 
-	version, err := c.GetVersion(ctx)
+	version, err := c.ResolveServerVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("cannot verify that metadata object type %q is supported by the server: %w", objectType, err)
 	}
 
-	if !models.ServerVersionAtLeast(version.Version.Version, 1, 3, 1) {
+	if !models.ServerVersionAtLeast(version, 1, 3, 1) {
 		return fmt.Errorf("metadata object type %q requires Gravitino 1.3.1 or newer, but the server reports version %q",
-			objectType, version.Version.Version)
+			objectType, version)
 	}
 	return nil
 }
@@ -43,8 +43,8 @@ func (c *Client) CheckMetadataObjectTypeSupported(ctx context.Context, objectTyp
 // `supportedObjectTypes` values is one that Gravitino 1.3.1 added to
 // PolicyContentBase (VIEW, FUNCTION) and the server reports an older version.
 //
-// GET /api/version is queried only when such a value is present, so the check
-// costs nothing for the object types that exist since 1.3.0.
+// The version detected at provider.Configure is used when it is known, so the
+// check normally costs no request of its own.
 func (c *Client) CheckPolicyObjectTypesSupported(ctx context.Context, objectTypes []string) error {
 	unsupported := make([]string, 0, len(objectTypes))
 	for _, objectType := range objectTypes {
@@ -61,14 +61,14 @@ func (c *Client) CheckPolicyObjectTypesSupported(ctx context.Context, objectType
 	sort.Strings(unsupported)
 	values := strings.Join(unsupported, ", ")
 
-	version, err := c.GetVersion(ctx)
+	version, err := c.ResolveServerVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("cannot verify that supported_object_types value(s) %s are supported by the server: %w", values, err)
 	}
 
-	if !models.ServerVersionAtLeast(version.Version.Version, 1, 3, 1) {
+	if !models.ServerVersionAtLeast(version, 1, 3, 1) {
 		return fmt.Errorf("supported_object_types value(s) %s require Gravitino >= 1.3.1, but the server reports version %q",
-			values, version.Version.Version)
+			values, version)
 	}
 	return nil
 }
@@ -79,8 +79,8 @@ func (c *Client) CheckPolicyObjectTypesSupported(ctx context.Context, objectType
 // A 1.3.0 server rejects both with an opaque error, so the provider verifies
 // the server version first.
 //
-// GET /api/version is queried only when such an index is present, so the check
-// costs nothing for the indexes that exist since 1.3.0.
+// The version detected at provider.Configure is used when it is known, so the
+// check normally costs no request of its own.
 func (c *Client) CheckIndexesSupported(ctx context.Context, indexes []models.Index) error {
 	restricted := make([]string, 0, len(indexes))
 	hasProperties := false
@@ -109,14 +109,14 @@ func (c *Client) CheckIndexesSupported(ctx context.Context, indexes []models.Ind
 		feature = fmt.Sprintf("index type(s) %s", strings.Join(restricted, ", "))
 	}
 
-	version, err := c.GetVersion(ctx)
+	version, err := c.ResolveServerVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("cannot verify that %s are supported by the server: %w", feature, err)
 	}
 
-	if !models.ServerVersionAtLeast(version.Version.Version, 1, 3, 1) {
+	if !models.ServerVersionAtLeast(version, 1, 3, 1) {
 		return fmt.Errorf("%s require Gravitino >= 1.3.1, but the server reports version %q",
-			feature, version.Version.Version)
+			feature, version)
 	}
 	return nil
 }

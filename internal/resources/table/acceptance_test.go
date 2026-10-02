@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -222,6 +223,109 @@ resource "gravitino_table" "this" {
 					resource.TestCheckResourceAttr("gravitino_table.this", "name", "tbl3"),
 					resource.TestCheckResourceAttr("gravitino_table.this", "properties.%", "0"),
 				),
+			},
+		},
+	})
+}
+
+// TestAccTableResource_CreateWithExternalColumnType asserts an external column
+// type round-trips through Terraform Core and the Gravitino wire format
+// unchanged, against a server that reports 1.3.1.
+func TestAccTableResource_CreateWithExternalColumnType(t *testing.T) {
+	var created models.TableCreateRequest
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/version":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"code":    0,
+				"version": map[string]string{"version": "1.3.1"},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/metalakes/ml/catalogs/cat/schemas/sch/tables":
+			_ = json.NewDecoder(r.Body).Decode(&created)
+			_ = json.NewEncoder(w).Encode(models.TableResponse{
+				Code:  0,
+				Table: models.Table{Name: created.Name, Columns: created.Columns},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/metalakes/ml/catalogs/cat/schemas/sch/tables/ext_tbl":
+			_ = json.NewEncoder(w).Encode(models.TableResponse{
+				Code:  0,
+				Table: models.Table{Name: "ext_tbl", Columns: created.Columns},
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/metalakes/ml/catalogs/cat/schemas/sch/tables/ext_tbl":
+			_ = json.NewEncoder(w).Encode(models.DropResponse{Code: 0, Dropped: true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_table" "this" {
+  metalake = "ml"
+  catalog  = "cat"
+  schema   = "sch"
+  name     = "ext_tbl"
+
+  column {
+    name = "custom"
+    type = jsonencode({ type = "external", catalogString = "user-defined" })
+  }
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_table.this", "column.0.type",
+						`{"catalogString":"user-defined","type":"external"}`),
+					func(state *terraform.State) error {
+						if len(created.Columns) != 1 {
+							return fmt.Errorf("expected one column, got %d", len(created.Columns))
+						}
+						columnType := created.Columns[0].Type
+						if columnType.Type != models.DataTypeExternal || columnType.CatalogString != "user-defined" {
+							return fmt.Errorf("column type = %#v", columnType)
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+// TestAccTableResource_RejectsBareStructuredColumnType asserts a bare kind name
+// is refused during validation instead of being sent as a malformed data type
+// with an empty catalog string.
+func TestAccTableResource_RejectsBareStructuredColumnType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_table" "this" {
+  metalake = "ml"
+  catalog  = "cat"
+  schema   = "sch"
+  name     = "bad_tbl"
+
+  column {
+    name = "custom"
+    type = "external"
+  }
+}
+`,
+				ExpectError: regexp.MustCompile(`"external" is a structural data type`),
 			},
 		},
 	})

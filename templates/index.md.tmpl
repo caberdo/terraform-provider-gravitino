@@ -12,9 +12,10 @@ The Gravitino provider allows you to manage [Apache Gravitino](https://gravitino
 ## API compatibility
 
 The provider targets the Apache Gravitino **v1.3.0** REST API and supports **v1.3.1** from the
-same build. Before using a value that only exists on 1.3.1, the provider asks the server for its
-version (`GET /api/version`) and, against a server older than 1.3.1, fails with an explicit
-`requires Gravitino 1.3.1 or newer` diagnostic instead of the server's opaque `400`.
+same build. The provider asks the server for its version once, when it is configured
+(`GET /api/version`), and against a server older than 1.3.1 a value that only exists on 1.3.1
+fails with an explicit `requires Gravitino 1.3.1 or newer` diagnostic instead of the server's
+opaque `400`.
 
 ### Gravitino 1.3.0 vs 1.3.1
 
@@ -23,7 +24,7 @@ version (`GET /api/version`) and, against a server older than 1.3.1, fails with 
 | `gravitino_policy.supported_object_types` (`VIEW`, `FUNCTION`) | rejected at create/update | accepted |
 | `gravitino_statistics.resource_type` / `gravitino_credentials.resource_type` (`VIEW`, `FUNCTION`) | rejected on read | accepted |
 | `gravitino_table` `index` `index_type` (`data_skipping_minmax`, `data_skipping_bloom_filter`, `data_skipping_set`) and `properties` | rejected at create/update | accepted |
-| `gravitino_table` column data type `external` (`catalog_string`) | rejected at create/update | accepted |
+| `gravitino_table` / `gravitino_view` column type `external` (`{"type":"external","catalogString":"..."}`) | rejected at create/update | accepted |
 | `gravitino_principal.service_admin` | always `false` | reported |
 | `gravitino_iceberg_rest_service` data source | endpoint does not exist | returns `uri`, or `null` when the service is unavailable |
 | `gravitino_catalog_connection_test` existing-catalog variant | endpoint does not exist | supported |

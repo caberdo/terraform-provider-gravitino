@@ -29,9 +29,9 @@ type AuditTFSDK struct {
 
 // ColumnTFSDK is the Terraform model of a table column. Type holds the
 // Gravitino data type: a primitive name such as "varchar(255)", or a JSON
-// object for struct, list, map, union and unparsed types. DefaultValue holds
-// the value of the column default value literal; the data type of that literal
-// is the column type, so it is not modelled separately.
+// object for struct, list, map, union, unparsed and external types. DefaultValue
+// holds the value of the column default value literal; the data type of that
+// literal is the column type, so it is not modelled separately.
 type ColumnTFSDK struct {
 	Name          types.String `tfsdk:"name"`
 	Type          types.String `tfsdk:"type"`

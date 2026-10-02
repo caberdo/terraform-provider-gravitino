@@ -116,7 +116,7 @@ func (r *ViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 							Required:    true,
 						},
 						"type": schema.StringAttribute{
-							Description: "The column data type: a Gravitino primitive such as `long` or `varchar(10)`, or a JSON object for a `struct`, `list`, `map`, `union` or `unparsed` type.",
+							Description: "The column data type: a Gravitino primitive such as `long` or `varchar(10)`, or a JSON object for a `struct`, `list`, `map`, `union`, `unparsed` or `external` type. The `external` type (`jsonencode({type = \"external\", catalogString = \"<catalog type>\"})`) requires Gravitino 1.3.1 or later.",
 							Required:    true,
 							Validators: []validator.String{
 								columnTypeValidator{},
@@ -261,6 +261,11 @@ func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	tflog.Debug(ctx, "Creating view", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
+
+	r.client.CheckExternalTypesSupported(plan.Columns, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Views use the shared tables.yaml#/Column schema, so the table family's
 	// column conversion applies unchanged.
@@ -508,7 +513,7 @@ func mapFromState(ctx context.Context, value types.Map, diags *diag.Diagnostics)
 type columnTypeValidator struct{}
 
 func (v columnTypeValidator) Description(_ context.Context) string {
-	return "must be a Gravitino primitive type such as \"long\" or \"varchar(10)\", or a JSON object describing a struct, list, map, union or unparsed type"
+	return "must be a Gravitino primitive type such as \"long\" or \"varchar(10)\", or a JSON object describing a struct, list, map, union, unparsed or external type"
 }
 
 func (v columnTypeValidator) MarkdownDescription(ctx context.Context) string {
