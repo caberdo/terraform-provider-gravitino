@@ -286,6 +286,7 @@ func (p *GravitinoProvider) DataSources(_ context.Context) []func() datasource.D
 		dsmetalake.NewMetalakeDataSource,
 		dscatalog.NewListDataSource,
 		dscatalog.NewGetDataSource,
+		dscatalog.NewConnectionTestDataSource,
 		dsjob.NewListDataSource,
 		dsjob.NewGetDataSource,
 		dsjobtemplate.NewJobTemplateDataSource,

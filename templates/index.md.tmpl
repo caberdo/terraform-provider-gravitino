@@ -21,6 +21,9 @@ server-side configuration or a newer server:
   (`gravitino.server.rest.extensionPackages=org.apache.gravitino.idp.web.rest.feature`) together
   with the `basic` authenticator; on a default server `/api/idp/*` returns 404.
 - `gravitino_secrets` requires Gravitino 1.4 or newer.
+- `gravitino_catalog_connection_test` tests a proposed catalog configuration on Gravitino
+  1.3.0 or newer; testing the stored configuration of an existing catalog (`catalog`) uses an
+  endpoint added in Gravitino 1.3.1 and fails with a clear diagnostic on older servers.
 - Tables, views, functions, partitions and statistics require a lakehouse catalog (Hive or
   Iceberg); a fileset catalog rejects those operations.
 - Jobs require a job executor configured on the server, and a job template can only be deleted
