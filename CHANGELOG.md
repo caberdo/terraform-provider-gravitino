@@ -1,3 +1,14 @@
+## Unreleased
+
+ENHANCEMENTS:
+- **`gravitino_policy` supports the `VIEW` and `FUNCTION` object types.** Gravitino 1.3.1
+  adds both to `PolicyContentBase.supportedObjectTypes`; `supported_object_types` now
+  accepts the union of the 1.3.0 and 1.3.1 enums. The provider detects the server version
+  best-effort at configure time (`GET /api/version`) and rejects these two values at
+  create/update time on older servers with an explicit "requires Gravitino >= 1.3.1"
+  diagnostic instead of letting the API fail with an opaque 400. When the version cannot
+  be detected the values are passed through unchanged.
+
 ## 0.7.0 (2026-09-25)
 
 _Releases 0.5.0 through 0.6.2 were tagged without changelog entries._

@@ -70,6 +70,14 @@ update request types are not guessable. Deviations that exist only on `main` (e.
 secrets API used by `gravitino_secrets`) must be documented as version-restricted in the
 schema description.
 
+Version-restricted API surface follows a **union schema + runtime version gate**:
+the schema validator accepts the union of every supported server version,
+`provider.Configure` detects the server version best-effort via `client.GetVersion`,
+and resources reject 1.3.1-only values at Create/Update with an explicit
+"requires Gravitino >= 1.3.1" diagnostic when `client.AtLeast(1, 3, 1)` is false. An
+unknown version (detection failed) never gates; the server stays the authority. Mark
+such attributes as version-restricted in their schema description.
+
 ## Conventions
 
 ### Quick Reference
