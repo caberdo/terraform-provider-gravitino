@@ -1,7 +1,6 @@
 ## Unreleased
 
 FEATURES:
-<<<<<<< HEAD
 - **`gravitino_table` and `gravitino_view` columns accept the Gravitino `external`
   data type (Gravitino 1.3.1).** `internal/models/datatype.go` now models the
   `ExternalType` variant of `datatype.yaml#/DataType`
