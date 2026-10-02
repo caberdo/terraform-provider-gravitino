@@ -8,6 +8,20 @@ FEATURES:
   `data_skipping_bloom_filter` and `data_skipping_set` values. Both require
   Gravitino v1.3.1; v1.3.0 does not accept them. Changing an index still replaces
   the table, because the API has no index update request.
+  Only the configured property keys are tracked: the state keeps them even when a
+  catalog drops one, and keys a catalog adds on its own are not surfaced, so the
+  immutable index block cannot drift into a replacement on every plan. An
+  explicitly empty map stays an empty map.
+
+FIXES:
+- **Changing an index of a table whose configuration omits the index `name` now
+  replaces the table.** The replacement detection skipped the `index` block
+  whenever a planned index name was unknown, which it always is when `name` is
+  omitted and the catalog assigns it. Changing `index_type` or `field_names` in
+  such a configuration planned an in-place update that applied nothing and then
+  failed with "Provider produced inconsistent result after apply" against the
+  refreshed index. The catalog-assigned name no longer hides the other fields;
+  a configured name still takes part in the comparison.
 
 ## 0.7.0 (2026-09-25)
 

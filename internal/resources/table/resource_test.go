@@ -756,6 +756,153 @@ func TestTableResource_UpdateRejectsChangedBlock(t *testing.T) {
 	}
 }
 
+// TestTableResource_ModifyPlanIndexNameUnknown asserts the name a catalog
+// assigns does not hide a change to the index. The configuration omits the
+// name, so the planned name is unknown and only the type, the field names and
+// the properties may decide whether the table is replaced.
+func TestTableResource_ModifyPlanIndexNameUnknown(t *testing.T) {
+	tests := []struct {
+		name         string
+		indexType    string
+		properties   types.Map
+		wantReplaced bool
+	}{
+		{
+			name:       "unchanged",
+			indexType:  "data_skipping_minmax",
+			properties: mustMap(map[string]string{"granularity": "3"}),
+		},
+		{
+			name:         "properties removed",
+			indexType:    "data_skipping_minmax",
+			properties:   types.MapNull(types.StringType),
+			wantReplaced: true,
+		},
+		{
+			name:         "index type changed",
+			indexType:    "unique_key",
+			properties:   mustMap(map[string]string{"granularity": "3"}),
+			wantReplaced: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := NewTableResource().(*tableResource)
+			schemaObj := tableSchema(t, r)
+
+			state := hivePlan()
+			state.ID = types.StringValue("probe_ml.ptcat.ptsch.my_hive_table")
+			state.Indexes = []models.IndexTFSDK{
+				{
+					IndexType:  types.StringValue("data_skipping_minmax"),
+					Name:       types.StringValue("idx_minmax"),
+					FieldNames: mustNestedList([][]string{{"id"}}),
+					Properties: mustMap(map[string]string{"granularity": "3"}),
+				},
+			}
+
+			plan := state
+			plan.Indexes = []models.IndexTFSDK{
+				{
+					IndexType:  types.StringValue(tt.indexType),
+					Name:       types.StringUnknown(),
+					FieldNames: mustNestedList([][]string{{"id"}}),
+					Properties: tt.properties,
+				},
+			}
+
+			resp := &resource.ModifyPlanResponse{Plan: planValue(t, schemaObj, plan)}
+			r.ModifyPlan(context.Background(), resource.ModifyPlanRequest{
+				Plan:  planValue(t, schemaObj, plan),
+				State: stateValue(t, schemaObj, state),
+			}, resp)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected modify plan diagnostics: %v", resp.Diagnostics)
+			}
+
+			replaced := false
+			for _, p := range resp.RequiresReplace {
+				if p.String() == "index" {
+					replaced = true
+				}
+			}
+			if replaced != tt.wantReplaced {
+				t.Errorf("index replacement = %v, want %v (paths %v)", replaced, tt.wantReplaced, resp.RequiresReplace)
+			}
+		})
+	}
+}
+
+// TestTableResource_ReadKeepsConfiguredIndexProperties asserts a catalog that
+// drops a configured index property or adds one of its own neither loses the
+// configured keys from the state nor surfaces the ones the configuration does
+// not manage. The block is immutable, so either would replace the table.
+func TestTableResource_ReadKeepsConfiguredIndexProperties(t *testing.T) {
+	c, _ := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool {
+		if req.Method != http.MethodGet {
+			return false
+		}
+		writeJSON(t, w, map[string]interface{}{
+			"code": 0,
+			"table": map[string]interface{}{
+				"name": testTable,
+				"columns": []interface{}{
+					map[string]interface{}{"name": "id", "type": "integer", "nullable": true, "autoIncrement": false},
+				},
+				"indexes": []interface{}{
+					map[string]interface{}{
+						"indexType":  "DATA_SKIPPING_MINMAX",
+						"name":       "idx_minmax",
+						"fieldNames": []interface{}{[]interface{}{"id"}},
+						"properties": map[string]interface{}{"granularity": "9", "added": "by-catalog"},
+					},
+				},
+			},
+		})
+		return true
+	})
+
+	r := NewTableResource().(*tableResource)
+	r.client = c
+
+	schemaObj := tableSchema(t, r)
+	state := hivePlan()
+	state.Properties = types.MapNull(types.StringType)
+	state.Indexes = []models.IndexTFSDK{
+		{
+			IndexType:  types.StringValue("data_skipping_minmax"),
+			Name:       types.StringValue("idx_minmax"),
+			FieldNames: mustNestedList([][]string{{"id"}}),
+			Properties: mustMap(map[string]string{"granularity": "3", "extra": "x"}),
+		},
+	}
+
+	resp := &resource.ReadResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Read(context.Background(), resource.ReadRequest{
+		State: stateValue(t, schemaObj, state),
+	}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected read diagnostics: %v", resp.Diagnostics)
+	}
+
+	var refreshed models.TableResourceModel
+	modelFromState(t, resp.State, &refreshed)
+
+	// Read prefers the values the server reports for the keys the configuration
+	// manages; a key the server dropped and one it added of its own are not
+	// part of the state.
+	want := map[string]string{"granularity": "9", "extra": "x"}
+	got, diags := models.TablePropertiesFromModel(context.Background(), refreshed.Indexes[0].Properties)
+	if diags.HasError() {
+		t.Fatalf("reading the properties: %v", diags)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("index properties = %v, want %v", got, want)
+	}
+}
+
 func TestTableResource_ModifyPlanRequiresReplace(t *testing.T) {
 	tests := []struct {
 		name     string

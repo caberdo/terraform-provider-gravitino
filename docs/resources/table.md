@@ -177,7 +177,7 @@ Required:
 Optional:
 
 - `name` (String) The name of the index. Catalogs may assign a name when it is omitted; the name reported by Gravitino is stored in that case.
-- `properties` (Map of String) Extra index properties, for example the granularity of a ClickHouse data-skipping index. Requires Gravitino v1.3.1.
+- `properties` (Map of String) Extra index properties, for example the granularity of a ClickHouse data-skipping index. Requires Gravitino v1.3.1. Only the configured keys are tracked; properties the catalog reports on its own are ignored.
 
 
 <a id="nestedblock--partitioning"></a>

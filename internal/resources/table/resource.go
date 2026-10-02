@@ -309,7 +309,8 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 						},
 						"properties": schema.MapAttribute{
 							Description: "Extra index properties, for example the granularity of a ClickHouse " +
-								"data-skipping index. Requires Gravitino v1.3.1.",
+								"data-skipping index. Requires Gravitino v1.3.1. Only the configured keys are " +
+								"tracked; properties the catalog reports on its own are ignored.",
 							Optional:    true,
 							ElementType: types.StringType,
 						},
@@ -762,7 +763,7 @@ func tableStateFromServer(ctx context.Context, table *models.Table, state *model
 	refreshed.SortOrders = models.TableSortOrdersToModel(ctx, table.SortOrders, diags)
 	refreshed.Distribution = models.TableDistributionToModel(ctx, table.Distribution, diags)
 	refreshed.Partitioning = models.TablePartitioningToModel(ctx, table.Partitioning, diags)
-	refreshed.Indexes = models.TableIndexesToModel(ctx, table.Indexes, diags)
+	refreshed.Indexes = mergeTableIndexes(ctx, table.Indexes, state.Indexes, preferServerProperties, diags)
 	refreshed.ID = types.StringValue(tableID(
 		refreshed.Metalake.ValueString(),
 		refreshed.Catalog.ValueString(),
@@ -814,6 +815,69 @@ func mergeTableProperties(ctx context.Context, serverProperties map[string]strin
 	properties, propertyDiags := types.MapValueFrom(ctx, types.StringType, merged)
 	diags.Append(propertyDiags...)
 	return properties, diags
+}
+
+// mergeTableIndexes combines the indexes reported by Gravitino with the index
+// properties the configuration manages, mirroring mergeTableProperties: a
+// catalog may drop or rewrite an index property, and the configured properties
+// must not turn into permanent drift (the block is immutable, so drift would
+// replace the table on every plan).
+//
+// Indexes are matched by position. A catalog that reports a different number of
+// indexes changed the block itself, which is a replacement the plan detects
+// through the index type and field names, so the reported indexes are then
+// returned as Gravitino sent them.
+func mergeTableIndexes(ctx context.Context, server []models.Index, desired []models.IndexTFSDK, preferServer bool, diags *diag.Diagnostics) []models.IndexTFSDK {
+	reported := models.TableIndexesToModel(ctx, server, diags)
+	if diags.HasError() {
+		return reported
+	}
+	if len(reported) != len(desired) {
+		return reported
+	}
+
+	for i := range reported {
+		reported[i].Properties = mergeIndexProperties(ctx, server[i].Properties, desired[i].Properties, preferServer)
+	}
+	return reported
+}
+
+// mergeIndexProperties combines the properties Gravitino reports for an index
+// with the properties its configuration manages, mirroring mergeTableProperties:
+// a catalog may drop or rewrite an index property, and that must not turn into
+// permanent drift. The block is immutable, so drift would replace the table on
+// every plan.
+//
+// Only the configured keys are tracked. The keys a catalog reports on its own
+// are not surfaced, because the attribute is not computed and the plan then
+// holds none. An explicit empty map is kept as an empty map rather than dropped,
+// because an empty map is a known planned value and the applied state has to
+// match it.
+func mergeIndexProperties(ctx context.Context, serverProperties map[string]string, desired types.Map, preferServer bool) types.Map {
+	var diags diag.Diagnostics
+
+	if desired.IsNull() || desired.IsUnknown() {
+		return types.MapNull(types.StringType)
+	}
+
+	managed := make(map[string]string)
+	diags.Append(desired.ElementsAs(ctx, &managed, false)...)
+	if diags.HasError() || len(managed) == 0 {
+		return desired
+	}
+
+	merged := make(map[string]string, len(managed))
+	for key, value := range managed {
+		if serverValue, ok := serverProperties[key]; ok && preferServer {
+			merged[key] = serverValue
+			continue
+		}
+		merged[key] = value
+	}
+
+	properties, propertyDiags := types.MapValueFrom(ctx, types.StringType, merged)
+	diags.Append(propertyDiags...)
+	return properties
 }
 
 // tablePropertyUpdates diffs the managed properties into setProperty and
@@ -1054,6 +1118,17 @@ func indexesChanged(plan, state []models.IndexTFSDK) bool {
 	if planDiags.HasError() || stateDiags.HasError() {
 		return false
 	}
+
+	// A catalog assigns the name of an index whose configuration omits it, so
+	// the planned name is unknown then. Comparing it would report a change that
+	// is not there, while skipping the whole index would hide a real change to
+	// the index type, the field names or the properties.
+	for i := range planned {
+		if i < len(plan) && i < len(current) && plan[i].Name.IsUnknown() {
+			planned[i].Name = current[i].Name
+		}
+	}
+
 	return !reflect.DeepEqual(planned, current)
 }
 
@@ -1083,10 +1158,13 @@ func partitioningUnknown(parts []models.PartitioningTFSDK) bool {
 	return false
 }
 
+// indexUnknown reports whether the planned index type, field names or
+// properties are not known yet. The name is not checked: it is unknown whenever
+// the configuration omits it, because a catalog assigns it in that case, so
+// treating it as a pending value would hide every other change to the index.
 func indexUnknown(indexes []models.IndexTFSDK) bool {
 	for _, index := range indexes {
-		if index.IndexType.IsUnknown() || index.Name.IsUnknown() || index.FieldNames.IsUnknown() ||
-			index.Properties.IsUnknown() {
+		if index.IndexType.IsUnknown() || index.FieldNames.IsUnknown() || index.Properties.IsUnknown() {
 			return true
 		}
 	}
