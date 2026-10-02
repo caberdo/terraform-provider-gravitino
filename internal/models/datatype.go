@@ -277,9 +277,15 @@ func (d DataType) UsesExternalType() bool {
 }
 
 // ExternalTypeColumnDiagnostics returns one error per column whose type uses the
-// external variant, naming the server version. Callers only invoke it when the
-// connected server predates Gravitino 1.3.1, which introduced the variant.
-func ExternalTypeColumnDiagnostics(columns []ColumnTFSDK, serverVersion string) diag.Diagnostics {
+// external variant, naming the server version. serverSupportsExternalType is the
+// result of the client version probe: an empty slice is returned when the
+// connected server accepts the variant, or when the probe failed and the version
+// is unknown.
+func ExternalTypeColumnDiagnostics(columns []ColumnTFSDK, serverVersion string, serverSupportsExternalType bool) diag.Diagnostics {
+	if serverSupportsExternalType {
+		return nil
+	}
+
 	var diags diag.Diagnostics
 
 	server := serverVersion
@@ -331,16 +337,38 @@ func ParseDataType(value string) (DataType, error) {
 		if err := json.Unmarshal([]byte(trimmed), &name); err != nil {
 			return DataType{}, fmt.Errorf("invalid column type: %w", err)
 		}
+		if structuredKindName(name) {
+			return DataType{}, structuredKindAsStringError(name)
+		}
 		if !primitiveTypePattern.MatchString(name) {
 			return DataType{}, invalidPrimitiveTypeError(name)
 		}
 		return DataType{Type: name}, nil
 	}
 
+	if structuredKindName(trimmed) {
+		return DataType{}, structuredKindAsStringError(trimmed)
+	}
 	if !primitiveTypePattern.MatchString(trimmed) {
 		return DataType{}, invalidPrimitiveTypeError(trimmed)
 	}
 	return DataType{Type: trimmed}, nil
+}
+
+// structuredKindName reports whether name is the discriminator of one of the
+// object shaped kinds. Such a name is not a primitive type, but it matches
+// primitiveTypePattern; rejecting it here keeps a bare "external" (or "struct",
+// "list", ...) from bypassing Validate and being sent as a malformed object.
+func structuredKindName(name string) bool {
+	switch name {
+	case DataTypeStruct, DataTypeList, DataTypeMap, DataTypeUnion, DataTypeUnparsed, DataTypeExternal:
+		return true
+	}
+	return false
+}
+
+func structuredKindAsStringError(name string) error {
+	return fmt.Errorf("invalid column type %q: %q is a structural data type, describe it as a JSON object, for example {\"type\": %q, ...}", name, name, name)
 }
 
 func invalidPrimitiveTypeError(value string) error {

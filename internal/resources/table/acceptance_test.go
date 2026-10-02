@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -292,6 +293,39 @@ resource "gravitino_table" "this" {
 						return nil
 					},
 				),
+			},
+		},
+	})
+}
+
+// TestAccTableResource_RejectsBareStructuredColumnType asserts a bare kind name
+// is refused during validation instead of being sent as a malformed data type
+// with an empty catalog string.
+func TestAccTableResource_RejectsBareStructuredColumnType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_table" "this" {
+  metalake = "ml"
+  catalog  = "cat"
+  schema   = "sch"
+  name     = "bad_tbl"
+
+  column {
+    name = "custom"
+    type = "external"
+  }
+}
+`,
+				ExpectError: regexp.MustCompile(`"external" is a structural data type`),
 			},
 		},
 	})

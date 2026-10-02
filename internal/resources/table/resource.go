@@ -54,20 +54,6 @@ func (r *tableResource) Configure(_ context.Context, req resource.ConfigureReque
 	r.client = c
 }
 
-// externalColumnTypesSupported reports whether the connected server accepts the
-// column types of the plan. Gravitino 1.3.0 has no "external" data type (it was
-// restored to DataType.oneOf in 1.3.1), so an external column on an older server
-// is refused with a version diagnostic instead of an opaque HTTP 400. An
-// undetected server version stays permissive.
-func (r *tableResource) externalColumnTypesSupported(plan *models.TableResourceModel, diags *diag.Diagnostics) bool {
-	if r.client.SupportsExternalType() {
-		return true
-	}
-
-	diags.Append(models.ExternalTypeColumnDiagnostics(plan.Columns, r.client.ServerVersion())...)
-	return !diags.HasError()
-}
-
 func (r *tableResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_table"
 }
@@ -455,7 +441,8 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		"name":     plan.Name.ValueString(),
 	})
 
-	if !r.externalColumnTypesSupported(&plan, &resp.Diagnostics) {
+	resp.Diagnostics.Append(models.ExternalTypeColumnDiagnostics(plan.Columns, r.client.ServerVersion(), r.client.SupportsExternalType())...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -559,7 +546,8 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		"name":     state.Name.ValueString(),
 	})
 
-	if !r.externalColumnTypesSupported(&plan, &resp.Diagnostics) {
+	resp.Diagnostics.Append(models.ExternalTypeColumnDiagnostics(plan.Columns, r.client.ServerVersion(), r.client.SupportsExternalType())...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 

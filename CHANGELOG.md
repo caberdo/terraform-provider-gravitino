@@ -14,6 +14,15 @@ FEATURES:
   opaque HTTP 400. `internal/client` gains `ServerVersion()`, `AtLeast()` and
   `SupportsExternalType()` for the version gating of further 1.3.1 features.
 
+FIXES:
+- **A bare structural kind name is no longer accepted as a column type.**
+  `ParseDataType` matched the string `"external"` (and `"struct"`, `"list"`,
+  `"map"`, `"union"`, `"unparsed"`) with the primitive type pattern, so
+  validation was bypassed and the provider sent a malformed object such as
+  `{"catalogString":"","type":"external"}` or `{"fields":null,"type":"struct"}`
+  instead of failing. Structural types must be written as a JSON object, for
+  example `type = jsonencode({ type = "external", catalogString = "..." })`.
+
 ## 0.7.0 (2026-09-25)
 
 _Releases 0.5.0 through 0.6.2 were tagged without changelog entries._

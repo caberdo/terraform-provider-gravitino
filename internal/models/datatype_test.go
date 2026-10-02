@@ -380,7 +380,7 @@ func TestExternalTypeColumnDiagnostics(t *testing.T) {
 		{Name: types.StringValue("tags"), Type: types.StringValue(`{"elementType":{"catalogString":"geo","type":"external"},"type":"list"}`)},
 	}
 
-	diags := ExternalTypeColumnDiagnostics(columns, "1.3.0")
+	diags := ExternalTypeColumnDiagnostics(columns, "1.3.0", false)
 	if len(diags) != 2 {
 		t.Fatalf("diagnostics = %v, want 2", diags)
 	}
@@ -401,8 +401,32 @@ func TestExternalTypeColumnDiagnostics(t *testing.T) {
 	unknown := ExternalTypeColumnDiagnostics([]ColumnTFSDK{
 		{Name: types.StringValue("x"), Type: types.StringUnknown()},
 		{Name: types.StringNull(), Type: types.StringValue("integer")},
-	}, "1.3.0")
+	}, "1.3.0", false)
 	if len(unknown) != 0 {
 		t.Errorf("unknown and primitive column types produced diagnostics: %v", unknown)
+	}
+
+	supported := ExternalTypeColumnDiagnostics(columns, "1.3.1", true)
+	if len(supported) != 0 {
+		t.Errorf("a server that supports the variant produced diagnostics: %v", supported)
+	}
+}
+
+// TestParseDataTypeRejectsBareStructuredKind asserts a bare kind name is not a
+// primitive type. Without the guard the name matches the primitive pattern,
+// Validate is bypassed, and a malformed object ({"catalogString":"","type":
+// "external"}) is sent to Gravitino instead of a clear error.
+func TestParseDataTypeRejectsBareStructuredKind(t *testing.T) {
+	for _, name := range []string{DataTypeExternal, DataTypeStruct, DataTypeList, DataTypeMap, DataTypeUnion, DataTypeUnparsed} {
+		for _, value := range []string{name, `"` + name + `"`, " " + name + " "} {
+			_, err := ParseDataType(value)
+			if err == nil {
+				t.Errorf("ParseDataType(%q) = nil error, want an error", value)
+				continue
+			}
+			if !strings.Contains(err.Error(), "JSON object") {
+				t.Errorf("ParseDataType(%q) error = %v, want the JSON object hint", value, err)
+			}
+		}
 	}
 }

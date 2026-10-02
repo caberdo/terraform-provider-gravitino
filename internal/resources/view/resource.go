@@ -218,20 +218,6 @@ func (r *ViewResource) Configure(_ context.Context, req resource.ConfigureReques
 	r.client = c
 }
 
-// externalColumnTypesSupported reports whether the connected server accepts the
-// column types of the plan. Gravitino 1.3.0 has no "external" data type (it was
-// restored to DataType.oneOf in 1.3.1), so an external column on an older server
-// is refused with a version diagnostic instead of an opaque HTTP 400. An
-// undetected server version stays permissive.
-func (r *ViewResource) externalColumnTypesSupported(plan *ViewResourceModel, diags *diag.Diagnostics) bool {
-	if r.client.SupportsExternalType() {
-		return true
-	}
-
-	diags.Append(models.ExternalTypeColumnDiagnostics(plan.Columns, r.client.ServerVersion())...)
-	return !diags.HasError()
-}
-
 // ModifyPlan keeps the planned compound ID in sync with the planned name.
 // Terraform compares the plan with the applied result, so a view that is
 // renamed in place must already plan the new ID: the id attribute carries
@@ -276,7 +262,8 @@ func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	tflog.Debug(ctx, "Creating view", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
 
-	if !r.externalColumnTypesSupported(&plan, &resp.Diagnostics) {
+	resp.Diagnostics.Append(models.ExternalTypeColumnDiagnostics(plan.Columns, r.client.ServerVersion(), r.client.SupportsExternalType())...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
