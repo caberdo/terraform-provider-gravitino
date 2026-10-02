@@ -857,7 +857,7 @@ func mergeTableIndexes(ctx context.Context, server []models.Index, desired []mod
 	}
 
 	for i := range reported {
-		reported[i].Properties = mergeIndexProperties(ctx, server[i].Properties, desired[i].Properties, preferServer)
+		reported[i].Properties = mergeIndexProperties(ctx, server[i].Properties, desired[i].Properties, preferServer, diags)
 	}
 	return reported
 }
@@ -873,9 +873,7 @@ func mergeTableIndexes(ctx context.Context, server []models.Index, desired []mod
 // holds none. An explicit empty map is kept as an empty map rather than dropped,
 // because an empty map is a known planned value and the applied state has to
 // match it.
-func mergeIndexProperties(ctx context.Context, serverProperties map[string]string, desired types.Map, preferServer bool) types.Map {
-	var diags diag.Diagnostics
-
+func mergeIndexProperties(ctx context.Context, serverProperties map[string]string, desired types.Map, preferServer bool, diags *diag.Diagnostics) types.Map {
 	if desired.IsNull() || desired.IsUnknown() {
 		return types.MapNull(types.StringType)
 	}

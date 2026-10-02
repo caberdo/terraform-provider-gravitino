@@ -204,25 +204,25 @@ func (d *CatalogConnectionTestDataSource) Read(ctx context.Context, req datasour
 
 // existingCatalogSupported reports whether the server implements
 // POST /metalakes/{metalake}/catalogs/{catalog}/testConnection, which was added
-// in Gravitino 1.3.1. A version the provider cannot read counts as unsupported
-// (models.ServerVersionAtLeast): the caller is about to use an API that only
-// exists from 1.3.1 on, so an unknown server version must not be assumed to
-// support it.
+// in Gravitino 1.3.1. It resolves the version through client.ResolveServerVersion
+// so a gate normally costs no request of its own. A version the provider cannot
+// read counts as unsupported (models.ServerVersionAtLeast): the caller is about
+// to use an API that only exists from 1.3.1 on, so an unknown server version
+// must not be assumed to support it.
 func (d *CatalogConnectionTestDataSource) existingCatalogSupported(ctx context.Context, resp *datasource.ReadResponse) bool {
-	version, err := d.client.GetVersion(ctx)
+	reported, err := d.client.ResolveServerVersion(ctx)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading the Gravitino server version", "catalog connection test", err)...)
 		return false
 	}
 
-	reported := version.Version.Version
 	if models.ServerVersionAtLeast(reported, 1, 3, 1) {
 		return true
 	}
 
 	resp.Diagnostics.AddError(
 		"Unsupported Gravitino version",
-		fmt.Sprintf("Testing an existing catalog connection (`catalog`) requires Gravitino 1.3.1 or newer, but the server reports version %q. Set `name` and `type` instead to test a proposed catalog configuration, which works on Gravitino 1.3.0 as well.", reported),
+		fmt.Sprintf("Testing an existing catalog connection (`catalog`) requires Gravitino >= 1.3.1, but the server reports version %q. Set `name` and `type` instead to test a proposed catalog configuration, which works on Gravitino 1.3.0 as well.", reported),
 	)
 	return false
 }
