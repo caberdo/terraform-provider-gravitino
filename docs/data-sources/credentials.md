@@ -28,7 +28,7 @@ data "gravitino_credentials" "example" {
 
 - `metalake` (String) The metalake name.
 - `resource` (String) The full name of the metadata object (for example hive_catalog.example_schema.users).
-- `resource_type` (String) The metadata object type (METALAKE, CATALOG, SCHEMA, TABLE, COLUMN, FILESET, TOPIC, MODEL, ROLE).
+- `resource_type` (String) The metadata object type (METALAKE, CATALOG, SCHEMA, TABLE, VIEW, COLUMN, FILESET, TOPIC, MODEL, FUNCTION, ROLE). VIEW and FUNCTION require Gravitino 1.3.1 or newer.
 
 ### Read-Only
 

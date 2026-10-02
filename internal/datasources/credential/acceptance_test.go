@@ -1,10 +1,12 @@
 package credential_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -90,6 +92,63 @@ data "gravitino_credentials" "example" {
 `,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("data.gravitino_credentials.example", "credentials.#", "0"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccCredentialsDataSource_VersionGate goes through Terraform Core: the
+// VIEW/FUNCTION metadata object types were added by Gravitino 1.3.1, so a VIEW
+// read against a 1.3.0 server must fail with the explicit version diagnostic
+// while the same read against a 1.3.1 server must apply.
+func TestAccCredentialsDataSource_VersionGate(t *testing.T) {
+	newServer := func(version string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+			switch {
+			case r.URL.Path == "/api/version":
+				_, _ = fmt.Fprintf(w, `{"code":0,"version":{"version":%q}}`, version)
+			case strings.HasSuffix(r.URL.Path, "/credentials"):
+				_, _ = w.Write([]byte(credentialResponseExample))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+	}
+
+	const config = `
+data "gravitino_credentials" "example" {
+  metalake      = "test_metalake"
+  resource_type = "VIEW"
+  resource      = "test_catalog.test_schema.test_view"
+}
+`
+
+	oldServer := newServer("1.3.0")
+	defer oldServer.Close()
+	t.Setenv("GRAVITINO_URI", oldServer.URL)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: credentialTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config:      config,
+				ExpectError: regexp.MustCompile(`requires Gravitino 1\.3\.1`),
+			},
+		},
+	})
+
+	newerServer := newServer("1.3.1")
+	defer newerServer.Close()
+	t.Setenv("GRAVITINO_URI", newerServer.URL)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: credentialTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("data.gravitino_credentials.example", "resource_type", "VIEW"),
+					resource.TestCheckResourceAttr("data.gravitino_credentials.example", "credentials.#", "2"),
 				),
 			},
 		},
