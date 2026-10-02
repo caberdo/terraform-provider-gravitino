@@ -26,6 +26,13 @@ ENHANCEMENTS:
   "requires Gravitino 1.3.1 or newer" diagnostic instead of the endpoint's
   opaque 400. The two lists stay separate constants, as the provider
   deliberately keeps credential-specific enums.
+- **`gravitino_policy` supports the `VIEW` and `FUNCTION` object types.** Gravitino 1.3.1
+  adds both to `PolicyContentBase.supportedObjectTypes`; `supported_object_types` now
+  accepts the union of the 1.3.0 and 1.3.1 enums. The validator and its description
+  derive from `models.PolicyObjectTypes`, so they cannot drift from the spec. Against a
+  server older than 1.3.1 a create/update naming these two values fails with an explicit
+  "require Gravitino >= 1.3.1" diagnostic (`client.CheckPolicyObjectTypesSupported`,
+  `GET /api/version`) instead of the API's opaque 400.
 
 ## 0.7.0 (2026-09-25)
 
