@@ -90,13 +90,15 @@ version-restricted field.
 The `gravitino_secrets` API only exists on `main` and is documented in its schema as requiring
 Gravitino 1.4 or newer.
 
-**Version detection.** `provider.Configure` calls `client.DetectServerVersion`, which fetches
-`GET /api/version` and stores a parsed semver on the client (`ServerVersion()`,
-`AtLeast(major, minor, patch)`). Detection is best-effort: a server that does not answer
-`/api/version` is logged with `tflog.Warn` and the provider keeps working, relying on the
-server's own response for gated features. `AtLeast` returns `false` for an undetected version,
-so a caller that wants to fall back to the server response must check `ServerVersion()` first
-(or map the endpoint's 404).
+**Version detection.** Gating is lazy and per value: an operation that carries a 1.3.1-only
+value asks the server for its version at that moment and compares it — see
+`client.CheckMetadataObjectTypeSupported` (`GET /api/version` +
+`models.ServerVersionAtLeast`), which short-circuits with
+`models.ObjectTypeRequiresGravitino131` so values that exist since 1.3.0 cost no extra request.
+A restricted value MUST fail with a diagnostic naming the required version (e.g. `requires
+Gravitino 1.3.1 or newer`), never with the server's opaque `400`. The check fails closed: when
+`/api/version` cannot be read for a restricted value, return the version-check error instead of
+sending the request (an unparseable version also counts as "too old").
 
 **Marking restricted fields.** Every attribute, data source or endpoint that needs a newer
 server MUST carry the restriction in its schema description — `Requires Gravitino >= 1.3.1`

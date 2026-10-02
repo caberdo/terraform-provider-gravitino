@@ -12,10 +12,9 @@ The Gravitino provider allows you to manage [Apache Gravitino](https://gravitino
 ## API compatibility
 
 The provider targets the Apache Gravitino **v1.3.0** REST API and supports **v1.3.1** from the
-same build. At configure time the provider calls `GET /api/version`; when a value that only
-exists on 1.3.1 is used against an older server it fails with an explicit
-`requires Gravitino >= 1.3.1` diagnostic instead of the server's opaque `400`. If the version
-cannot be detected, the provider falls back to the server's own response.
+same build. Before using a value that only exists on 1.3.1, the provider asks the server for its
+version (`GET /api/version`) and, against a server older than 1.3.1, fails with an explicit
+`requires Gravitino 1.3.1 or newer` diagnostic instead of the server's opaque `400`.
 
 ### Gravitino 1.3.0 vs 1.3.1
 
