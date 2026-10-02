@@ -6,13 +6,24 @@ ENHANCEMENTS:
   so the data source now reports whether the configured credential is a
   Gravitino service administrator. Servers predating 1.3.1 omit the field, so
   `service_admin` is then `false`.
+- **`gravitino_statistics` and `gravitino_credentials` accept `VIEW` and
+  `FUNCTION` as `resource_type`.** Gravitino 1.3.1 added both to the shared
+  `metadataObjectType` path parameter used by the statistics and credentials
+  endpoints (`models.StatisticsObjectTypes`, `models.CredentialObjectTypes`).
+  Both data sources keep static enum validators that accept the union of the
+  1.3.0 and 1.3.1 values and verify the server version at read time
+  (`client.CheckMetadataObjectTypeSupported`, `GET /api/version`): against a
+  server older than 1.3.1 a VIEW/FUNCTION read fails with an explicit
+  "requires Gravitino 1.3.1 or newer" diagnostic instead of the endpoint's
+  opaque 400. The two lists stay separate constants, as the provider
+  deliberately keeps credential-specific enums.
 - **`gravitino_policy` supports the `VIEW` and `FUNCTION` object types.** Gravitino 1.3.1
   adds both to `PolicyContentBase.supportedObjectTypes`; `supported_object_types` now
-  accepts the union of the 1.3.0 and 1.3.1 enums. The provider detects the server version
-  best-effort at configure time (`GET /api/version`) and rejects these two values at
-  create/update time on older servers with an explicit "requires Gravitino >= 1.3.1"
-  diagnostic instead of letting the API fail with an opaque 400. When the version cannot
-  be detected the values are passed through unchanged.
+  accepts the union of the 1.3.0 and 1.3.1 enums. The validator and its description
+  derive from `models.PolicyObjectTypes`, so they cannot drift from the spec. Against a
+  server older than 1.3.1 a create/update naming these two values fails with an explicit
+  "require Gravitino >= 1.3.1" diagnostic (`client.CheckPolicyObjectTypesSupported`,
+  `GET /api/version`) instead of the API's opaque 400.
 
 ## 0.7.0 (2026-09-25)
 

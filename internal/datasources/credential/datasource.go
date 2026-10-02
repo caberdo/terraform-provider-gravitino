@@ -83,7 +83,7 @@ func (d *CredentialsDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 			},
 			"resource_type": schema.StringAttribute{
 				Required:    true,
-				Description: "The metadata object type (METALAKE, CATALOG, SCHEMA, TABLE, COLUMN, FILESET, TOPIC, MODEL, ROLE).",
+				Description: "The metadata object type (METALAKE, CATALOG, SCHEMA, TABLE, VIEW, COLUMN, FILESET, TOPIC, MODEL, FUNCTION, ROLE). VIEW and FUNCTION require Gravitino 1.3.1 or newer.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(models.CredentialObjectTypes...),
 				},
@@ -134,6 +134,11 @@ func (d *CredentialsDataSource) Read(ctx context.Context, req datasource.ReadReq
 		"resource_type": resourceType,
 		"resource":      resource,
 	})
+
+	if err := d.client.CheckMetadataObjectTypeSupported(ctx, resourceType); err != nil {
+		resp.Diagnostics.Append(client.NewResourceError("reading credentials", resource, err)...)
+		return
+	}
 
 	result, err := d.client.GetCredentials(ctx, metalake, resourceType, resource)
 	if err != nil {

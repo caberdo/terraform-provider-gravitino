@@ -71,11 +71,12 @@ secrets API used by `gravitino_secrets`) must be documented as version-restricte
 schema description.
 
 Version-restricted API surface follows a **union schema + runtime version gate**:
-the schema validator accepts the union of every supported server version,
-`provider.Configure` detects the server version best-effort via `client.GetVersion`,
-and resources reject 1.3.1-only values at Create/Update with an explicit
-"requires Gravitino >= 1.3.1" diagnostic when `client.AtLeast(1, 3, 1)` is false. An
-unknown version (detection failed) never gates; the server stays the authority. Mark
+the schema validator accepts the union of every supported server version, and the
+resource/data source calls a `client.Check*` method before the API request, which
+compares the server version with `models.ServerVersionAtLeast` (`GET /api/version`).
+On a server older than the required version the value fails with an explicit
+"requires Gravitino >= 1.3.1" diagnostic instead of the endpoint's opaque 400, and
+the version is queried only when a version-restricted value is actually used. Mark
 such attributes as version-restricted in their schema description.
 
 ## Conventions

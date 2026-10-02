@@ -416,20 +416,30 @@ const policyResponseViewFunction = `{
   }
 }`
 
+// writeServerVersion serves the GET /api/version response the version gate
+// uses to decide whether VIEW/FUNCTION are supported.
+func writeServerVersion(w http.ResponseWriter, version string) {
+	w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+	fmt.Fprintf(w, `{"code":0,"version":{"version":%q,"compileDate":"2026-01-01","gitCommit":"abc"}}`, version)
+}
+
 // TestPolicyResource_CreateRejectsVersionGatedObjectTypes covers the 1.3.0
-// server: VIEW/FUNCTION are accepted by the schema but rejected before any API
-// call, with a diagnostic naming the required version.
+// server: VIEW/FUNCTION are accepted by the schema validator but rejected
+// before any policy API call, with a diagnostic naming the required version.
 func TestPolicyResource_CreateRejectsVersionGatedObjectTypes(t *testing.T) {
 	ctx := context.Background()
 	s := policySchema(t)
 
-	calls := 0
-	c, r := newServer(t, func(w http.ResponseWriter, req *http.Request) {
-		calls++
+	policyCalls := 0
+	_, r := newServer(t, func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/api/version" {
+			writeServerVersion(w, "1.3.0")
+			return
+		}
+		policyCalls++
 		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
 		fmt.Fprint(w, policyResponse)
 	})
-	c.SetServerVersion("1.3.0")
 
 	plan := baseModel()
 	plan.SupportedObjectTypes = allObjectTypesOf("SCHEMA", "VIEW")
@@ -440,8 +450,8 @@ func TestPolicyResource_CreateRejectsVersionGatedObjectTypes(t *testing.T) {
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected a version-gate diagnostic for VIEW on a 1.3.0 server")
 	}
-	if calls != 0 {
-		t.Fatalf("expected no API call when the version gate rejects the plan, got %d", calls)
+	if policyCalls != 0 {
+		t.Fatalf("expected no policy API call when the version gate rejects the plan, got %d", policyCalls)
 	}
 	if got := resp.Diagnostics[0].Detail(); !strings.Contains(got, "VIEW") || !strings.Contains(got, "require Gravitino >= 1.3.1") {
 		t.Fatalf("unexpected diagnostic detail: %q", got)
@@ -455,12 +465,15 @@ func TestPolicyResource_CreateSendsViewAndFunctionOn131(t *testing.T) {
 	s := policySchema(t)
 
 	var rawBody []byte
-	c, r := newServer(t, func(w http.ResponseWriter, req *http.Request) {
+	_, r := newServer(t, func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/api/version" {
+			writeServerVersion(w, "1.3.1")
+			return
+		}
 		rawBody, _ = io.ReadAll(req.Body)
 		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
 		fmt.Fprint(w, policyResponseViewFunction)
 	})
-	c.SetServerVersion("1.3.1")
 
 	plan := baseModel()
 	plan.SupportedObjectTypes = allObjectTypesOf("VIEW", "FUNCTION")
@@ -500,13 +513,16 @@ func TestPolicyResource_UpdateRejectsVersionGatedObjectTypes(t *testing.T) {
 	ctx := context.Background()
 	s := policySchema(t)
 
-	calls := 0
-	c, r := newServer(t, func(w http.ResponseWriter, req *http.Request) {
-		calls++
+	policyCalls := 0
+	_, r := newServer(t, func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/api/version" {
+			writeServerVersion(w, "1.3.0")
+			return
+		}
+		policyCalls++
 		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
 		fmt.Fprint(w, policyResponse)
 	})
-	c.SetServerVersion("1.3.0")
 
 	state := baseModel()
 	state.ID = types.StringValue("my_test_metalake.my_policy1")
@@ -523,8 +539,8 @@ func TestPolicyResource_UpdateRejectsVersionGatedObjectTypes(t *testing.T) {
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected a version-gate diagnostic for FUNCTION on a 1.3.0 server")
 	}
-	if calls != 0 {
-		t.Fatalf("expected no API call when the version gate rejects the plan, got %d", calls)
+	if policyCalls != 0 {
+		t.Fatalf("expected no policy API call when the version gate rejects the plan, got %d", policyCalls)
 	}
 	if got := resp.Diagnostics[0].Detail(); !strings.Contains(got, "FUNCTION") {
 		t.Fatalf("unexpected diagnostic detail: %q", got)

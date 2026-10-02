@@ -64,7 +64,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var _ provider.Provider = (*GravitinoProvider)(nil)
@@ -239,17 +238,6 @@ func (p *GravitinoProvider) Configure(ctx context.Context, req provider.Configur
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create client", err.Error())
 		return
-	}
-
-	// Best-effort server-version detection: resources use it to reject
-	// version-restricted attribute values with a clear diagnostic instead of
-	// an opaque API error. A failure leaves the version unknown, in which case
-	// nothing is rejected client-side, so a provider that cannot reach
-	// /api/version keeps working.
-	if v, verr := c.GetVersion(ctx); verr != nil {
-		tflog.Warn(ctx, "Unable to detect the Gravitino server version; version-restricted attribute values will not be validated client-side", map[string]interface{}{"error": verr.Error()})
-	} else {
-		c.SetServerVersion(v.Version.Version)
 	}
 
 	resp.DataSourceData = c

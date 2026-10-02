@@ -30,10 +30,6 @@ type Client struct {
 	baseURL      string
 	httpClient   *http.Client
 	authProvider auth.AuthProvider
-	// serverVersion is detected best-effort at provider configuration
-	// (SetServerVersion) and used to gate version-restricted attributes.
-	// A nil value means the version is unknown.
-	serverVersion *serverVersion
 }
 
 func New(uri string, authProvider auth.AuthProvider) (*Client, error) {

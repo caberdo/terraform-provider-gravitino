@@ -182,7 +182,7 @@ func (r *PolicyResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	tflog.Debug(ctx, "Creating policy", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "name": plan.Name.ValueString()})
 
-	if !r.checkObjectTypesSupported(listFromTF(plan.SupportedObjectTypes), &resp.Diagnostics) {
+	if !r.checkObjectTypesSupported(ctx, listFromTF(plan.SupportedObjectTypes), &resp.Diagnostics) {
 		return
 	}
 
@@ -285,7 +285,7 @@ func (r *PolicyResource) Update(ctx context.Context, req resource.UpdateRequest,
 			updates = append(updates, models.NewUpdatePolicyCommentRequest(plan.Comment.ValueString()))
 		}
 		if contentChanged {
-			if !r.checkObjectTypesSupported(listFromTF(plan.SupportedObjectTypes), &resp.Diagnostics) {
+			if !r.checkObjectTypesSupported(ctx, listFromTF(plan.SupportedObjectTypes), &resp.Diagnostics) {
 				return
 			}
 			updates = append(updates, models.NewUpdatePolicyContentRequest(plan.PolicyType.ValueString(), policyContentFromTF(plan)))
@@ -391,41 +391,21 @@ func policyContentFromTF(model PolicyResourceModel) *models.PolicyContent {
 	}
 }
 
-// policyObjectTypesRequiringGravitino131 are the supportedObjectTypes values
-// that Gravitino 1.3.1 adds to PolicyContentBase (policies.yaml v1.3.1). The
-// fixed order keeps the diagnostic message stable.
-var policyObjectTypesRequiringGravitino131 = []string{"VIEW", "FUNCTION"}
-
 // checkObjectTypesSupported rejects supportedObjectTypes values that the
 // configured Gravitino server cannot store, so a 1.3.0 server produces a clear
-// diagnostic instead of an opaque API 400. When the server version is unknown
-// (detection failed at configure time) nothing is rejected; the server stays
-// the authority. Reports whether the values may be sent.
-func (r *PolicyResource) checkObjectTypesSupported(objectTypes []string, diags *diag.Diagnostics) bool {
-	if r.client.ServerVersion() == "" || r.client.AtLeast(1, 3, 1) {
-		return true
+// diagnostic instead of an opaque API 400. The client verifies the server
+// version (GET /api/version) only when a version-restricted value is present.
+// Reports whether the values may be sent.
+func (r *PolicyResource) checkObjectTypesSupported(ctx context.Context, objectTypes []string, diags *diag.Diagnostics) bool {
+	if err := r.client.CheckPolicyObjectTypesSupported(ctx, objectTypes); err != nil {
+		diags.AddAttributeError(
+			path.Root("supported_object_types"),
+			"Unsupported supported_object_types value",
+			err.Error(),
+		)
+		return false
 	}
-
-	var unsupported []string
-	for _, gated := range policyObjectTypesRequiringGravitino131 {
-		for _, objectType := range objectTypes {
-			if objectType == gated {
-				unsupported = append(unsupported, gated)
-				break
-			}
-		}
-	}
-	if len(unsupported) == 0 {
-		return true
-	}
-
-	diags.AddAttributeError(
-		path.Root("supported_object_types"),
-		"Unsupported supported_object_types value",
-		fmt.Sprintf("supported_object_types values [%s] require Gravitino >= 1.3.1, but the server reports %s. Upgrade the Gravitino server or remove these values.",
-			strings.Join(unsupported, ", "), r.client.ServerVersion()),
-	)
-	return false
+	return true
 }
 
 // contentKnown reports whether every content input is resolved in the plan.
