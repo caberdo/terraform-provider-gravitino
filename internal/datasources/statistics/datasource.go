@@ -138,7 +138,7 @@ func (d *StatisticsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		resource,
 	)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list statistics", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing statistics", resource, err)...)
 		return
 	}
 

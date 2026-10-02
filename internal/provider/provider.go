@@ -243,11 +243,12 @@ func (p *GravitinoProvider) Configure(ctx context.Context, req provider.Configur
 	}
 
 	// Version detection is best effort: on failure the client keeps an unknown
-	// version, and version gated features stay permissive so the server
-	// reports its own error instead of the provider guessing. The URI is not
-	// logged: it may embed credentials in its userinfo.
+	// version. Permissive gates (client.AtLeast, client.SupportsExternalType)
+	// then treat version specific features as supported, while fail-closed
+	// gates re-probe and reject a restricted value when the version is still
+	// unknown. The URI is not logged: it may embed credentials in its userinfo.
 	if err := c.DetectServerVersion(ctx); err != nil {
-		tflog.Warn(ctx, "Could not detect the Gravitino server version; version specific features are not gated", map[string]interface{}{
+		tflog.Warn(ctx, "Could not detect the Gravitino server version; version-restricted values will be checked again before they are used", map[string]interface{}{
 			"error": err.Error(),
 		})
 	} else {

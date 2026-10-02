@@ -12,8 +12,13 @@ import (
 // DetectServerVersion records the version reported by GET /api/version.
 //
 // The probe is best effort: Configure logs a failure and continues with an
-// unknown version, which the feature gates treat as "supported" so a failed
-// probe cannot reject a configuration the server would accept.
+// unknown version. The two kinds of gate then diverge. The permissive gates
+// (AtLeast / SupportsExternalType) treat an unknown version as supported, so a
+// failed probe cannot reject a configuration the server would accept. The
+// fail-closed gates (CheckMetadataObjectTypeSupported, CheckPolicyObjectTypes
+// Supported, CheckIndexesSupported) re-probe through ResolveServerVersion and
+// return an error when the version is still unknown, so a restricted value is
+// never sent to a server of unknown version.
 func (c *Client) DetectServerVersion(ctx context.Context) error {
 	resp, err := c.GetVersion(ctx)
 	if err != nil {
