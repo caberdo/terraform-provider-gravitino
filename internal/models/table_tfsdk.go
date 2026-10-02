@@ -70,11 +70,13 @@ type PartitioningTFSDK struct {
 }
 
 // IndexTFSDK is the Terraform model of an index. FieldNames holds one path per
-// indexed field.
+// indexed field. Properties holds the extra index parameters Gravitino v1.3.1
+// accepts.
 type IndexTFSDK struct {
 	IndexType  types.String `tfsdk:"index_type"`
 	Name       types.String `tfsdk:"name"`
 	FieldNames types.List   `tfsdk:"field_names"`
+	Properties types.Map    `tfsdk:"properties"`
 }
 
 // TableDataSourceModel is the Terraform model of the gravitino_table data source.

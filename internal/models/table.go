@@ -43,11 +43,14 @@ type Partitioning struct {
 	FuncArgs   []Expression `json:"funcArgs,omitempty"`
 }
 
-// Index mirrors indexes.yaml#/IndexSpec.
+// Index mirrors indexes.yaml#/IndexSpec. Properties carries the extra index
+// parameters Gravitino v1.3.1 accepts, for example the granularity of a
+// ClickHouse data-skipping index.
 type Index struct {
-	IndexType  string     `json:"indexType"`
-	Name       string     `json:"name,omitempty"`
-	FieldNames [][]string `json:"fieldNames"`
+	IndexType  string            `json:"indexType"`
+	Name       string            `json:"name,omitempty"`
+	FieldNames [][]string        `json:"fieldNames"`
+	Properties map[string]string `json:"properties,omitempty"`
 }
 
 // Table mirrors tables.yaml#/Table.

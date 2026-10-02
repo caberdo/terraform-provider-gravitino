@@ -406,6 +406,13 @@ func assignIndexNames(table, seed map[string]interface{}) {
 	}
 }
 
+// writeServerVersion serves the GET /api/version response the version gates use
+// to decide whether a Gravitino 1.3.1 feature is supported.
+func writeServerVersion(w http.ResponseWriter, version string) {
+	w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+	fmt.Fprintf(w, `{"code":0,"version":{"version":%q,"compileDate":"2026-01-01","gitCommit":"abc"}}`, version)
+}
+
 func toInterfaceSlice(values []map[string]interface{}) []interface{} {
 	result := make([]interface{}, 0, len(values))
 	for _, value := range values {
@@ -454,6 +461,13 @@ func (m *tableMock) server(t *testing.T) *httptest.Server {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "table": m.table})
 		case http.MethodGet:
+			if r.URL.Path == "/api/version" {
+				// The fake server identifies as Gravitino v1.3.1, the release
+				// that added the data-skipping index types and the index
+				// properties.
+				writeServerVersion(w, "1.3.1")
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "table": m.table})
 		case http.MethodDelete:
 			m.deletes++
@@ -678,6 +692,196 @@ resource "gravitino_table" "this" {
 			},
 		},
 	})
+}
+
+// TestAccTableResource_DataSkippingIndexProperties asserts a data-skipping
+// index with custom properties is accepted by the schema validators and stored
+// from the create response. The index type and the properties require Gravitino
+// v1.3.1.
+func TestAccTableResource_DataSkippingIndexProperties(t *testing.T) {
+	accIndexMock(t)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: accIndexConfig("data_skipping_minmax", `    properties  = { granularity = "3" }`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_table.this", "index.0.index_type", "data_skipping_minmax"),
+					resource.TestCheckResourceAttr("gravitino_table.this", "index.0.name", "idx_minmax"),
+					resource.TestCheckResourceAttr("gravitino_table.this", "index.0.properties.granularity", "3"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccTableResource_EmptyIndexProperties asserts an explicitly empty index
+// properties map is applied as an empty map. The attribute is not computed, so
+// the applied state has to match the planned empty map instead of collapsing to
+// no properties at all.
+func TestAccTableResource_EmptyIndexProperties(t *testing.T) {
+	accIndexMock(t)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: accIndexConfig("data_skipping_minmax", `    properties  = {}`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_table.this", "index.0.properties.%", "0"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccTableResource_IndexChangesReplaceTable asserts every change to an
+// index replaces the table: Gravitino defines no index update request. The
+// index name is omitted throughout, so the planned name is unknown and must not
+// hide the change.
+func TestAccTableResource_IndexChangesReplaceTable(t *testing.T) {
+	tests := []struct {
+		name   string
+		first  string
+		second string
+		index1 string
+		index2 string
+	}{
+		{
+			name:   "properties removed",
+			first:  `    properties  = { granularity = "3" }`,
+			second: "",
+		},
+		{
+			name:   "property removed",
+			first:  `    properties  = { granularity = "3", extra = "x" }`,
+			second: `    properties  = { granularity = "3" }`,
+		},
+		{
+			name:   "index type changed",
+			first:  `    properties  = { granularity = "3" }`,
+			second: "",
+			index1: "data_skipping_minmax",
+			index2: "unique_key",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := accIndexMock(t)
+
+			index1, index2 := tt.index1, tt.index2
+			if index1 == "" {
+				index1 = "data_skipping_minmax"
+			}
+			if index2 == "" {
+				index2 = index1
+			}
+
+			resource.Test(t, resource.TestCase{
+				ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+				Steps: []resource.TestStep{
+					{Config: accIndexConfig(index1, tt.first)},
+					{
+						Config: accIndexConfig(index2, tt.second),
+						Check: func(state *terraform.State) error {
+							if got := mock.createCount(); got != 2 {
+								return fmt.Errorf("expected the table to be replaced, got %d creates", got)
+							}
+							return nil
+						},
+					},
+				},
+			})
+		})
+	}
+}
+
+// TestAccTableResource_ServerNormalisedIndexProperties asserts a catalog that
+// drops a configured index property or adds one of its own does not make the
+// table drift: the block is immutable, so drift would replace the table on
+// every plan.
+func TestAccTableResource_ServerNormalisedIndexProperties(t *testing.T) {
+	mock := accIndexMock(t)
+
+	config := accIndexConfig("data_skipping_minmax", `    properties  = { granularity = "3", extra = "x" }`)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: func(state *terraform.State) error {
+					// The catalog keeps one of the two properties and adds its own.
+					mock.mu.Lock()
+					defer mock.mu.Unlock()
+					mock.table["indexes"] = []interface{}{
+						map[string]interface{}{
+							"indexType":  "DATA_SKIPPING_MINMAX",
+							"name":       "idx_minmax",
+							"fieldNames": []interface{}{[]interface{}{"id"}},
+							"properties": map[string]interface{}{"granularity": "3", "added": "by-catalog"},
+						},
+					}
+					return nil
+				},
+			},
+			{
+				Config: config,
+				Check: func(state *terraform.State) error {
+					if got := mock.createCount(); got != 1 {
+						return fmt.Errorf("expected no replacement, got %d creates", got)
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
+// accIndexMock starts a Gravitino table mock holding one data-skipping index and
+// points the provider at it.
+func accIndexMock(t *testing.T) *tableMock {
+	t.Helper()
+
+	mock := newTableMock("acc_idx_tbl", []map[string]interface{}{
+		{"name": "id", "type": "long", "nullable": true, "autoIncrement": false},
+	}, map[string]interface{}{
+		"indexes": []interface{}{
+			map[string]interface{}{
+				"indexType":  "DATA_SKIPPING_MINMAX",
+				"name":       "idx_minmax",
+				"fieldNames": []interface{}{[]interface{}{"id"}},
+			},
+		},
+	})
+	t.Setenv("GRAVITINO_URI", mock.server(t).URL)
+	return mock
+}
+
+// accIndexConfig builds a table with a single index on id. The index name is
+// never configured, so the catalog assigns it.
+func accIndexConfig(indexType, properties string) string {
+	return fmt.Sprintf(`
+resource "gravitino_table" "this" {
+  metalake = "ml"
+  catalog  = "cat"
+  schema   = "sch"
+  name     = "acc_idx_tbl"
+
+  column {
+    name = "id"
+    type = "long"
+  }
+
+  index {
+    index_type  = %q
+    field_names = [["id"]]
+%s
+  }
+}
+`, indexType, properties)
 }
 
 // TestAccTableResource_ServerAssignedBlockValues asserts the values Gravitino

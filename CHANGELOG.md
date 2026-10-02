@@ -1,6 +1,7 @@
 ## Unreleased
 
 FEATURES:
+<<<<<<< HEAD
 - **`gravitino_table` and `gravitino_view` columns accept the Gravitino `external`
   data type (Gravitino 1.3.1).** `internal/models/datatype.go` now models the
   `ExternalType` variant of `datatype.yaml#/DataType`
@@ -13,6 +14,21 @@ FEATURES:
   server older than 1.3.1 with an explicit diagnostic instead of the server's
   opaque HTTP 400 (`client.CheckExternalTypesSupported`,
   `client.SupportsExternalType`).
+- **`gravitino_table` supports the Gravitino v1.3.1 index additions.** The `index`
+  block gained an optional `properties` map for custom index parameters (for
+  example the `granularity` of a ClickHouse data-skipping index) and the
+  `index_type` validator accepts the new `data_skipping_minmax`,
+  `data_skipping_bloom_filter` and `data_skipping_set` values. Both require
+  Gravitino v1.3.1; v1.3.0 does not accept them. The server version is verified
+  when a create uses either (`client.CheckIndexesSupported`, `GET /api/version`):
+  against a server older than 1.3.1 the create fails with an explicit
+  "require Gravitino >= 1.3.1" diagnostic instead of the API's opaque error.
+  Changing an index still replaces the table, because the API has no index
+  update request.
+  Only the configured property keys are tracked: the state keeps them even when a
+  catalog drops one, and keys a catalog adds on its own are not surfaced, so the
+  immutable index block cannot drift into a replacement on every plan. An
+  explicitly empty map stays an empty map.
 - **`gravitino_iceberg_rest_service` data source (Gravitino 1.3.1+).** Discovers the
   Iceberg REST service endpoint the server advertises via `GET /api/system/iceberg-rest`,
   optionally scoped to a `metalake`; `uri` is null when the server advertises none for the
@@ -45,8 +61,23 @@ ENHANCEMENTS:
   server older than 1.3.1 a create/update naming these two values fails with an explicit
   "require Gravitino >= 1.3.1" diagnostic (`client.CheckPolicyObjectTypesSupported`,
   `GET /api/version`) instead of the API's opaque 400.
+- **Documented the Gravitino 1.3.0 vs 1.3.1 compatibility matrix.** `AGENTS.md` and the
+  provider index page now list which attributes, data sources and endpoints need
+  Gravitino >= 1.3.1 and how the provider behaves on 1.3.0, including the
+  on-demand `GET /api/version` check that turns a 1.3.1-only value into an explicit diagnostic
+  instead of an opaque server `400`. The acceptance-test image tag is parameterised through
+  `GRAVITINO_VERSION` (default `1.3.0`), and the CI acceptance job runs the suite against
+  both 1.3.0 and 1.3.1.
 
 FIXES:
+- **Changing an index of a table whose configuration omits the index `name` now
+  replaces the table.** The replacement detection skipped the `index` block
+  whenever a planned index name was unknown, which it always is when `name` is
+  omitted and the catalog assigns it. Changing `index_type` or `field_names` in
+  such a configuration planned an in-place update that applied nothing and then
+  failed with "Provider produced inconsistent result after apply" against the
+  refreshed index. The catalog-assigned name no longer hides the other fields;
+  a configured name still takes part in the comparison.
 - **A bare structural kind name is no longer accepted as a column type.**
   `ParseDataType` matched the string `"external"` (and `"struct"`, `"list"`,
   `"map"`, `"union"`, `"unparsed"`) with the primitive type pattern, so
