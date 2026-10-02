@@ -302,6 +302,13 @@ func assignIndexNames(table, seed map[string]interface{}) {
 	}
 }
 
+// writeServerVersion serves the GET /api/version response the version gates use
+// to decide whether a Gravitino 1.3.1 feature is supported.
+func writeServerVersion(w http.ResponseWriter, version string) {
+	w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+	fmt.Fprintf(w, `{"code":0,"version":{"version":%q,"compileDate":"2026-01-01","gitCommit":"abc"}}`, version)
+}
+
 func toInterfaceSlice(values []map[string]interface{}) []interface{} {
 	result := make([]interface{}, 0, len(values))
 	for _, value := range values {
@@ -350,6 +357,13 @@ func (m *tableMock) server(t *testing.T) *httptest.Server {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "table": m.table})
 		case http.MethodGet:
+			if r.URL.Path == "/api/version" {
+				// The fake server identifies as Gravitino v1.3.1, the release
+				// that added the data-skipping index types and the index
+				// properties.
+				writeServerVersion(w, "1.3.1")
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "table": m.table})
 		case http.MethodDelete:
 			m.deletes++

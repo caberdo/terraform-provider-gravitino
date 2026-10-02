@@ -68,6 +68,16 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value interface{}) {
 	}
 }
 
+// writeVersion serves the GET /api/version response the index version gate
+// reads to decide whether the Gravitino 1.3.1 index features are supported.
+func writeVersion(t *testing.T, w http.ResponseWriter, version string) {
+	t.Helper()
+	writeJSON(t, w, map[string]interface{}{
+		"code":    0,
+		"version": map[string]string{"version": version, "compileDate": "2026-01-01", "gitCommit": "abc"},
+	})
+}
+
 func tableSchema(t *testing.T, r resource.Resource) schema.Schema {
 	t.Helper()
 
@@ -349,6 +359,10 @@ func TestTableResource_CreateSendsSpecPayload(t *testing.T) {
 // properties must be sent to Gravitino and stored back from the response.
 func TestTableResource_DataSkippingIndexRoundTrip(t *testing.T) {
 	c, recorded := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool {
+		if req.Method == http.MethodGet && req.Path == "/api/version" {
+			writeVersion(t, w, "1.3.1")
+			return true
+		}
 		if req.Method != http.MethodPost || req.Path != testPath {
 			return false
 		}
@@ -419,9 +433,15 @@ func TestTableResource_DataSkippingIndexRoundTrip(t *testing.T) {
 			"properties": map[string]interface{}{"granularity": "3"},
 		},
 	}
-	sent, ok := (*recorded)[0].Body["indexes"]
+	var create recordedRequest
+	for _, req := range *recorded {
+		if req.Method == http.MethodPost {
+			create = req
+		}
+	}
+	sent, ok := create.Body["indexes"]
 	if !ok {
-		t.Fatalf("no indexes in %v", (*recorded)[0].Body)
+		t.Fatalf("no indexes in %v", create.Body)
 	}
 	if !reflect.DeepEqual(expected, sent) {
 		expectedJSON, _ := json.Marshal(expected)
@@ -440,6 +460,76 @@ func TestTableResource_DataSkippingIndexRoundTrip(t *testing.T) {
 	}
 	if !state.Indexes[1].Properties.Equal(mustMap(map[string]string{"granularity": "3"})) {
 		t.Errorf("index properties = %v, want granularity 3", state.Indexes[1].Properties)
+	}
+}
+
+// TestTableResource_CreateRejectsVersionGatedIndexes covers a 1.3.0 server: the
+// data-skipping index types and the index properties pass the schema validators
+// but are rejected before any table API call, with a diagnostic naming the
+// required version.
+func TestTableResource_CreateRejectsVersionGatedIndexes(t *testing.T) {
+	tests := []struct {
+		name       string
+		indexType  string
+		properties types.Map
+		wantDetail string
+	}{
+		{
+			name:       "data-skipping index type",
+			indexType:  "data_skipping_minmax",
+			properties: types.MapNull(types.StringType),
+			wantDetail: "data_skipping_minmax",
+		},
+		{
+			name:       "index properties",
+			indexType:  "primary_key",
+			properties: mustMap(map[string]string{"granularity": "3"}),
+			wantDetail: "index properties",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tableCalls := 0
+			c, _ := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool {
+				if req.Path == "/api/version" {
+					writeVersion(t, w, "1.3.0")
+					return true
+				}
+				tableCalls++
+				return false
+			})
+
+			r := NewTableResource().(*tableResource)
+			r.client = c
+
+			plan := hivePlan()
+			plan.Indexes = []models.IndexTFSDK{
+				{
+					IndexType:  types.StringValue(tt.indexType),
+					Name:       types.StringValue("idx"),
+					FieldNames: mustNestedList([][]string{{"id"}}),
+					Properties: tt.properties,
+				},
+			}
+
+			schemaObj := tableSchema(t, r)
+			resp := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+			r.Create(context.Background(), resource.CreateRequest{
+				Plan: planValue(t, schemaObj, plan),
+			}, resp)
+
+			if !resp.Diagnostics.HasError() {
+				t.Fatal("expected a version-gate diagnostic on a 1.3.0 server")
+			}
+			if tableCalls != 0 {
+				t.Errorf("expected no table API call when the version gate rejects the plan, got %d", tableCalls)
+			}
+			detail := resp.Diagnostics[0].Detail()
+			if !strings.Contains(detail, tt.wantDetail) || !strings.Contains(detail, "require Gravitino >= 1.3.1") {
+				t.Errorf("unexpected diagnostic detail: %q", detail)
+			}
+		})
 	}
 }
 

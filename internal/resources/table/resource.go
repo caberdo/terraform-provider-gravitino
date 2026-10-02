@@ -459,6 +459,14 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
+	// Gravitino 1.3.1 added the data-skipping index types and the index
+	// properties; a 1.3.0 server rejects them with an opaque error, so the
+	// server version is verified when the table uses either.
+	if err := r.client.CheckIndexesSupported(ctx, createReq.Indexes); err != nil {
+		resp.Diagnostics.AddAttributeError(path.Root("index"), "Unsupported index", err.Error())
+		return
+	}
+
 	tableResp, err := r.client.CreateTable(
 		ctx,
 		plan.Metalake.ValueString(),
