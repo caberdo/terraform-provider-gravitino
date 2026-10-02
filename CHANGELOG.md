@@ -1,6 +1,11 @@
 ## Unreleased
 
-Gravitino 1.3.1 support:
+ENHANCEMENTS:
+- **`gravitino_principal` exposes `service_admin`.** Gravitino 1.3.1 added
+  `serviceAdmin` to `GET /api/authn/me` (operation id `getAuthenticatedUser`),
+  so the data source now reports whether the configured credential is a
+  Gravitino service administrator. Servers predating 1.3.1 omit the field, so
+  `service_admin` is then `false`.
 - **`gravitino_statistics` and `gravitino_credentials` accept `VIEW` and
   `FUNCTION` as `resource_type`.** Gravitino 1.3.1 added both to the shared
   `metadataObjectType` path parameter used by the statistics and credentials
