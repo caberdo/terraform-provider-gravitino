@@ -95,16 +95,16 @@ func (d *IcebergRESTServiceDataSource) Read(ctx context.Context, req datasource.
 		"metalake": metalake,
 	})
 
-	if v, err := d.client.GetVersion(ctx); err != nil {
+	if v, err := d.client.ResolveServerVersion(ctx); err != nil {
 		// The endpoint call below fails with the same transport error, so a
 		// failed version lookup must not be reported as a version requirement.
 		tflog.Warn(ctx, "Could not read the Gravitino server version; relying on the endpoint response", map[string]interface{}{
 			"error": err.Error(),
 		})
-	} else if !models.ServerVersionAtLeast(v.Version.Version, minMajor, minMinor, minPatch) {
+	} else if !models.ServerVersionAtLeast(v, minMajor, minMinor, minPatch) {
 		resp.Diagnostics.AddError(
 			"Iceberg REST service discovery is not supported by this server",
-			fmt.Sprintf("The data source %s, but the connected server reports version %s.", versionRequirement, v.Version.Version),
+			fmt.Sprintf("The data source %s, but the connected server reports version %s.", versionRequirement, v),
 		)
 		return
 	}

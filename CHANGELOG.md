@@ -10,6 +10,18 @@ FEATURES:
   1.3.1 or newer and is rejected with a clear diagnostic on older servers. The result is
   exposed as `success` plus the sanitized server `message`; a completed but failed test is
   not a Terraform error.
+- **`gravitino_table` and `gravitino_view` columns accept the Gravitino `external`
+  data type (Gravitino 1.3.1).** `internal/models/datatype.go` now models the
+  `ExternalType` variant of `datatype.yaml#/DataType`
+  (`{"type": "external", "catalogString": "<catalog type>"}`), including nested
+  occurrences inside struct, list, map and union types; the example in the spec
+  misspells the key (`externalType`), the declared property `catalogString` is
+  authoritative. The provider detects the server version once at
+  `provider.Configure` with `GET /api/version` (best effort: an undetected
+  version is treated as current) and refuses an external column type against a
+  server older than 1.3.1 with an explicit diagnostic instead of the server's
+  opaque HTTP 400 (`client.CheckExternalTypesSupported`,
+  `client.SupportsExternalType`).
 - **`gravitino_table` supports the Gravitino v1.3.1 index additions.** The `index`
   block gained an optional `properties` map for custom index parameters (for
   example the `granularity` of a ClickHouse data-skipping index) and the
@@ -74,6 +86,13 @@ FIXES:
   failed with "Provider produced inconsistent result after apply" against the
   refreshed index. The catalog-assigned name no longer hides the other fields;
   a configured name still takes part in the comparison.
+- **A bare structural kind name is no longer accepted as a column type.**
+  `ParseDataType` matched the string `"external"` (and `"struct"`, `"list"`,
+  `"map"`, `"union"`, `"unparsed"`) with the primitive type pattern, so
+  validation was bypassed and the provider sent a malformed object such as
+  `{"catalogString":"","type":"external"}` or `{"fields":null,"type":"struct"}`
+  instead of failing. Structural types must be written as a JSON object, for
+  example `type = jsonencode({ type = "external", catalogString = "..." })`.
 
 ## 0.7.0 (2026-09-25)
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client/auth"
@@ -30,6 +31,11 @@ type Client struct {
 	baseURL      string
 	httpClient   *http.Client
 	authProvider auth.AuthProvider
+
+	// version is the server version detected by DetectServerVersion; empty when
+	// the probe failed, in which case the gates treat the server as current.
+	versionMu sync.RWMutex
+	version   string
 }
 
 func New(uri string, authProvider auth.AuthProvider) (*Client, error) {

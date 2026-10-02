@@ -81,7 +81,7 @@ version-restricted field.
 | `PolicyContentBase.supportedObjectTypes` gains `VIEW`/`FUNCTION` (`policies.yaml`) | `gravitino_policy.supported_object_types`, `gravitino_policies` | rejected at create/update with an explicit diagnostic | accepted |
 | `metadataObjectType` gains `VIEW`/`FUNCTION` (`openapi.yaml`) | `gravitino_statistics.resource_type`, `gravitino_credentials.resource_type` | rejected on read with an explicit diagnostic | accepted |
 | `IndexSpec.properties` and the `data_skipping_*` `indexType` values (`indexes.yaml`) | `gravitino_table.index[].properties`, `index[].index_type` | rejected at create/update with an explicit diagnostic | accepted |
-| `ExternalType` restored to `DataType.oneOf` (`datatype.yaml`) | column data type `external` (`catalog_string`) | rejected at create/update with an explicit diagnostic | accepted |
+| `ExternalType` restored to `DataType.oneOf` (`datatype.yaml`) | column `type` of `gravitino_table`/`gravitino_view` as `{"type":"external","catalogString":"..."}` | rejected at create/update with an explicit diagnostic | accepted |
 | `AuthMeResponse.serviceAdmin` (`authn.yaml`) | `gravitino_principal.service_admin` | absent: always `false` | reported |
 | `GET /system/iceberg-rest` (`getIcebergRestServiceUri`, `system.yaml`) | `gravitino_iceberg_rest_service` | endpoint does not exist: explicit diagnostic | `uri` set, or `null` when the service is unavailable |
 | `POST /catalogs/{catalog}/testConnection` (`testExistingCatalogConnection`, `catalogs.yaml`) | existing-catalog variant of `gravitino_catalog_connection_test` | endpoint does not exist: explicit diagnostic | supported |
@@ -90,19 +90,33 @@ version-restricted field.
 The `gravitino_secrets` API only exists on `main` and is documented in its schema as requiring
 Gravitino 1.4 or newer.
 
-**Version detection.** There is no cached server version; gating is lazy. An operation that
-carries a 1.3.1-only value reads `GET /api/version` at that moment and compares it with
+**Version detection.** The provider detects the server version once in
+`provider.Configure` (`client.DetectServerVersion`, best effort) and keeps it on the client.
+`client.ResolveServerVersion` returns that version and only probes `GET /api/version` when the
+probe failed, so a gate normally costs no request of its own; every comparison goes through
 `models.ServerVersionAtLeast` (an unparseable version counts as "too old"). A restricted value
 MUST fail with a diagnostic naming the required version, never with the server's opaque `400`.
-Two shapes are in use, and both keep the failure explicit:
+Three shapes are in use:
 
-- `client.CheckMetadataObjectTypeSupported` / `client.CheckPolicyObjectTypesSupported` fail
-  closed: they short-circuit with `models.ObjectTypeRequiresGravitino131` (values that exist
-  since 1.3.0 cost no request) and return the version-lookup error when `/api/version` cannot
-  be read, so a restricted value is never sent to a server of unknown version.
+- `client.CheckMetadataObjectTypeSupported`, `client.CheckPolicyObjectTypesSupported` and
+  `client.CheckIndexesSupported` fail closed: they short-circuit on the 1.3.1-only values
+  (`models.ObjectTypeRequiresGravitino131`, `models.IndexTypeRequiresGravitino131`), so a value
+  that exists since 1.3.0 costs no version comparison, and they return the version-lookup error
+  when the version cannot be read, so a restricted value is never sent to a server of unknown
+  version.
+- `client.CheckExternalTypesSupported` short-circuits the same way (only columns whose type
+  actually uses `external` are gated) but stays permissive when the version is unknown
+  (`client.SupportsExternalType` is `client.AtLeast(1, 3, 1)`, which treats an unknown version as
+  current). This is deliberate: an external column is the only signal the provider has, and a
+  server whose version endpoint is blocked must not lose the ability to manage such a column.
 - `gravitino_iceberg_rest_service` fails open: it logs a failed version lookup with `tflog.Warn`,
   calls the 1.3.1-only endpoint and maps that endpoint's 404 to the same version diagnostic.
   Use this shape only when the endpoint response is itself the authoritative signal.
+
+Version-restricted API surface therefore follows a **union schema + runtime version gate**: the
+schema validator accepts the union of every supported server version and a `client.Check*` method
+refuses a 1.3.1-only value against an older server with an explicit "requires Gravitino >= 1.3.1"
+diagnostic instead of the endpoint's opaque 400.
 
 **Marking restricted fields.** Every attribute, data source or endpoint that needs a newer
 server MUST carry the restriction in its schema description — `Requires Gravitino >= 1.3.1`
