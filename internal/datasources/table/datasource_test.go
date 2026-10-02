@@ -345,6 +345,9 @@ func TestTableDataSource_NormalisesServerValues(t *testing.T) {
 	if state.Indexes[0].IndexType.ValueString() != "primary_key" {
 		t.Errorf("index type = %q, want primary_key", state.Indexes[0].IndexType.ValueString())
 	}
+	if !state.Indexes[0].Properties.IsNull() {
+		t.Errorf("an empty index properties map must map to none, got %v", state.Indexes[0].Properties)
+	}
 }
 
 func TestTableDataSource_ReadNotFoundIsAnError(t *testing.T) {

@@ -222,18 +222,30 @@ Unit and mock-based tests:
 make test
 ```
 
+The provider supports Gravitino **1.3.0** and **1.3.1**. Both are exercised by the
+container-based acceptance suite, which selects the server image through `GRAVITINO_VERSION`
+(default `1.3.0`):
+
+```sh
+make testacc-docker                    # Go 1.27 test container + Gravitino 1.3.0 (Docker)
+GRAVITINO_VERSION=1.3.1 make testacc-docker   # same suite against Gravitino 1.3.1
+make testacc-matrix                    # run the suite against every supported version
+```
+
 ### Live acceptance tests against a real Gravitino (podman)
 
 The repository contains `TestLiveAcc*` acceptance tests that run against a **real**
-Gravitino server (image `apache/gravitino:1.3.0`) and prove the responses are not mocks:
-`acceptance.LivePreCheck` refuses to run unless `GRAVITINO_URI` answers `GET /api/version`
-with a matching Gravitino version.
+Gravitino server (image `apache/gravitino:${GRAVITINO_VERSION:-1.3.0}`, default `1.3.0`) and
+prove the responses are not mocks: `acceptance.LivePreCheck` refuses to run unless
+`GRAVITINO_URI` answers `GET /api/version` with the expected Gravitino version
+(`GRAVITINO_EXPECT_VERSION`, defaulting to `GRAVITINO_VERSION`).
 
 Run them with podman (needs a running `podman machine` and `podman-compose`):
 
 ```bash
-make testacc-live                # all live acceptance tests
+make testacc-live                # all live acceptance tests against Gravitino 1.3.0
 make testacc-live-filter F=TestLiveAccMetalakeResource  # one test
+GRAVITINO_VERSION=1.3.1 make testacc-live               # against Gravitino 1.3.1
 ```
 
 Unlike the mock-based `TestAcc*` tests (which spin up an `httptest` server), these tests

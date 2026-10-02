@@ -1,14 +1,25 @@
 # Live acceptance test cases (against a real Gravitino)
 
-These tests run against a **real** Gravitino server (`apache/gravitino:1.3.0`) via podman and
-never start an HTTP mock of their own. They are recognisable by the `TestLiveAcc` prefix.
+These tests run against a **real** Gravitino server (image `apache/gravitino:${GRAVITINO_VERSION:-1.3.0}`,
+default `1.3.0`) via podman and never start an HTTP mock of their own. They are recognisable by
+the `TestLiveAcc` prefix.
 
 ## Running them
 
 ```bash
-make testacc-live                                       # all live tests
+make testacc-live                                       # all live tests against 1.3.0
 make testacc-live-filter F=TestLiveAccMetalakeResource  # a single test
+GRAVITINO_VERSION=1.3.1 make testacc-live               # against 1.3.1
 ```
+
+`GRAVITINO_VERSION` selects the `apache/gravitino` image tag in `docker-compose.yml` and is
+mirrored into `GRAVITINO_EXPECT_VERSION`, so the precheck asserts the version that was
+requested. Both supported versions (1.3.0 and 1.3.1) must pass the same suite; the CI
+acceptance job runs it as a matrix over both.
+
+The supported list is single-sourced in `.github/gravitino-versions.txt`: `make testacc-matrix`
+iterates it, and the CI workflow turns it into its matrix with `jq`. Adding a server version is
+therefore a one-line change there (plus an `apache/gravitino` image tag for that version).
 
 `scripts/testacc-live.sh` discovers every package that contains `TestLiveAcc` tests, so a new
 live test is picked up without editing the script.
@@ -22,13 +33,13 @@ live test is picked up without editing the script.
 3. The tests run inside the podman-compose network; the only reachable server on
    `http://gravitino:8090` is the real container.
 
-A test that needs a feature added after the pinned image's version skips itself when it
-detects an older server (for example `TestLiveAccCatalogConnectionTestExisting` needs
-Gravitino 1.3.1). To run those, point `GRAVITINO_URI` at a newer server, for example:
+A live test that needs a capability added after the server's version skips itself instead of
+failing, so the same suite passes on every supported version (for example
+`TestLiveAccCatalogConnectionTestExisting` needs Gravitino 1.3.1 and therefore skips on 1.3.0).
+Run the version that has the capability:
 
 ```bash
-podman run -d --name gravitino-1.3.1 -p 18091:8090 docker.io/apache/gravitino:1.3.1
-TF_ACC=1 GRAVITINO_URI=http://localhost:18091 go test -run TestLiveAccCatalogConnectionTest ./internal/datasources/catalog/
+GRAVITINO_VERSION=1.3.1 make testacc-live-filter F=TestLiveAccCatalogConnectionTest
 ```
 
 ## Test cases

@@ -337,10 +337,17 @@ func TableIndexesFromModel(ctx context.Context, indexes []IndexTFSDK) ([]Index, 
 			return nil, diags
 		}
 
+		properties, propertyDiags := TablePropertiesFromModel(ctx, index.Properties)
+		diags.Append(propertyDiags...)
+		if diags.HasError() {
+			return nil, diags
+		}
+
 		result = append(result, Index{
 			IndexType:  index.IndexType.ValueString(),
 			Name:       index.Name.ValueString(),
 			FieldNames: fieldNames,
+			Properties: properties,
 		})
 	}
 
@@ -359,6 +366,15 @@ func TableIndexesToModel(ctx context.Context, indexes []Index, diags *diag.Diagn
 		mapped := IndexTFSDK{
 			IndexType:  types.StringValue(strings.ToLower(index.IndexType)),
 			FieldNames: fieldNames,
+			Properties: types.MapNull(types.StringType),
+		}
+		if len(index.Properties) > 0 {
+			properties, propertyDiags := types.MapValueFrom(ctx, types.StringType, index.Properties)
+			diags.Append(propertyDiags...)
+			if diags.HasError() {
+				return result
+			}
+			mapped.Properties = properties
 		}
 		if index.Name == "" {
 			mapped.Name = types.StringNull()

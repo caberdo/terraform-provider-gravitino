@@ -72,3 +72,51 @@ func (c *Client) CheckPolicyObjectTypesSupported(ctx context.Context, objectType
 	}
 	return nil
 }
+
+// CheckIndexesSupported returns an error when an index uses one of the
+// indexes.yaml#/IndexSpec additions of Gravitino 1.3.1 (a data_skipping_* index
+// type, or custom index properties) and the server reports an older version.
+// A 1.3.0 server rejects both with an opaque error, so the provider verifies
+// the server version first.
+//
+// GET /api/version is queried only when such an index is present, so the check
+// costs nothing for the indexes that exist since 1.3.0.
+func (c *Client) CheckIndexesSupported(ctx context.Context, indexes []models.Index) error {
+	restricted := make([]string, 0, len(indexes))
+	hasProperties := false
+	for _, index := range indexes {
+		if models.IndexTypeRequiresGravitino131(index.IndexType) {
+			restricted = append(restricted, strings.ToLower(strings.TrimSpace(index.IndexType)))
+		}
+		if len(index.Properties) > 0 {
+			hasProperties = true
+		}
+	}
+	if len(restricted) == 0 && !hasProperties {
+		return nil
+	}
+
+	// The indexes come from a Terraform block list, which has an order, but the
+	// types are sorted anyway so the diagnostic is stable when the same type
+	// appears more than once.
+	sort.Strings(restricted)
+
+	feature := "the index properties"
+	switch {
+	case len(restricted) > 0 && hasProperties:
+		feature = fmt.Sprintf("index type(s) %s and the index properties", strings.Join(restricted, ", "))
+	case len(restricted) > 0:
+		feature = fmt.Sprintf("index type(s) %s", strings.Join(restricted, ", "))
+	}
+
+	version, err := c.GetVersion(ctx)
+	if err != nil {
+		return fmt.Errorf("cannot verify that %s are supported by the server: %w", feature, err)
+	}
+
+	if !models.ServerVersionAtLeast(version.Version.Version, 1, 3, 1) {
+		return fmt.Errorf("%s require Gravitino >= 1.3.1, but the server reports version %q",
+			feature, version.Version.Version)
+	}
+	return nil
+}
