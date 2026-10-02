@@ -41,9 +41,27 @@ type CatalogSetRequest struct {
 	InUse bool `json:"inUse"`
 }
 
-// CatalogUpdateRequest mirrors `CatalogUpdatesRequest`.
+// CatalogUpdateRequest mirrors `CatalogUpdatesRequest`. It is the update list
+// wrapper used by PUT /metalakes/{metalake}/catalogs/{catalog} and, since
+// Gravitino 1.3.1, the optional body of
+// POST /metalakes/{metalake}/catalogs/{catalog}/testConnection.
 type CatalogUpdateRequest struct {
 	Updates []interface{} `json:"updates"`
+}
+
+// CatalogTestConnectionResponse mirrors the 200 response of the two connection
+// test endpoints: POST /metalakes/{metalake}/catalogs/testConnection (v1.3.0)
+// and POST /metalakes/{metalake}/catalogs/{catalog}/testConnection (v1.3.1).
+//
+// Expected test failures are reported inside an HTTP 200 response as an
+// application `code` (1000-1100 range) plus `type` and `message`; only `code ==
+// 0` means the connection test succeeded. Real HTTP failures (400/403/5xx) are
+// returned by the client as an *HTTPError instead.
+type CatalogTestConnectionResponse struct {
+	Code    int      `json:"code"`
+	Type    string   `json:"type,omitempty"`
+	Message string   `json:"message,omitempty"`
+	Stack   []string `json:"stack,omitempty"`
 }
 
 // RenameCatalogRequest mirrors `RenameCatalogRequest`.

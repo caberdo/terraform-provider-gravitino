@@ -1,6 +1,15 @@
 ## Unreleased
 
 FEATURES:
+- **Catalog connection testing:** New `gravitino_catalog_connection_test` data source. It
+  either tests a proposed catalog configuration (`name`, `type`, optional
+  `catalog_provider`, `comment`, `properties`) via
+  `POST /metalakes/{metalake}/catalogs/testConnection` (Gravitino 1.3.0 or newer), or the
+  stored configuration of an existing catalog (`catalog`) via
+  `POST /metalakes/{metalake}/catalogs/{catalog}/testConnection`, which requires Gravitino
+  1.3.1 or newer and is rejected with a clear diagnostic on older servers. The result is
+  exposed as `success` plus the sanitized server `message`; a completed but failed test is
+  not a Terraform error.
 - **`gravitino_table` and `gravitino_view` columns accept the Gravitino `external`
   data type (Gravitino 1.3.1).** `internal/models/datatype.go` now models the
   `ExternalType` variant of `datatype.yaml#/DataType`

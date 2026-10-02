@@ -57,19 +57,41 @@ func (c *Client) DropCatalog(ctx context.Context, metalake, name string, force b
 	return &result, err
 }
 
-func (c *Client) TestCatalogConnection(ctx context.Context, metalake, catalogName string, testReq interface{}) (*models.BaseResponse, error) {
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/testConnection", url.PathEscape(metalake), url.PathEscape(catalogName))
-	var result models.BaseResponse
-	if err := c.Post(ctx, path, testReq, &result); err != nil {
+// TestCatalogConfig tests a proposed catalog configuration without creating the
+// catalog:
+//
+//	POST /api/metalakes/{metalake}/catalogs/testConnection
+//
+// Added in Gravitino 1.3.0. The response carries the test result (code 0 on
+// success, otherwise an application error code, type and message).
+func (c *Client) TestCatalogConfig(ctx context.Context, metalake string, req *models.CatalogCreateRequest) (*models.CatalogTestConnectionResponse, error) {
+	path := fmt.Sprintf("/metalakes/%s/catalogs/testConnection", url.PathEscape(metalake))
+	var result models.CatalogTestConnectionResponse
+	if err := c.Post(ctx, path, req, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
-func (c *Client) TestCatalogConfig(ctx context.Context, metalake string, testReq interface{}) (*models.BaseResponse, error) {
-	path := fmt.Sprintf("/metalakes/%s/catalogs/testConnection", url.PathEscape(metalake))
-	var result models.BaseResponse
-	if err := c.Post(ctx, path, testReq, &result); err != nil {
+// TestCatalogConnection tests the stored configuration of an existing catalog:
+//
+//	POST /api/metalakes/{metalake}/catalogs/{catalog}/testConnection
+//
+// Added in Gravitino 1.3.1. req carries optional catalog changes that are
+// applied to a temporary effective configuration only; pass nil to test the
+// stored configuration unchanged.
+func (c *Client) TestCatalogConnection(ctx context.Context, metalake, catalogName string, req *models.CatalogUpdateRequest) (*models.CatalogTestConnectionResponse, error) {
+	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/testConnection", url.PathEscape(metalake), url.PathEscape(catalogName))
+
+	// A typed nil pointer would marshal to a "null" body; the API treats the
+	// body as optional, so send none at all.
+	var body interface{}
+	if req != nil {
+		body = req
+	}
+
+	var result models.CatalogTestConnectionResponse
+	if err := c.Post(ctx, path, body, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
