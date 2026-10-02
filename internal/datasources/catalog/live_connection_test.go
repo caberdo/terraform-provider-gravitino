@@ -138,12 +138,7 @@ func requireLiveServerAtLeast(t *testing.T, major, minor, patch int) {
 	}
 
 	reported := version.Version.Version
-	haveMajor, haveMinor, havePatch, ok := models.ParseVersion(reported)
-	if !ok {
-		t.Fatalf("server at %s reported an unparsable version %q", uri, reported)
-	}
-	if haveMajor > major ||
-		(haveMajor == major && (haveMinor > minor || (haveMinor == minor && havePatch >= patch))) {
+	if models.ServerVersionAtLeast(reported, major, minor, patch) {
 		return
 	}
 

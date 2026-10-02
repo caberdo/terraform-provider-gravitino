@@ -26,7 +26,7 @@ data "gravitino_statistics" "example" {
 
 - `metalake` (String) The metalake name.
 - `resource` (String) The resource name.
-- `resource_type` (String) The metadata object type (e.g. CATALOG, SCHEMA, TABLE, COLUMN, FILESET, TOPIC, MODEL, ROLE).
+- `resource_type` (String) The metadata object type (METALAKE, CATALOG, SCHEMA, TABLE, VIEW, COLUMN, FILESET, TOPIC, MODEL, FUNCTION, ROLE). VIEW and FUNCTION require Gravitino 1.3.1 or newer.
 
 ### Read-Only
 

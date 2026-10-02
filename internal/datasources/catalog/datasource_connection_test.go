@@ -298,15 +298,18 @@ func TestCatalogConnectionTestDataSource_ExistingCatalogVersionGate(t *testing.T
 	}
 }
 
-// TestCatalogConnectionTestDataSource_UnparsableVersionProceeds: a version the
-// provider cannot read is not treated as "too old"; the server's own answer wins.
-func TestCatalogConnectionTestDataSource_UnparsableVersionProceeds(t *testing.T) {
+// TestCatalogConnectionTestDataSource_UnparsableVersionRejected: a version the
+// provider cannot read counts as unsupported (models.ServerVersionAtLeast), so
+// the request is not sent to an endpoint that may not exist.
+func TestCatalogConnectionTestDataSource_UnparsableVersionRejected(t *testing.T) {
+	var tested atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
 		switch r.URL.Path {
 		case "/api/version":
 			fmt.Fprint(w, `{"code":0,"version":{"version":"dev","compileDate":"","gitCommit":""}}`)
 		default:
+			tested.Store(true)
 			fmt.Fprint(w, connectionTestSuccessExample)
 		}
 	}))
@@ -316,16 +319,19 @@ func TestCatalogConnectionTestDataSource_UnparsableVersionProceeds(t *testing.T)
 	d := ds.NewConnectionTestDataSource()
 	d.(*ds.CatalogConnectionTestDataSource).SetClient(c)
 
-	resp, state := connectionTestRead(t, d, ds.CatalogConnectionTestDataSourceModel{
+	resp, _ := connectionTestRead(t, d, ds.CatalogConnectionTestDataSourceModel{
 		Metalake:   types.StringValue("test_metalake"),
 		Catalog:    types.StringValue("my_hive_catalog"),
 		Properties: types.MapNull(types.StringType),
 	})
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an unparsable server version to be rejected")
 	}
-	if !state.Success.ValueBool() {
-		t.Fatalf("expected success, got %v", state.Success)
+	if got := resp.Diagnostics.Errors()[0].Summary(); got != "Unsupported Gravitino version" {
+		t.Fatalf("unexpected summary: %s", got)
+	}
+	if tested.Load() {
+		t.Fatal("the connection test must not be sent when the server version is unknown")
 	}
 }
 

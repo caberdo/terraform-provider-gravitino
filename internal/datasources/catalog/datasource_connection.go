@@ -204,9 +204,10 @@ func (d *CatalogConnectionTestDataSource) Read(ctx context.Context, req datasour
 
 // existingCatalogSupported reports whether the server implements
 // POST /metalakes/{metalake}/catalogs/{catalog}/testConnection, which was added
-// in Gravitino 1.3.1. An unparsable version is treated as supported: the request
-// itself then fails with the server's own error, which is more useful than a
-// guess based on a version string we cannot read.
+// in Gravitino 1.3.1. A version the provider cannot read counts as unsupported
+// (models.ServerVersionAtLeast): the caller is about to use an API that only
+// exists from 1.3.1 on, so an unknown server version must not be assumed to
+// support it.
 func (d *CatalogConnectionTestDataSource) existingCatalogSupported(ctx context.Context, resp *datasource.ReadResponse) bool {
 	version, err := d.client.GetVersion(ctx)
 	if err != nil {
@@ -215,15 +216,7 @@ func (d *CatalogConnectionTestDataSource) existingCatalogSupported(ctx context.C
 	}
 
 	reported := version.Version.Version
-	major, minor, patch, ok := models.ParseVersion(reported)
-	if !ok {
-		tflog.Warn(ctx, "Could not parse the Gravitino server version; assuming the existing catalog connection test is supported", map[string]interface{}{
-			"version": reported,
-		})
-		return true
-	}
-
-	if major > 1 || (major == 1 && (minor > 3 || (minor == 3 && patch >= 1))) {
+	if models.ServerVersionAtLeast(reported, 1, 3, 1) {
 		return true
 	}
 
