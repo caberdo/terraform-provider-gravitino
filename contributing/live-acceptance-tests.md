@@ -17,6 +17,10 @@ mirrored into `GRAVITINO_EXPECT_VERSION`, so the precheck asserts the version th
 requested. Both supported versions (1.3.0 and 1.3.1) must pass the same suite; the CI
 acceptance job runs it as a matrix over both.
 
+The supported list is single-sourced in `.github/gravitino-versions.txt`: `make testacc-matrix`
+iterates it, and the CI workflow turns it into its matrix with `jq`. Adding a server version is
+therefore a one-line change there (plus an `apache/gravitino` image tag for that version).
+
 `scripts/testacc-live.sh` discovers every package that contains `TestLiveAcc` tests, so a new
 live test is picked up without editing the script.
 

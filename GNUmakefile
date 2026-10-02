@@ -5,6 +5,8 @@ VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 # Gravitino server version the acceptance tests run against; docker-compose.yml and the live
 # precheck both read it. Override on the command line to test 1.3.1.
 GRAVITINO_VERSION ?= 1.3.0
+# Supported versions, single-sourced with the CI matrix in .github/workflows/test.yml.
+GRAVITINO_VERSIONS := $(shell tr '\n' ' ' < .github/gravitino-versions.txt)
 
 build:
 	go build -o bin/$(BINARY_NAME) -ldflags "-X main.version=$(VERSION)" .
@@ -35,11 +37,16 @@ testacc-docker:
 	GRAVITINO_VERSION=$(GRAVITINO_VERSION) docker compose run --rm test
 
 # Run the docker-based acceptance suite against every supported Gravitino server version.
+# Each version runs and tears down independently so one failure still lets the others run;
+# the overall exit status is non-zero if any version failed.
 testacc-matrix:
-	$(MAKE) testacc-docker GRAVITINO_VERSION=1.3.0
-	docker compose down
-	$(MAKE) testacc-docker GRAVITINO_VERSION=1.3.1
-	docker compose down
+	@status=0; \
+	for v in $(GRAVITINO_VERSIONS); do \
+		echo "==> Acceptance tests against Gravitino $$v"; \
+		$(MAKE) testacc-docker GRAVITINO_VERSION=$$v || status=1; \
+		docker compose down || true; \
+	done; \
+	exit $$status
 
 testacc-live:
 	GRAVITINO_VERSION=$(GRAVITINO_VERSION) podman compose up -d gravitino
