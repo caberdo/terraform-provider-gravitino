@@ -11,6 +11,13 @@ FEATURES:
   exposed as `success` plus the sanitized server `message`; a completed but failed test is
   not a Terraform error.
 
+ENHANCEMENTS:
+- **`gravitino_principal` exposes `service_admin`.** Gravitino 1.3.1 added
+  `serviceAdmin` to `GET /api/authn/me` (operation id `getAuthenticatedUser`),
+  so the data source now reports whether the configured credential is a
+  Gravitino service administrator. Servers predating 1.3.1 omit the field, so
+  `service_admin` is then `false`.
+
 ## 0.7.0 (2026-09-25)
 
 _Releases 0.5.0 through 0.6.2 were tagged without changelog entries._
