@@ -29,7 +29,8 @@ func (d *PrincipalDataSource) SetClient(c *client.Client) {
 }
 
 type PrincipalDataSourceModel struct {
-	Name types.String `tfsdk:"name"`
+	Name         types.String `tfsdk:"name"`
+	ServiceAdmin types.Bool   `tfsdk:"service_admin"`
 }
 
 func (d *PrincipalDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -53,12 +54,18 @@ func (d *PrincipalDataSource) Metadata(_ context.Context, _ datasource.MetadataR
 
 func (d *PrincipalDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Gets the server-resolved principal of the authenticated user (GET /api/authn/me). " +
-			"The endpoint returns the principal name only, so no roles are exposed.",
+		Description: "Gets the server-resolved principal of the authenticated user (GET /api/authn/me) and, " +
+			"on Gravitino 1.3.1 and later, whether that credential is a Gravitino service administrator. " +
+			"The endpoint returns no roles.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Computed:    true,
 				Description: "The server-resolved principal name of the authenticated user.",
+			},
+			"service_admin": schema.BoolAttribute{
+				Computed: true,
+				Description: "Whether the authenticated user is a Gravitino service administrator. " +
+					"Always `false` on Gravitino versions before 1.3.1, which do not return `serviceAdmin`.",
 			},
 		},
 	}
@@ -82,7 +89,8 @@ func (d *PrincipalDataSource) Read(ctx context.Context, req datasource.ReadReque
 	setPrincipalState(ctx, result, &config)
 
 	tflog.Debug(ctx, "Read authenticated principal", map[string]interface{}{
-		"principal": config.Name.ValueString(),
+		"principal":     config.Name.ValueString(),
+		"service_admin": config.ServiceAdmin.ValueBool(),
 	})
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
@@ -91,10 +99,14 @@ func (d *PrincipalDataSource) Read(ctx context.Context, req datasource.ReadReque
 // setPrincipalState maps the /authn/me response onto the data source model.
 // `principal` is a plain string in the API response, so the mapped `name` is
 // always a known value (possibly the empty string when the server omits it).
+// `serviceAdmin` is absent on servers before 1.3.1, so the mapped
+// `service_admin` is then a known `false` rather than an unknown value.
 func setPrincipalState(ctx context.Context, result *models.AuthMeResponse, model *PrincipalDataSourceModel) {
 	model.Name = types.StringValue(result.Principal)
+	model.ServiceAdmin = types.BoolValue(result.ServiceAdmin)
 	tflog.Debug(ctx, "Mapped authenticated principal", map[string]interface{}{
-		"principal": result.Principal,
-		"code":      result.Code,
+		"principal":     result.Principal,
+		"service_admin": result.ServiceAdmin,
+		"code":          result.Code,
 	})
 }

@@ -1,6 +1,11 @@
 ## Unreleased
 
 ENHANCEMENTS:
+- **`gravitino_principal` exposes `service_admin`.** Gravitino 1.3.1 added
+  `serviceAdmin` to `GET /api/authn/me` (operation id `getAuthenticatedUser`),
+  so the data source now reports whether the configured credential is a
+  Gravitino service administrator. Servers predating 1.3.1 omit the field, so
+  `service_admin` is then `false`.
 - **`gravitino_policy` supports the `VIEW` and `FUNCTION` object types.** Gravitino 1.3.1
   adds both to `PolicyContentBase.supportedObjectTypes`; `supported_object_types` now
   accepts the union of the 1.3.0 and 1.3.1 enums. The provider detects the server version
