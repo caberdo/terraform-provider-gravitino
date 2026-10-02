@@ -10,6 +10,13 @@ FEATURES:
   1.3.1 or newer and is rejected with a clear diagnostic on older servers. The result is
   exposed as `success` plus the sanitized server `message`; a completed but failed test is
   not a Terraform error.
+- **`gravitino_iceberg_rest_service` data source (Gravitino 1.3.1+).** Discovers the
+  Iceberg REST service endpoint the server advertises via `GET /api/system/iceberg-rest`,
+  optionally scoped to a `metalake`; `uri` is null when the server advertises none for the
+  requested metalake. The read verifies the server version
+  (`models.ServerVersionAtLeast`, `GET /api/version`) and a 404 from the endpoint is mapped
+  to the same explicit "requires Gravitino >= 1.3.1" diagnostic, so a 1.3.0 server never
+  surfaces a raw HTTP 404.
 
 ENHANCEMENTS:
 - **`gravitino_principal` exposes `service_admin`.** Gravitino 1.3.1 added

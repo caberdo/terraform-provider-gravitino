@@ -15,6 +15,7 @@ import (
 	dsfunction "github.com/gravitino/terraform-provider-gravitino/internal/datasources/function"
 	dsgroup "github.com/gravitino/terraform-provider-gravitino/internal/datasources/group"
 	dshealth "github.com/gravitino/terraform-provider-gravitino/internal/datasources/health"
+	dsicebergrest "github.com/gravitino/terraform-provider-gravitino/internal/datasources/iceberg_rest_service"
 	dsidpgroup "github.com/gravitino/terraform-provider-gravitino/internal/datasources/idp_group"
 	dsidpuser "github.com/gravitino/terraform-provider-gravitino/internal/datasources/idp_user"
 	dsjob "github.com/gravitino/terraform-provider-gravitino/internal/datasources/job"
@@ -316,6 +317,7 @@ func (p *GravitinoProvider) DataSources(_ context.Context) []func() datasource.D
 		dshealth.NewHealthDataSource,
 		dshealth.NewLivenessDataSource,
 		dshealth.NewReadinessDataSource,
+		dsicebergrest.New,
 		dspolicy.NewListDataSource,
 		dscredential.New,
 		dssecrets.New,

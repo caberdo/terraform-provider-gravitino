@@ -24,6 +24,9 @@ server-side configuration or a newer server:
 - `gravitino_catalog_connection_test` tests a proposed catalog configuration on Gravitino
   1.3.0 or newer; testing the stored configuration of an existing catalog (`catalog`) uses an
   endpoint added in Gravitino 1.3.1 and fails with a clear diagnostic on older servers.
+- `gravitino_iceberg_rest_service` requires Gravitino 1.3.1 or newer; on older servers
+  `GET /api/system/iceberg-rest` does not exist and the data source fails with a version
+  diagnostic instead of a raw HTTP 404.
 - Tables, views, functions, partitions and statistics require a lakehouse catalog (Hive or
   Iceberg); a fileset catalog rejects those operations.
 - Jobs require a job executor configured on the server, and a job template can only be deleted

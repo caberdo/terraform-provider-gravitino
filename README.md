@@ -158,6 +158,7 @@ data "gravitino_metalake" "example" {
 |-----------------------------|-------------------------------------------------|
 | `gravitino_catalogs`        | List catalogs of a metalake.                     |
 | `gravitino_catalog`         | Get a specific catalog.                          |
+| `gravitino_catalog_connection_test` | Test a catalog connection (a proposed configuration, or an existing catalog on Gravitino 1.3.1+). |
 | `gravitino_schemas`         | List schemas of a catalog.                       |
 | `gravitino_schema`          | Get a specific schema.                           |
 | `gravitino_tables`          | List tables of a schema.                         |
@@ -211,6 +212,7 @@ data "gravitino_metalake" "example" {
 | `gravitino_health`          | Get the aggregate server health.                 |
 | `gravitino_liveness`        | Get the server liveness.                         |
 | `gravitino_readiness`       | Get the server readiness.                        |
+| `gravitino_iceberg_rest_service` | Get the advertised Iceberg REST service endpoint (Gravitino 1.3.1+). |
 
 ## Testing
 
