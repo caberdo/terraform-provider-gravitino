@@ -11,8 +11,26 @@ The Gravitino provider allows you to manage [Apache Gravitino](https://gravitino
 
 ## API compatibility
 
-The provider targets the Apache Gravitino **v1.3.0** REST API. Some resources additionally need
-server-side configuration or a newer server:
+The provider targets the Apache Gravitino **v1.3.0** REST API and supports **v1.3.1** from the
+same build. At configure time the provider calls `GET /api/version`; when a value that only
+exists on 1.3.1 is used against an older server it fails with an explicit
+`requires Gravitino >= 1.3.1` diagnostic instead of the server's opaque `400`. If the version
+cannot be detected, the provider falls back to the server's own response.
+
+### Gravitino 1.3.0 vs 1.3.1
+
+| Capability | 1.3.0 | 1.3.1 |
+|---|---|---|
+| `gravitino_policy.supported_object_types` (`VIEW`, `FUNCTION`) | rejected at create/update | accepted |
+| `gravitino_statistics.resource_type` / `gravitino_credentials.resource_type` (`VIEW`, `FUNCTION`) | rejected on read | accepted |
+| `gravitino_table` `index` `index_type` (`data_skipping_minmax`, `data_skipping_bloom_filter`, `data_skipping_set`) and `properties` | rejected at create/update | accepted |
+| `gravitino_table` column data type `external` (`catalog_string`) | rejected at create/update | accepted |
+| `gravitino_principal.service_admin` | always `false` | reported |
+| `gravitino_iceberg_rest_service` data source | endpoint does not exist | returns `uri`, or `null` when the service is unavailable |
+| `gravitino_catalog_connection_test` existing-catalog variant | endpoint does not exist | supported |
+| `gravitino_catalog_connection_test` proposed-configuration variant | supported | supported |
+
+Beyond the API version, some resources need server-side configuration:
 
 - `gravitino_role`, `gravitino_owner`, `gravitino_user` and `gravitino_group` require
   `gravitino.authorization.enable=true` on the server; without it those endpoints answer HTTP 405

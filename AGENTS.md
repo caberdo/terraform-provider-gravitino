@@ -66,9 +66,43 @@ Resources are aligned against the Apache Gravitino **v1.3.0** OpenAPI specificat
 (`docs/open-api/` in the Gravitino repository, e.g.
 `https://raw.githubusercontent.com/apache/gravitino/v1.3.0/docs/open-api/tables.yaml`).
 Always check that spec before adding or changing a field: field names, enum values and
-update request types are not guessable. Deviations that exist only on `main` (e.g. the
-secrets API used by `gravitino_secrets`) must be documented as version-restricted in the
-schema description.
+update request types are not guessable.
+
+### Gravitino 1.3.0 vs 1.3.1
+
+A single provider build supports **v1.3.0 and v1.3.1** servers. Schema validators accept the
+union of both versions; the runtime then gates 1.3.1-only values on the detected server
+version. Compare a spec such as
+`https://github.com/apache/gravitino/compare/v1.3.0...v1.3.1` before adding a
+version-restricted field.
+
+| Capability (Gravitino API) | Provider surface | 1.3.0 | 1.3.1 |
+|---|---|---|---|
+| `PolicyContentBase.supportedObjectTypes` gains `VIEW`/`FUNCTION` (`policies.yaml`) | `gravitino_policy.supported_object_types`, `gravitino_policies` | rejected at create/update with an explicit diagnostic | accepted |
+| `metadataObjectType` gains `VIEW`/`FUNCTION` (`openapi.yaml`) | `gravitino_statistics.resource_type`, `gravitino_credentials.resource_type` | rejected on read with an explicit diagnostic | accepted |
+| `IndexSpec.properties` and the `data_skipping_*` `indexType` values (`indexes.yaml`) | `gravitino_table.index[].properties`, `index[].index_type` | rejected at create/update with an explicit diagnostic | accepted |
+| `ExternalType` restored to `DataType.oneOf` (`datatype.yaml`) | column data type `external` (`catalog_string`) | rejected at create/update with an explicit diagnostic | accepted |
+| `AuthMeResponse.serviceAdmin` (`authn.yaml`) | `gravitino_principal.service_admin` | absent: always `false` | reported |
+| `GET /system/iceberg-rest` (`getIcebergRestServiceUri`, `system.yaml`) | `gravitino_iceberg_rest_service` | endpoint does not exist: explicit diagnostic | `uri` set, or `null` when the service is unavailable |
+| `POST /catalogs/{catalog}/testConnection` (`testExistingCatalogConnection`, `catalogs.yaml`) | existing-catalog variant of `gravitino_catalog_connection_test` | endpoint does not exist: explicit diagnostic | supported |
+| `POST /catalogs/testConnection` (`testConnection`, `catalogs.yaml`) | proposed-configuration variant of `gravitino_catalog_connection_test` | supported | supported |
+
+The `gravitino_secrets` API only exists on `main` and is documented in its schema as requiring
+Gravitino 1.4 or newer.
+
+**Version detection.** `provider.Configure` calls `client.DetectServerVersion`, which fetches
+`GET /api/version` and stores a parsed semver on the client (`ServerVersion()`,
+`AtLeast(major, minor, patch)`). Detection is best-effort: a server that does not answer
+`/api/version` is logged with `tflog.Warn` and the provider keeps working, relying on the
+server's own response for gated features. `AtLeast` returns `false` for an undetected version,
+so a caller that wants to fall back to the server response must check `ServerVersion()` first
+(or map the endpoint's 404).
+
+**Marking restricted fields.** Every attribute, data source or endpoint that needs a newer
+server MUST carry the restriction in its schema description — `Requires Gravitino >= 1.3.1`
+for rejected values/endpoints, `Always false on Gravitino versions before 1.3.1` for fields the
+older server simply omits — and MUST fail with a diagnostic naming the required version, never
+an opaque server `400`.
 
 ## Conventions
 

@@ -1,3 +1,14 @@
+## Unreleased
+
+ENHANCEMENTS:
+- **Documented the Gravitino 1.3.0 vs 1.3.1 compatibility matrix.** `AGENTS.md` and the
+  provider index page now list which attributes, data sources and endpoints need
+  Gravitino >= 1.3.1 and how the provider behaves on 1.3.0, including the best-effort
+  `GET /api/version` detection that turns a 1.3.1-only value into an explicit diagnostic
+  instead of an opaque server `400`. The acceptance-test image tag is parameterised through
+  `GRAVITINO_VERSION` (default `1.3.0`), and the CI acceptance job runs the suite against
+  both 1.3.0 and 1.3.1.
+
 ## 0.7.0 (2026-09-25)
 
 _Releases 0.5.0 through 0.6.2 were tagged without changelog entries._
