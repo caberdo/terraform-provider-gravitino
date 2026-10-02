@@ -136,11 +136,11 @@ func (r *PolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"supported_object_types": schema.SetAttribute{
 				Required:    true,
 				ElementType: types.StringType,
-				Description: "The object types this policy supports. One or more of: CATALOG, SCHEMA, TABLE, FILESET, TOPIC, MODEL. Updated in-place through the API's updateContent request.",
+				Description: fmt.Sprintf("The object types this policy supports. One or more of: %s. VIEW and FUNCTION require Gravitino >= 1.3.1 and are rejected at create/update time on older servers. Updated in-place through the API's updateContent request.", strings.Join(models.PolicyObjectTypes, ", ")),
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
 					setvalidator.ValueStringsAre(
-						stringvalidator.OneOf("CATALOG", "SCHEMA", "TABLE", "FILESET", "TOPIC", "MODEL"),
+						stringvalidator.OneOf(models.PolicyObjectTypes...),
 					),
 				},
 			},
@@ -181,6 +181,10 @@ func (r *PolicyResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	tflog.Debug(ctx, "Creating policy", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "name": plan.Name.ValueString()})
+
+	if !r.checkObjectTypesSupported(ctx, listFromTF(plan.SupportedObjectTypes), &resp.Diagnostics) {
+		return
+	}
 
 	createReq := buildPolicyCreateRequest(plan)
 
@@ -281,6 +285,9 @@ func (r *PolicyResource) Update(ctx context.Context, req resource.UpdateRequest,
 			updates = append(updates, models.NewUpdatePolicyCommentRequest(plan.Comment.ValueString()))
 		}
 		if contentChanged {
+			if !r.checkObjectTypesSupported(ctx, listFromTF(plan.SupportedObjectTypes), &resp.Diagnostics) {
+				return
+			}
 			updates = append(updates, models.NewUpdatePolicyContentRequest(plan.PolicyType.ValueString(), policyContentFromTF(plan)))
 		}
 
@@ -382,6 +389,23 @@ func policyContentFromTF(model PolicyResourceModel) *models.PolicyContent {
 		Properties:           mapFromTF(model.Properties),
 		CustomRules:          mapFromTF(model.CustomRules),
 	}
+}
+
+// checkObjectTypesSupported rejects supportedObjectTypes values that the
+// configured Gravitino server cannot store, so a 1.3.0 server produces a clear
+// diagnostic instead of an opaque API 400. The client verifies the server
+// version (GET /api/version) only when a version-restricted value is present.
+// Reports whether the values may be sent.
+func (r *PolicyResource) checkObjectTypesSupported(ctx context.Context, objectTypes []string, diags *diag.Diagnostics) bool {
+	if err := r.client.CheckPolicyObjectTypesSupported(ctx, objectTypes); err != nil {
+		diags.AddAttributeError(
+			path.Root("supported_object_types"),
+			"Unsupported supported_object_types value",
+			err.Error(),
+		)
+		return false
+	}
+	return true
 }
 
 // contentKnown reports whether every content input is resolved in the plan.

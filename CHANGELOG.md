@@ -11,8 +11,15 @@ FEATURES:
   `provider.Configure` with `GET /api/version` (best effort: an undetected
   version is treated as current) and refuses an external column type against a
   server older than 1.3.1 with an explicit diagnostic instead of the server's
-  opaque HTTP 400. `internal/client` gains `ServerVersion()`, `AtLeast()` and
-  `SupportsExternalType()` for the version gating of further 1.3.1 features.
+  opaque HTTP 400 (`client.CheckExternalTypesSupported`,
+  `client.SupportsExternalType`).
+- **`gravitino_iceberg_rest_service` data source (Gravitino 1.3.1+).** Discovers the
+  Iceberg REST service endpoint the server advertises via `GET /api/system/iceberg-rest`,
+  optionally scoped to a `metalake`; `uri` is null when the server advertises none for the
+  requested metalake. The read verifies the server version
+  (`models.ServerVersionAtLeast`, `GET /api/version`) and a 404 from the endpoint is mapped
+  to the same explicit "requires Gravitino >= 1.3.1" diagnostic, so a 1.3.0 server never
+  surfaces a raw HTTP 404.
 
 ENHANCEMENTS:
 - **`gravitino_principal` exposes `service_admin`.** Gravitino 1.3.1 added
@@ -31,6 +38,13 @@ ENHANCEMENTS:
   "requires Gravitino 1.3.1 or newer" diagnostic instead of the endpoint's
   opaque 400. The two lists stay separate constants, as the provider
   deliberately keeps credential-specific enums.
+- **`gravitino_policy` supports the `VIEW` and `FUNCTION` object types.** Gravitino 1.3.1
+  adds both to `PolicyContentBase.supportedObjectTypes`; `supported_object_types` now
+  accepts the union of the 1.3.0 and 1.3.1 enums. The validator and its description
+  derive from `models.PolicyObjectTypes`, so they cannot drift from the spec. Against a
+  server older than 1.3.1 a create/update naming these two values fails with an explicit
+  "require Gravitino >= 1.3.1" diagnostic (`client.CheckPolicyObjectTypesSupported`,
+  `GET /api/version`) instead of the API's opaque 400.
 
 FIXES:
 - **A bare structural kind name is no longer accepted as a column type.**

@@ -57,6 +57,30 @@ func (c *Client) SupportsExternalType() bool {
 	return c.AtLeast(1, 3, 1)
 }
 
+// ResolveServerVersion returns the version detected by DetectServerVersion at
+// provider.Configure, or probes GET /api/version (and remembers the result) when
+// no version is known yet, e.g. in a unit test that builds a client directly.
+//
+// The returned string is the raw version only when models.ValidServerVersion
+// accepts it; callers compare it with models.ServerVersionAtLeast, which fails
+// closed.
+func (c *Client) ResolveServerVersion(ctx context.Context) (string, error) {
+	if version := c.ServerVersion(); models.ValidServerVersion(version) {
+		return version, nil
+	}
+
+	resp, err := c.GetVersion(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	version := resp.Version.Version
+	if models.ValidServerVersion(version) {
+		c.setServerVersion(version)
+	}
+	return version, nil
+}
+
 // CheckExternalTypesSupported appends one diagnostic per column whose type uses
 // the external variant when the connected server predates Gravitino 1.3.1, which
 // introduced it, so the request fails with an explicit version diagnostic

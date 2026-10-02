@@ -211,6 +211,7 @@ data "gravitino_metalake" "example" {
 | `gravitino_health`          | Get the aggregate server health.                 |
 | `gravitino_liveness`        | Get the server liveness.                         |
 | `gravitino_readiness`       | Get the server readiness.                        |
+| `gravitino_iceberg_rest_service` | Get the advertised Iceberg REST service endpoint (Gravitino 1.3.1+). |
 
 ## Testing
 
