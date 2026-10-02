@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 )
 
 // Structured data type kinds from datatype.yaml#/DataType.
@@ -15,6 +18,9 @@ const (
 	DataTypeMap      = "map"
 	DataTypeUnion    = "union"
 	DataTypeUnparsed = "unparsed"
+	// DataTypeExternal is the catalog specific type that Gravitino 1.3.1
+	// restored to DataType.oneOf; v1.3.0 rejects it.
+	DataTypeExternal = "external"
 )
 
 // LiteralType is the discriminator value of expression.yaml#/Literal.
@@ -58,12 +64,16 @@ type DataType struct {
 
 	// UnparsedType holds the opaque catalog type of an "unparsed" type.
 	UnparsedType string `json:"-"`
+
+	// CatalogString holds the catalog representation of an "external" type,
+	// a type Gravitino cannot map to its own type system.
+	CatalogString string `json:"-"`
 }
 
 // IsStructured reports whether the type is one of the object shaped kinds.
 func (d DataType) IsStructured() bool {
 	switch d.Type {
-	case DataTypeStruct, DataTypeList, DataTypeMap, DataTypeUnion, DataTypeUnparsed:
+	case DataTypeStruct, DataTypeList, DataTypeMap, DataTypeUnion, DataTypeUnparsed, DataTypeExternal:
 		return true
 	}
 	return false
@@ -96,6 +106,8 @@ func (d DataType) MarshalJSON() ([]byte, error) {
 		obj["types"] = d.Types
 	case DataTypeUnparsed:
 		obj["unparsedType"] = d.UnparsedType
+	case DataTypeExternal:
+		obj["catalogString"] = d.CatalogString
 	}
 
 	return marshalCompactJSON(obj)
@@ -129,6 +141,7 @@ func (d *DataType) UnmarshalJSON(data []byte) error {
 		ValueContainsNull *bool           `json:"valueContainsNull"`
 		Types             []DataType      `json:"types"`
 		UnparsedType      json.RawMessage `json:"unparsedType"`
+		CatalogString     string          `json:"catalogString"`
 	}
 	if err := json.Unmarshal(trimmed, &raw); err != nil {
 		return err
@@ -148,6 +161,7 @@ func (d *DataType) UnmarshalJSON(data []byte) error {
 		ValueContainsNull: raw.ValueContainsNull,
 		Types:             raw.Types,
 		UnparsedType:      decodeUnparsedType(raw.UnparsedType),
+		CatalogString:     raw.CatalogString,
 	}
 
 	return nil
@@ -221,9 +235,76 @@ func (d DataType) Validate() error {
 		if strings.TrimSpace(d.UnparsedType) == "" {
 			return fmt.Errorf("data type %q requires %q", d.Type, "unparsedType")
 		}
+	case DataTypeExternal:
+		if strings.TrimSpace(d.CatalogString) == "" {
+			return fmt.Errorf("data type %q requires %q", d.Type, "catalogString")
+		}
 	}
 
 	return nil
+}
+
+// UsesExternalType reports whether this type, or any type nested in it, is the
+// "external" variant that only Gravitino 1.3.1 and later accept.
+func (d DataType) UsesExternalType() bool {
+	if d.Type == DataTypeExternal {
+		return true
+	}
+
+	switch d.Type {
+	case DataTypeStruct:
+		for _, field := range d.Fields {
+			if field.Type.UsesExternalType() {
+				return true
+			}
+		}
+	case DataTypeList:
+		return d.ElementType != nil && d.ElementType.UsesExternalType()
+	case DataTypeMap:
+		if d.KeyType != nil && d.KeyType.UsesExternalType() {
+			return true
+		}
+		return d.ValueType != nil && d.ValueType.UsesExternalType()
+	case DataTypeUnion:
+		for _, member := range d.Types {
+			if member.UsesExternalType() {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// ExternalTypeColumnDiagnostics returns one error per column whose type uses the
+// external variant, naming the server version. Callers only invoke it when the
+// connected server predates Gravitino 1.3.1, which introduced the variant.
+func ExternalTypeColumnDiagnostics(columns []ColumnTFSDK, serverVersion string) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	server := serverVersion
+	if server == "" {
+		server = "unknown"
+	}
+
+	for i, column := range columns {
+		if column.Type.IsNull() || column.Type.IsUnknown() {
+			continue
+		}
+		dataType, err := ParseDataType(column.Type.ValueString())
+		if err != nil || !dataType.UsesExternalType() {
+			continue
+		}
+
+		diags.AddAttributeError(
+			path.Root("column").AtListIndex(i).AtName("type"),
+			"External column type requires Gravitino 1.3.1 or later",
+			fmt.Sprintf("Column %q uses the external data type, which the connected Gravitino %s server does not accept. "+
+				"Upgrade the server to 1.3.1 or later, or use a type Gravitino understands.", column.Name.ValueString(), server),
+		)
+	}
+
+	return diags
 }
 
 // ParseDataType parses the Terraform representation of a column type: either a
@@ -263,7 +344,7 @@ func ParseDataType(value string) (DataType, error) {
 }
 
 func invalidPrimitiveTypeError(value string) error {
-	return fmt.Errorf("invalid column type %q: expected a Gravitino primitive type such as \"integer\" or \"varchar(255)\", or a JSON object describing a struct, list, map, union or unparsed type", value)
+	return fmt.Errorf("invalid column type %q: expected a Gravitino primitive type such as \"integer\" or \"varchar(255)\", or a JSON object describing a struct, list, map, union, unparsed or external type", value)
 }
 
 // decodeUnparsedType accepts both the string documented by the schema and the

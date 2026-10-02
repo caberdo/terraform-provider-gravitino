@@ -1,3 +1,19 @@
+## Unreleased
+
+FEATURES:
+- **`gravitino_table` and `gravitino_view` columns accept the Gravitino `external`
+  data type (Gravitino 1.3.1).** `internal/models/datatype.go` now models the
+  `ExternalType` variant of `datatype.yaml#/DataType`
+  (`{"type": "external", "catalogString": "<catalog type>"}`), including nested
+  occurrences inside struct, list, map and union types; the example in the spec
+  misspells the key (`externalType`), the declared property `catalogString` is
+  authoritative. The provider detects the server version once at
+  `provider.Configure` with `GET /api/version` (best effort: an undetected
+  version is treated as current) and refuses an external column type against a
+  server older than 1.3.1 with an explicit diagnostic instead of the server's
+  opaque HTTP 400. `internal/client` gains `ServerVersion()`, `AtLeast()` and
+  `SupportsExternalType()` for the version gating of further 1.3.1 features.
+
 ## 0.7.0 (2026-09-25)
 
 _Releases 0.5.0 through 0.6.2 were tagged without changelog entries._

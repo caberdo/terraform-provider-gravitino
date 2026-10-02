@@ -64,6 +64,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var _ provider.Provider = (*GravitinoProvider)(nil)
@@ -238,6 +239,20 @@ func (p *GravitinoProvider) Configure(ctx context.Context, req provider.Configur
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create client", err.Error())
 		return
+	}
+
+	// Version detection is best effort: on failure the client keeps an unknown
+	// version, and version gated features stay permissive so the server
+	// reports its own error instead of the provider guessing.
+	if err := c.DetectServerVersion(ctx); err != nil {
+		tflog.Warn(ctx, "Could not detect the Gravitino server version; version specific features are not gated", map[string]interface{}{
+			"uri":   uri,
+			"error": err.Error(),
+		})
+	} else {
+		tflog.Debug(ctx, "Detected the Gravitino server version", map[string]interface{}{
+			"version": c.ServerVersion(),
+		})
 	}
 
 	resp.DataSourceData = c

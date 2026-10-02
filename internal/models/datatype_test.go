@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // TestDataTypeMarshalPrimitive asserts a primitive column type is sent as the
@@ -66,6 +69,7 @@ func TestDataTypeRoundTripUnmarshal(t *testing.T) {
 		"union":             `{"type":"union","types":["string","integer"]}`,
 		"unparsed":          `{"type":"unparsed","unparsedType":"unknown-type"}`,
 		"unparsed in array": `{"type":"unparsed","unparsedType":["unknown-type"]}`,
+		"external":          `{"type":"external","catalogString":"user-defined"}`,
 	}
 
 	for name, raw := range tests {
@@ -119,6 +123,7 @@ func TestParseDataType(t *testing.T) {
 		"  date  ",
 		`"string"`,
 		`{"type":"struct","fields":[{"name":"id","type":"integer"}]}`,
+		`{"type":"external","catalogString":"user-defined"}`,
 	}
 	for _, value := range valid {
 		if _, err := ParseDataType(value); err != nil {
@@ -136,6 +141,8 @@ func TestParseDataType(t *testing.T) {
 		`{"type":"map","keyType":"string"}`,
 		`{"type":"union","types":[]}`,
 		`{"type":"unparsed"}`,
+		`{"type":"external"}`,
+		`{"type":"external","catalogString":"  "}`,
 		"decimal(10,2",
 		"1invalid",
 	}
@@ -277,5 +284,125 @@ func TestPartitionMarshalUsesSpecFieldNames(t *testing.T) {
 		`{"dataType":"string","type":"literal","value":"gravitino_it_test2"}]}]}`
 	if string(encoded) != expected {
 		t.Errorf("marshal =\n%s\nwant\n%s", encoded, expected)
+	}
+}
+
+// TestDataTypeMarshalExternal asserts the external type is sent with the
+// catalogString property of datatype.yaml#/ExternalType.
+func TestDataTypeMarshalExternal(t *testing.T) {
+	dataType := DataType{Type: DataTypeExternal, CatalogString: "user-defined"}
+	if err := dataType.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+
+	encoded, err := json.Marshal(dataType)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	expected := `{"catalogString":"user-defined","type":"external"}`
+	if string(encoded) != expected {
+		t.Errorf("marshal external =\n%s\nwant\n%s", encoded, expected)
+	}
+}
+
+// TestDataTypeExternalRoundTrip asserts the external type Gravitino 1.3.1
+// reports decodes to the catalogString property and re-encodes unchanged. The
+// example in datatype.yaml spells the field "externalType"; the declared
+// property, catalogString, is authoritative.
+func TestDataTypeExternalRoundTrip(t *testing.T) {
+	const canonical = `{"catalogString":"user-defined","type":"external"}`
+
+	var dataType DataType
+	if err := json.Unmarshal([]byte(`{"type":"external","catalogString":"user-defined"}`), &dataType); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if dataType.Type != DataTypeExternal {
+		t.Errorf("type = %q, want %q", dataType.Type, DataTypeExternal)
+	}
+	if dataType.CatalogString != "user-defined" {
+		t.Errorf("catalogString = %q, want user-defined", dataType.CatalogString)
+	}
+	if !dataType.IsStructured() {
+		t.Error("the external type must be structured")
+	}
+	if err := dataType.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if dataType.String() != canonical {
+		t.Errorf("String() = %s, want %s", dataType.String(), canonical)
+	}
+	if !dataType.UsesExternalType() {
+		t.Error("UsesExternalType() = false, want true")
+	}
+
+	reparsed, err := ParseDataType(canonical)
+	if err != nil {
+		t.Fatalf("ParseDataType(%q): %v", canonical, err)
+	}
+	if reparsed.CatalogString != "user-defined" || reparsed.String() != canonical {
+		t.Errorf("round trip = %#v", reparsed)
+	}
+}
+
+// TestUsesExternalType asserts the external variant is detected in nested types.
+func TestUsesExternalType(t *testing.T) {
+	external := DataType{Type: DataTypeExternal, CatalogString: "user-defined"}
+
+	tests := map[string]struct {
+		dataType DataType
+		want     bool
+	}{
+		"primitive": {DataType{Type: "integer"}, false},
+		"unparsed":  {DataType{Type: DataTypeUnparsed, UnparsedType: "unknown-type"}, false},
+		"external":  {external, true},
+		"list":      {DataType{Type: DataTypeList, ElementType: &external}, true},
+		"map key":   {DataType{Type: DataTypeMap, KeyType: &external, ValueType: &DataType{Type: "string"}}, true},
+		"union":     {DataType{Type: DataTypeUnion, Types: []DataType{{Type: "string"}, external}}, true},
+		"struct":    {DataType{Type: DataTypeStruct, Fields: []StructField{{Name: "location", Type: external}}}, true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := test.dataType.UsesExternalType(); got != test.want {
+				t.Errorf("UsesExternalType() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+// TestExternalTypeColumnDiagnostics asserts one diagnostic per external column,
+// pointing at the column type and naming the server version.
+func TestExternalTypeColumnDiagnostics(t *testing.T) {
+	columns := []ColumnTFSDK{
+		{Name: types.StringValue("id"), Type: types.StringValue("long")},
+		{Name: types.StringValue("custom"), Type: types.StringValue(`{"catalogString":"user-defined","type":"external"}`)},
+		{Name: types.StringValue("tags"), Type: types.StringValue(`{"elementType":{"catalogString":"geo","type":"external"},"type":"list"}`)},
+	}
+
+	diags := ExternalTypeColumnDiagnostics(columns, "1.3.0")
+	if len(diags) != 2 {
+		t.Fatalf("diagnostics = %v, want 2", diags)
+	}
+
+	for i, want := range []string{"column[1].type", "column[2].type"} {
+		withPath, ok := diags[i].(diag.DiagnosticWithPath)
+		if !ok {
+			t.Fatalf("diagnostic %d has no path: %T", i, diags[i])
+		}
+		if got := withPath.Path().String(); got != want {
+			t.Errorf("path %d = %q, want %q", i, got, want)
+		}
+	}
+	if !strings.Contains(diags[0].Detail(), "custom") || !strings.Contains(diags[0].Detail(), "1.3.0") {
+		t.Errorf("detail = %q", diags[0].Detail())
+	}
+
+	unknown := ExternalTypeColumnDiagnostics([]ColumnTFSDK{
+		{Name: types.StringValue("x"), Type: types.StringUnknown()},
+		{Name: types.StringNull(), Type: types.StringValue("integer")},
+	}, "1.3.0")
+	if len(unknown) != 0 {
+		t.Errorf("unknown and primitive column types produced diagnostics: %v", unknown)
 	}
 }

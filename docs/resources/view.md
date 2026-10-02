@@ -111,7 +111,7 @@ Required:
 Required:
 
 - `name` (String) The column name.
-- `type` (String) The column data type: a Gravitino primitive such as `long` or `varchar(10)`, or a JSON object for a `struct`, `list`, `map`, `union` or `unparsed` type.
+- `type` (String) The column data type: a Gravitino primitive such as `long` or `varchar(10)`, or a JSON object for a `struct`, `list`, `map`, `union`, `unparsed` or `external` type. The `external` type (`jsonencode({type = "external", catalogString = "<catalog type>"})`) requires Gravitino 1.3.1 or later.
 
 Optional:
 

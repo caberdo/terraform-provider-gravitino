@@ -127,7 +127,7 @@ terraform import gravitino_table.example my_metalake.my_catalog.my_schema.my_tab
 
 ### Optional
 
-- `column` (Block List) A column of the table. The type of a primitive column is a Gravitino primitive type name such as "integer" or "varchar(255)"; struct, list, map, union and unparsed columns are written as a JSON object, for example jsonencode({type = "struct", fields = [...]}). Type, comment, nullable, auto_increment, default_value and position changes of an existing column are applied in place with the updateColumnType, updateColumnComment, updateColumnNullability, updateColumnDefaultValue and updateColumnPosition requests of tables.yaml. Any change to the set of column names replaces the table: Gravitino cannot tell a renamed column from a deleted and added one, and an in-place implementation would silently drop the data of the renamed column. Removing the default_value of a column that has one also replaces the table, because Gravitino v1.3.0 rejects a null newDefaultValue and has no other way to clear a column default. (see [below for nested schema](#nestedblock--column))
+- `column` (Block List) A column of the table. The type of a primitive column is a Gravitino primitive type name such as "integer" or "varchar(255)"; struct, list, map, union, unparsed and external columns are written as a JSON object, for example jsonencode({type = "struct", fields = [...]}). Type, comment, nullable, auto_increment, default_value and position changes of an existing column are applied in place with the updateColumnType, updateColumnComment, updateColumnNullability, updateColumnDefaultValue and updateColumnPosition requests of tables.yaml. Any change to the set of column names replaces the table: Gravitino cannot tell a renamed column from a deleted and added one, and an in-place implementation would silently drop the data of the renamed column. Removing the default_value of a column that has one also replaces the table, because Gravitino v1.3.0 rejects a null newDefaultValue and has no other way to clear a column default. (see [below for nested schema](#nestedblock--column))
 - `comment` (String) The comment of the table.
 - `distribution` (Block, Optional) How the data of the table is distributed. Gravitino v1.3.0 defines no update request for the distribution of an existing table, so changing this block replaces the table. (see [below for nested schema](#nestedblock--distribution))
 - `index` (Block List) An index of the table. Gravitino v1.3.0 defines no update request for the indexes of an existing table, so changing this block replaces the table. (see [below for nested schema](#nestedblock--index))
@@ -146,7 +146,7 @@ terraform import gravitino_table.example my_metalake.my_catalog.my_schema.my_tab
 Required:
 
 - `name` (String) The name of the column.
-- `type` (String) The Gravitino data type of the column: a primitive type name such as "integer", "varchar(255)", "decimal(10,2)", "timestamp(3)", "byte unsigned" or "binary", or a JSON object for the structured types struct, list, map, union and unparsed.
+- `type` (String) The Gravitino data type of the column: a primitive type name such as "integer", "varchar(255)", "decimal(10,2)", "timestamp(3)", "byte unsigned" or "binary", or a JSON object for the structured types struct, list, map, union, unparsed and external. The external type jsonencode({type = "external", catalogString = "<catalog type>"}) requires Gravitino 1.3.1 or later.
 
 Optional:
 

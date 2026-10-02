@@ -54,6 +54,20 @@ func (r *tableResource) Configure(_ context.Context, req resource.ConfigureReque
 	r.client = c
 }
 
+// externalColumnTypesSupported reports whether the connected server accepts the
+// column types of the plan. Gravitino 1.3.0 has no "external" data type (it was
+// restored to DataType.oneOf in 1.3.1), so an external column on an older server
+// is refused with a version diagnostic instead of an opaque HTTP 400. An
+// undetected server version stays permissive.
+func (r *tableResource) externalColumnTypesSupported(plan *models.TableResourceModel, diags *diag.Diagnostics) bool {
+	if r.client.SupportsExternalType() {
+		return true
+	}
+
+	diags.Append(models.ExternalTypeColumnDiagnostics(plan.Columns, r.client.ServerVersion())...)
+	return !diags.HasError()
+}
+
 func (r *tableResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_table"
 }
@@ -120,10 +134,10 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 		Blocks: map[string]schema.Block{
 			"column": schema.ListNestedBlock{
 				Description: "A column of the table. The type of a primitive column is a Gravitino primitive type name " +
-					"such as \"integer\" or \"varchar(255)\"; struct, list, map, union and unparsed columns are written " +
-					"as a JSON object, for example jsonencode({type = \"struct\", fields = [...]}). Type, comment, " +
-					"nullable, auto_increment, default_value and position changes of an existing column are applied in " +
-					"place with the updateColumnType, updateColumnComment, updateColumnNullability, " +
+					"such as \"integer\" or \"varchar(255)\"; struct, list, map, union, unparsed and external columns " +
+					"are written as a JSON object, for example jsonencode({type = \"struct\", fields = [...]}). Type, " +
+					"comment, nullable, auto_increment, default_value and position changes of an existing column are " +
+					"applied in place with the updateColumnType, updateColumnComment, updateColumnNullability, " +
 					"updateColumnDefaultValue and updateColumnPosition requests of tables.yaml. Any change to the set of " +
 					"column names replaces the table: Gravitino cannot tell a renamed column from a deleted and added " +
 					"one, and an in-place implementation would silently drop the data of the renamed column. Removing " +
@@ -138,8 +152,10 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 						"type": schema.StringAttribute{
 							Description: "The Gravitino data type of the column: a primitive type name such as " +
 								"\"integer\", \"varchar(255)\", \"decimal(10,2)\", \"timestamp(3)\", \"byte unsigned\" " +
-								"or \"binary\", or a JSON object for the structured types struct, list, map, union and " +
-								"unparsed.",
+								"or \"binary\", or a JSON object for the structured types struct, list, map, union, " +
+								"unparsed and external. The external type " +
+								"jsonencode({type = \"external\", catalogString = \"<catalog type>\"}) requires " +
+								"Gravitino 1.3.1 or later.",
 							Required: true,
 							Validators: []validator.String{
 								dataTypeStringValidator{},
@@ -439,6 +455,10 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		"name":     plan.Name.ValueString(),
 	})
 
+	if !r.externalColumnTypesSupported(&plan, &resp.Diagnostics) {
+		return
+	}
+
 	createReq, diags := r.buildCreateRequest(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -538,6 +558,10 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		"schema":   state.Schema.ValueString(),
 		"name":     state.Name.ValueString(),
 	})
+
+	if !r.externalColumnTypesSupported(&plan, &resp.Diagnostics) {
+		return
+	}
 
 	// These attributes have no update request in tables.yaml. A change normally
 	// turns into a replacement during plan (see ModifyPlan); reaching this guard

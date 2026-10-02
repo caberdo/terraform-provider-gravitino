@@ -946,3 +946,129 @@ func TestTableResource_SchemaDocumentsReplacements(t *testing.T) {
 		}
 	}
 }
+
+// singleColumnPlan returns the Hive plan reduced to one column of the given
+// type, so a column type can be exercised without the unrelated blocks.
+func singleColumnPlan(name, dataType string) models.TableResourceModel {
+	plan := hivePlan()
+	plan.Columns = []models.ColumnTFSDK{
+		{
+			Name:          types.StringValue(name),
+			Type:          types.StringValue(dataType),
+			Comment:       types.StringValue("custom column comment"),
+			Nullable:      types.BoolValue(true),
+			AutoIncrement: types.BoolValue(false),
+			DefaultValue:  types.StringNull(),
+		},
+	}
+	plan.SortOrders = nil
+	plan.Distribution = nil
+	plan.Partitioning = nil
+	plan.Indexes = nil
+	plan.Properties = types.MapNull(types.StringType)
+	return plan
+}
+
+// detectServerVersion primes the client with the version its mock server
+// reports, so the resource version gates can be exercised without a real
+// server.
+func detectServerVersion(t *testing.T, c *client.Client) {
+	t.Helper()
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+}
+
+// TestTableResource_CreateRejectsExternalColumnTypeOnOlderServer asserts an
+// external column type is refused with a version diagnostic before the table is
+// sent to a Gravitino 1.3.0 server, which has no ExternalType variant.
+func TestTableResource_CreateRejectsExternalColumnTypeOnOlderServer(t *testing.T) {
+	c, recorded := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool {
+		if req.Method == http.MethodGet && req.Path == "/api/version" {
+			writeJSON(t, w, map[string]interface{}{
+				"code":    0,
+				"version": map[string]string{"version": "1.3.0"},
+			})
+			return true
+		}
+		return false
+	})
+	detectServerVersion(t, c)
+
+	r := NewTableResource().(*tableResource)
+	r.client = c
+
+	schemaObj := tableSchema(t, r)
+	plan := singleColumnPlan("custom", `{"catalogString":"user-defined","type":"external"}`)
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(context.Background(), resource.CreateRequest{
+		Plan: planValue(t, schemaObj, plan),
+	}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an external column type diagnostic")
+	}
+	first := resp.Diagnostics[0]
+	if !strings.Contains(first.Summary(), "1.3.1") {
+		t.Errorf("summary = %q, want the required server version", first.Summary())
+	}
+	if !strings.Contains(first.Detail(), "custom") || !strings.Contains(first.Detail(), "1.3.0") {
+		t.Errorf("detail = %q, want the column name and the detected server version", first.Detail())
+	}
+
+	for _, req := range *recorded {
+		if req.Method == http.MethodPost {
+			t.Errorf("the table must not be created, got %s %s", req.Method, req.Path)
+		}
+	}
+}
+
+// TestTableResource_CreateSendsExternalColumnTypeOn131Server asserts the
+// external type reaches Gravitino as the catalogString object of
+// datatype.yaml#/ExternalType when the server supports it.
+func TestTableResource_CreateSendsExternalColumnTypeOn131Server(t *testing.T) {
+	c, recorded := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool {
+		switch {
+		case req.Method == http.MethodGet && req.Path == "/api/version":
+			writeJSON(t, w, map[string]interface{}{
+				"code":    0,
+				"version": map[string]string{"version": "1.3.1"},
+			})
+			return true
+		case req.Method == http.MethodPost && req.Path == testPath:
+			writeJSON(t, w, map[string]interface{}{
+				"code":  0,
+				"table": map[string]interface{}{"name": testTable},
+			})
+			return true
+		}
+		return false
+	})
+	detectServerVersion(t, c)
+
+	r := NewTableResource().(*tableResource)
+	r.client = c
+
+	schemaObj := tableSchema(t, r)
+	plan := singleColumnPlan("custom", `{"catalogString":"user-defined","type":"external"}`)
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(context.Background(), resource.CreateRequest{
+		Plan: planValue(t, schemaObj, plan),
+	}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected create diagnostics: %v", resp.Diagnostics)
+	}
+
+	columns, ok := (*recorded)[len(*recorded)-1].Body["columns"].([]interface{})
+	if !ok || len(columns) != 1 {
+		t.Fatalf("expected one column, got %v", (*recorded)[len(*recorded)-1].Body["columns"])
+	}
+	column, _ := columns[0].(map[string]interface{})
+	expected := map[string]interface{}{"catalogString": "user-defined", "type": "external"}
+	if !reflect.DeepEqual(expected, column["type"]) {
+		t.Errorf("external column type = %#v, want %#v", column["type"], expected)
+	}
+}
