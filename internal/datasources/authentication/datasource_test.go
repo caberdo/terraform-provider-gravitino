@@ -27,8 +27,17 @@ const authMeResponseExample = `{
   "principal": "admin"
 }`
 
+// authMeResponseExampleV131 is the exact `AuthMeResponse` example of the
+// Gravitino v1.3.1 authn spec, which added `serviceAdmin`.
+const authMeResponseExampleV131 = `{
+  "code": 0,
+  "principal": "admin",
+  "serviceAdmin": true
+}`
+
 var principalAttrTypes = map[string]attr.Type{
-	"name": types.StringType,
+	"name":          types.StringType,
+	"service_admin": types.BoolType,
 }
 
 func newPrincipalSchema(t *testing.T, d datasource.DataSource) schema.Schema {
@@ -48,7 +57,8 @@ func readPrincipal(t *testing.T, d datasource.DataSource) (*datasource.ReadRespo
 	schemaObj := newPrincipalSchema(t, d)
 
 	configObj, diags := types.ObjectValueFrom(ctx, principalAttrTypes, ds.PrincipalDataSourceModel{
-		Name: types.StringNull(),
+		Name:         types.StringNull(),
+		ServiceAdmin: types.BoolNull(),
 	})
 	if diags.HasError() {
 		t.Fatalf("failed to create config object: %v", diags)
@@ -98,13 +108,21 @@ func TestPrincipalDataSource_Schema(t *testing.T) {
 		t.Error("name must be computed")
 	}
 
-	// /authn/me returns `{code, principal}` only, so the data source must not
-	// expose a permanently empty `roles` attribute.
+	serviceAdminAttr, ok := s.Attributes["service_admin"]
+	if !ok {
+		t.Fatal("missing attribute service_admin")
+	}
+	if !serviceAdminAttr.IsComputed() {
+		t.Error("service_admin must be computed")
+	}
+
+	// /authn/me returns `{code, principal, serviceAdmin}` only, so the data
+	// source must not expose a permanently empty `roles` attribute.
 	if _, ok := s.Attributes["roles"]; ok {
 		t.Error("roles must not exist: GET /api/authn/me never returns roles")
 	}
-	if len(s.Attributes) != 1 {
-		t.Errorf("expected exactly one attribute, got %d", len(s.Attributes))
+	if len(s.Attributes) != 2 {
+		t.Errorf("expected exactly two attributes, got %d", len(s.Attributes))
 	}
 }
 
@@ -139,6 +157,46 @@ func TestPrincipalDataSource_ReadSpecExample(t *testing.T) {
 	if state.Name.ValueString() != "admin" {
 		t.Fatalf("expected principal admin, got %q", state.Name.ValueString())
 	}
+	// The v1.3.0 payload has no serviceAdmin field: the attribute must be a
+	// known `false`, never null or unknown.
+	if state.ServiceAdmin.IsNull() || state.ServiceAdmin.IsUnknown() {
+		t.Fatalf("service_admin must be a known bool, got %v", state.ServiceAdmin)
+	}
+	if state.ServiceAdmin.ValueBool() {
+		t.Error("service_admin must be false when the server omits serviceAdmin")
+	}
+}
+
+// TestPrincipalDataSource_ReadServiceAdmin covers the Gravitino 1.3.1 response,
+// whose spec example sets serviceAdmin to true.
+func TestPrincipalDataSource_ReadServiceAdmin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		_, _ = w.Write([]byte(authMeResponseExampleV131))
+	}))
+	defer server.Close()
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to build client: %v", err)
+	}
+	d := ds.New()
+	d.(*ds.PrincipalDataSource).SetClient(c)
+
+	resp, state := readPrincipal(t, d)
+	if resp.Diagnostics.HasError() {
+		logPrincipalDiagnostics(t, resp)
+		t.Fatal("unexpected diagnostics errors")
+	}
+	if state.Name.ValueString() != "admin" {
+		t.Fatalf("expected principal admin, got %q", state.Name.ValueString())
+	}
+	if state.ServiceAdmin.IsNull() || state.ServiceAdmin.IsUnknown() {
+		t.Fatalf("service_admin must be a known bool, got %v", state.ServiceAdmin)
+	}
+	if !state.ServiceAdmin.ValueBool() {
+		t.Error("service_admin must be true for the v1.3.1 spec example")
+	}
 }
 
 func TestPrincipalDataSource_ReadEmptyPrincipal(t *testing.T) {
@@ -164,6 +222,12 @@ func TestPrincipalDataSource_ReadEmptyPrincipal(t *testing.T) {
 	}
 	if state.Name.ValueString() != "" {
 		t.Fatalf("expected empty principal, got %q", state.Name.ValueString())
+	}
+	if state.ServiceAdmin.IsNull() || state.ServiceAdmin.IsUnknown() {
+		t.Fatalf("service_admin must be known, got %v", state.ServiceAdmin)
+	}
+	if state.ServiceAdmin.ValueBool() {
+		t.Error("service_admin must be false when the server omits serviceAdmin")
 	}
 }
 
@@ -199,7 +263,7 @@ func TestPrincipalDataSource_ReadUnauthorized(t *testing.T) {
 }
 
 // TestAuthMeResponseDTOMatchesSpec guards the JSON keys of the DTO against
-// the spec example.
+// the spec examples.
 func TestAuthMeResponseDTOMatchesSpec(t *testing.T) {
 	var result models.AuthMeResponse
 	if err := json.Unmarshal([]byte(authMeResponseExample), &result); err != nil {
@@ -210,5 +274,20 @@ func TestAuthMeResponseDTOMatchesSpec(t *testing.T) {
 	}
 	if result.Principal != "admin" {
 		t.Errorf("principal = %q, want %q", result.Principal, "admin")
+	}
+	// The v1.3.0 example omits serviceAdmin.
+	if result.ServiceAdmin {
+		t.Error("serviceAdmin must be false when the v1.3.0 example omits it")
+	}
+
+	var v131 models.AuthMeResponse
+	if err := json.Unmarshal([]byte(authMeResponseExampleV131), &v131); err != nil {
+		t.Fatalf("failed to decode the v1.3.1 spec example: %v", err)
+	}
+	if v131.Principal != "admin" {
+		t.Errorf("principal = %q, want %q", v131.Principal, "admin")
+	}
+	if !v131.ServiceAdmin {
+		t.Error("serviceAdmin must decode to true from the v1.3.1 example")
 	}
 }

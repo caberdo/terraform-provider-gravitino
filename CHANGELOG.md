@@ -1,6 +1,11 @@
 ## Unreleased
 
 ENHANCEMENTS:
+- **`gravitino_principal` exposes `service_admin`.** Gravitino 1.3.1 added
+  `serviceAdmin` to `GET /api/authn/me` (operation id `getAuthenticatedUser`),
+  so the data source now reports whether the configured credential is a
+  Gravitino service administrator. Servers predating 1.3.1 omit the field, so
+  `service_admin` is then `false`.
 - **Documented the Gravitino 1.3.0 vs 1.3.1 compatibility matrix.** `AGENTS.md` and the
   provider index page now list which attributes, data sources and endpoints need
   Gravitino >= 1.3.1 and how the provider behaves on 1.3.0, including the best-effort
