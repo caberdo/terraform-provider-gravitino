@@ -1,4 +1,4 @@
-## Unreleased
+## 0.8.0 (2026-10-02)
 
 FEATURES:
 - **Catalog connection testing:** New `gravitino_catalog_connection_test` data source. It
