@@ -3,6 +3,7 @@ package credential_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -188,7 +189,7 @@ func TestCredentialsDataSource_Schema(t *testing.T) {
 		t.Fatal("resource_type must have an enum validator")
 	}
 	ctx := context.Background()
-	for _, valid := range []string{"METALAKE", "CATALOG", "SCHEMA", "TABLE", "COLUMN", "FILESET", "TOPIC", "MODEL", "ROLE"} {
+	for _, valid := range []string{"METALAKE", "CATALOG", "SCHEMA", "TABLE", "VIEW", "COLUMN", "FILESET", "TOPIC", "MODEL", "FUNCTION", "ROLE"} {
 		vResp := &validator.StringResponse{}
 		validators[0].ValidateString(ctx, validator.StringRequest{
 			ConfigValue: types.StringValue(valid),
@@ -198,8 +199,9 @@ func TestCredentialsDataSource_Schema(t *testing.T) {
 			t.Errorf("resource_type %q must be accepted: %v", valid, vResp.Diagnostics)
 		}
 	}
-	// FUNCTION/TAG/POLICY are not part of the credentials endpoint enum.
-	for _, invalid := range []string{"FUNCTION", "TAG", "POLICY", "catalog"} {
+	// TAG/POLICY are not part of the credentials endpoint enum, and the
+	// parameter is case-sensitive.
+	for _, invalid := range []string{"TAG", "POLICY", "catalog"} {
 		vResp := &validator.StringResponse{}
 		validators[0].ValidateString(ctx, validator.StringRequest{
 			ConfigValue: types.StringValue(invalid),
@@ -421,6 +423,85 @@ func TestGetCredentials_ResponseDTOMatchesSpec(t *testing.T) {
 	}
 	if result.Credentials[0].CredentialInfo["s3-access-key-id"] != "value1" {
 		t.Errorf("credentialInfo not decoded: %+v", result.Credentials[0])
+	}
+}
+
+// TestCredentialsDataSource_VersionRestrictedObjectTypes proves that VIEW and
+// FUNCTION (added to the metadataObjectType parameter by Gravitino 1.3.1) are
+// rejected with an explicit diagnostic on an older server and read normally
+// from 1.3.1 on. The credentials endpoint must not be called when the gate
+// fails.
+func TestCredentialsDataSource_VersionRestrictedObjectTypes(t *testing.T) {
+	for _, resourceType := range []string{"VIEW", "FUNCTION"} {
+		for _, tc := range []struct {
+			name    string
+			version string
+			wantErr bool
+		}{
+			{"rejected on 1.3.0", "1.3.0", true},
+			{"accepted on 1.3.1", "1.3.1", false},
+		} {
+			t.Run(resourceType+"/"+tc.name, func(t *testing.T) {
+				var paths []string
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					paths = append(paths, r.URL.Path)
+					w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+					if r.URL.Path == "/api/version" {
+						_, _ = fmt.Fprintf(w, `{"code":0,"version":{"version":%q,"compileDate":"","gitCommit":""}}`, tc.version)
+						return
+					}
+					_, _ = w.Write([]byte(credentialResponseExample))
+				}))
+				defer server.Close()
+
+				c, _ := client.New(server.URL, nil)
+				d := ds.New()
+				d.(*ds.CredentialsDataSource).SetClient(c)
+
+				resp, state := readCredentials(t, d, ds.CredentialsDataSourceModel{
+					Metalake:     types.StringValue("test_metalake"),
+					ResourceType: types.StringValue(resourceType),
+					Resource:     types.StringValue("test_catalog.test_schema.object"),
+				})
+
+				if tc.wantErr {
+					if !resp.Diagnostics.HasError() {
+						t.Fatal("expected an error diagnostic on a 1.3.0 server")
+					}
+					logDiagnostics(t, resp)
+					if !resp.State.Raw.IsNull() {
+						t.Error("state must not be written when the version check failed")
+					}
+
+					var detail strings.Builder
+					for _, diag := range resp.Diagnostics.Errors() {
+						detail.WriteString(diag.Detail())
+						detail.WriteString("\n")
+					}
+					for _, want := range []string{resourceType, "Gravitino 1.3.1", tc.version} {
+						if !strings.Contains(detail.String(), want) {
+							t.Errorf("diagnostics must mention %q, got:\n%s", want, detail.String())
+						}
+					}
+					if len(paths) != 1 || paths[0] != "/api/version" {
+						t.Errorf("the credentials endpoint must not be called when the gate rejects the server, got %v", paths)
+					}
+					return
+				}
+
+				if resp.Diagnostics.HasError() {
+					logDiagnostics(t, resp)
+					t.Fatal("unexpected diagnostics errors")
+				}
+				wantPath := "/api/metalakes/test_metalake/objects/" + resourceType + "/test_catalog.test_schema.object/credentials"
+				if len(paths) != 2 || paths[0] != "/api/version" || paths[1] != wantPath {
+					t.Fatalf("expected [/api/version %s], got %v", wantPath, paths)
+				}
+				if n := len(state.Credentials.Elements()); n != 2 {
+					t.Fatalf("expected 2 credentials, got %d", n)
+				}
+			})
+		}
 	}
 }
 

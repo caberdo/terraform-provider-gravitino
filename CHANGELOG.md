@@ -6,12 +6,48 @@ FEATURES:
   example the `granularity` of a ClickHouse data-skipping index) and the
   `index_type` validator accepts the new `data_skipping_minmax`,
   `data_skipping_bloom_filter` and `data_skipping_set` values. Both require
-  Gravitino v1.3.1; v1.3.0 does not accept them. Changing an index still replaces
-  the table, because the API has no index update request.
+  Gravitino v1.3.1; v1.3.0 does not accept them. The server version is verified
+  when a create uses either (`client.CheckIndexesSupported`, `GET /api/version`):
+  against a server older than 1.3.1 the create fails with an explicit
+  "require Gravitino >= 1.3.1" diagnostic instead of the API's opaque error.
+  Changing an index still replaces the table, because the API has no index
+  update request.
   Only the configured property keys are tracked: the state keeps them even when a
   catalog drops one, and keys a catalog adds on its own are not surfaced, so the
   immutable index block cannot drift into a replacement on every plan. An
   explicitly empty map stays an empty map.
+- **`gravitino_iceberg_rest_service` data source (Gravitino 1.3.1+).** Discovers the
+  Iceberg REST service endpoint the server advertises via `GET /api/system/iceberg-rest`,
+  optionally scoped to a `metalake`; `uri` is null when the server advertises none for the
+  requested metalake. The read verifies the server version
+  (`models.ServerVersionAtLeast`, `GET /api/version`) and a 404 from the endpoint is mapped
+  to the same explicit "requires Gravitino >= 1.3.1" diagnostic, so a 1.3.0 server never
+  surfaces a raw HTTP 404.
+
+ENHANCEMENTS:
+- **`gravitino_principal` exposes `service_admin`.** Gravitino 1.3.1 added
+  `serviceAdmin` to `GET /api/authn/me` (operation id `getAuthenticatedUser`),
+  so the data source now reports whether the configured credential is a
+  Gravitino service administrator. Servers predating 1.3.1 omit the field, so
+  `service_admin` is then `false`.
+- **`gravitino_statistics` and `gravitino_credentials` accept `VIEW` and
+  `FUNCTION` as `resource_type`.** Gravitino 1.3.1 added both to the shared
+  `metadataObjectType` path parameter used by the statistics and credentials
+  endpoints (`models.StatisticsObjectTypes`, `models.CredentialObjectTypes`).
+  Both data sources keep static enum validators that accept the union of the
+  1.3.0 and 1.3.1 values and verify the server version at read time
+  (`client.CheckMetadataObjectTypeSupported`, `GET /api/version`): against a
+  server older than 1.3.1 a VIEW/FUNCTION read fails with an explicit
+  "requires Gravitino 1.3.1 or newer" diagnostic instead of the endpoint's
+  opaque 400. The two lists stay separate constants, as the provider
+  deliberately keeps credential-specific enums.
+- **`gravitino_policy` supports the `VIEW` and `FUNCTION` object types.** Gravitino 1.3.1
+  adds both to `PolicyContentBase.supportedObjectTypes`; `supported_object_types` now
+  accepts the union of the 1.3.0 and 1.3.1 enums. The validator and its description
+  derive from `models.PolicyObjectTypes`, so they cannot drift from the spec. Against a
+  server older than 1.3.1 a create/update naming these two values fails with an explicit
+  "require Gravitino >= 1.3.1" diagnostic (`client.CheckPolicyObjectTypesSupported`,
+  `GET /api/version`) instead of the API's opaque 400.
 
 FIXES:
 - **Changing an index of a table whose configuration omits the index `name` now

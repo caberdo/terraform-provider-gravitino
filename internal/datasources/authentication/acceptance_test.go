@@ -50,8 +50,41 @@ func TestAccPrincipalDataSource_SpecExample(t *testing.T) {
 				Config: string(config),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("data.gravitino_principal.current", "name", "admin"),
+					resource.TestCheckResourceAttr("data.gravitino_principal.current", "service_admin", "false"),
 					resource.TestCheckNoResourceAttr("data.gravitino_principal.current", "roles"),
 					resource.TestCheckNoResourceAttr("data.gravitino_principal.current", "roles.#"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccPrincipalDataSource_ServiceAdmin runs the same provider/plugin
+// protocol round trip against a mock that serves the v1.3.1 spec example
+// (serviceAdmin true), proving the attribute flows through the protocol
+// boundary as a known boolean.
+func TestAccPrincipalDataSource_ServiceAdmin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.URL.Path != "/api/authn/me" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(authMeResponseExampleV131))
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: principalTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+data "gravitino_principal" "current" {}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("data.gravitino_principal.current", "name", "admin"),
+					resource.TestCheckResourceAttr("data.gravitino_principal.current", "service_admin", "true"),
 				),
 			},
 		},

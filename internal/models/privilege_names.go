@@ -73,6 +73,7 @@ const (
 	ObjectTypeCatalog     = "CATALOG"
 	ObjectTypeSchema      = "SCHEMA"
 	ObjectTypeTable       = "TABLE"
+	ObjectTypeView        = "VIEW"
 	ObjectTypeColumn      = "COLUMN"
 	ObjectTypeFileset     = "FILESET"
 	ObjectTypeTopic       = "TOPIC"
@@ -143,14 +144,20 @@ var OwnerObjectTypes = []string{
 	ObjectTypeRole,
 }
 
+// StatisticsObjectTypes is the `metadataObjectType` enum of the statistics
+// endpoint. VIEW and FUNCTION were added by Gravitino 1.3.1 (the 1.3.0 enum
+// stops at ROLE); see ObjectTypeRequiresGravitino131, which the statistics data
+// source uses to reject them against an older server.
 var StatisticsObjectTypes = []string{
 	ObjectTypeMetalake,
 	ObjectTypeCatalog,
 	ObjectTypeSchema,
 	ObjectTypeTable,
+	ObjectTypeView,
 	ObjectTypeColumn,
 	ObjectTypeFileset,
 	ObjectTypeTopic,
 	ObjectTypeModel,
+	ObjectTypeFunction,
 	ObjectTypeRole,
 }
