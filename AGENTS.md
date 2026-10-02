@@ -96,10 +96,10 @@ carries a 1.3.1-only value reads `GET /api/version` at that moment and compares 
 MUST fail with a diagnostic naming the required version, never with the server's opaque `400`.
 Two shapes are in use, and both keep the failure explicit:
 
-- `client.CheckMetadataObjectTypeSupported` (statistics/credentials) fails closed: it
-  short-circuits with `models.ObjectTypeRequiresGravitino131`, so values that exist since 1.3.0
-  cost no request, and it returns the version-lookup error when `/api/version` cannot be read,
-  so a restricted value is never sent to a server of unknown version.
+- `client.CheckMetadataObjectTypeSupported` / `client.CheckPolicyObjectTypesSupported` fail
+  closed: they short-circuit with `models.ObjectTypeRequiresGravitino131` (values that exist
+  since 1.3.0 cost no request) and return the version-lookup error when `/api/version` cannot
+  be read, so a restricted value is never sent to a server of unknown version.
 - `gravitino_iceberg_rest_service` fails open: it logs a failed version lookup with `tflog.Warn`,
   calls the 1.3.1-only endpoint and maps that endpoint's 404 to the same version diagnostic.
   Use this shape only when the endpoint response is itself the authoritative signal.
