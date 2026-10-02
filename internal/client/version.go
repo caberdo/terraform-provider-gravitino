@@ -18,21 +18,30 @@ func (c *Client) GetVersion(ctx context.Context) (*models.VersionResponse, error
 // `metadataObjectType` path parameter (VIEW, FUNCTION, used by the statistics
 // and credentials endpoints) and the server reports an older version.
 //
-// GET /api/version is queried only for those two types, so the check costs
-// nothing for the types that exist since 1.3.0.
+// The version detected at provider.Configure is used when it is known, so the
+// check normally costs nothing; GET /api/version is only queried when the
+// provider could not detect the version and the caller uses one of those two
+// types.
 func (c *Client) CheckMetadataObjectTypeSupported(ctx context.Context, objectType string) error {
 	if !models.ObjectTypeRequiresGravitino131(objectType) {
 		return nil
 	}
 
-	version, err := c.GetVersion(ctx)
-	if err != nil {
-		return fmt.Errorf("cannot verify that metadata object type %q is supported by the server: %w", objectType, err)
+	version := c.ServerVersion()
+	if !models.ValidServerVersion(version) {
+		resp, err := c.GetVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("cannot verify that metadata object type %q is supported by the server: %w", objectType, err)
+		}
+		version = resp.Version.Version
+		if models.ValidServerVersion(version) {
+			c.setServerVersion(version)
+		}
 	}
 
-	if !models.ServerVersionAtLeast(version.Version.Version, 1, 3, 1) {
+	if !models.ServerVersionAtLeast(version, 1, 3, 1) {
 		return fmt.Errorf("metadata object type %q requires Gravitino 1.3.1 or newer, but the server reports version %q",
-			objectType, version.Version.Version)
+			objectType, version)
 	}
 	return nil
 }

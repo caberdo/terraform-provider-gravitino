@@ -3,18 +3,11 @@ package client
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
-)
 
-// serverVersion is a Gravitino release version. The patch component is kept
-// because version specific behaviour differs within a minor release: the
-// external data type exists in 1.3.1 but not in 1.3.0.
-type serverVersion struct {
-	major int
-	minor int
-	patch int
-}
+	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+)
 
 // DetectServerVersion records the version reported by GET /api/version.
 //
@@ -27,14 +20,12 @@ func (c *Client) DetectServerVersion(ctx context.Context) error {
 		return err
 	}
 
-	version, err := parseServerVersion(resp.Version.Version)
-	if err != nil {
-		return err
+	version := resp.Version.Version
+	if !models.ValidServerVersion(version) {
+		return fmt.Errorf("the server reported an unparsable version %q", version)
 	}
 
-	c.versionMu.Lock()
-	c.version = version
-	c.versionMu.Unlock()
+	c.setServerVersion(version)
 	return nil
 }
 
@@ -44,23 +35,20 @@ func (c *Client) ServerVersion() string {
 	c.versionMu.RLock()
 	defer c.versionMu.RUnlock()
 
-	if c.version == nil {
-		return ""
-	}
-	return c.version.String()
+	return c.version
 }
 
 // AtLeast reports whether the detected server is at least major.minor.patch. An
-// unknown server version is treated as recent enough, so a failed version probe
-// never blocks a feature the server may well support.
+// unknown or unparsable version is treated as recent enough, so a failed version
+// probe never blocks a feature the server may well support. Callers that must
+// not assume support compare models.ServerVersionAtLeast directly, which fails
+// closed.
 func (c *Client) AtLeast(major, minor, patch int) bool {
-	c.versionMu.RLock()
-	defer c.versionMu.RUnlock()
-
-	if c.version == nil {
+	version := c.ServerVersion()
+	if !models.ValidServerVersion(version) {
 		return true
 	}
-	return c.version.atLeast(major, minor, patch)
+	return models.ServerVersionAtLeast(version, major, minor, patch)
 }
 
 // SupportsExternalType reports whether the server accepts the "external" data
@@ -69,44 +57,17 @@ func (c *Client) SupportsExternalType() bool {
 	return c.AtLeast(1, 3, 1)
 }
 
-func (v serverVersion) String() string {
-	return fmt.Sprintf("%d.%d.%d", v.major, v.minor, v.patch)
+// CheckExternalTypesSupported appends one diagnostic per column whose type uses
+// the external variant when the connected server predates Gravitino 1.3.1, which
+// introduced it, so the request fails with an explicit version diagnostic
+// instead of the server's opaque 400. An undetected server version stays
+// permissive.
+func (c *Client) CheckExternalTypesSupported(columns []models.ColumnTFSDK, diags *diag.Diagnostics) {
+	diags.Append(models.ExternalTypeColumnDiagnostics(columns, c.ServerVersion(), c.SupportsExternalType())...)
 }
 
-func (v serverVersion) atLeast(major, minor, patch int) bool {
-	if v.major != major {
-		return v.major > major
-	}
-	if v.minor != minor {
-		return v.minor > minor
-	}
-	return v.patch >= patch
-}
-
-// parseServerVersion parses "major.minor.patch" and ignores a suffix such as
-// "-SNAPSHOT"; a missing component counts as zero.
-func parseServerVersion(raw string) (*serverVersion, error) {
-	core := strings.TrimSpace(raw)
-	if core == "" {
-		return nil, fmt.Errorf("the server reported an empty version")
-	}
-	if i := strings.IndexAny(core, "-+"); i >= 0 {
-		core = core[:i]
-	}
-
-	parts := strings.Split(core, ".")
-	if len(parts) > 3 {
-		return nil, fmt.Errorf("unexpected server version %q", raw)
-	}
-
-	numbers := [3]int{}
-	for i, part := range parts {
-		number, err := strconv.Atoi(strings.TrimSpace(part))
-		if err != nil {
-			return nil, fmt.Errorf("unexpected server version %q: %w", raw, err)
-		}
-		numbers[i] = number
-	}
-
-	return &serverVersion{major: numbers[0], minor: numbers[1], patch: numbers[2]}, nil
+func (c *Client) setServerVersion(version string) {
+	c.versionMu.Lock()
+	c.version = version
+	c.versionMu.Unlock()
 }

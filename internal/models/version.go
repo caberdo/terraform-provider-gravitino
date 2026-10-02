@@ -49,6 +49,14 @@ func ObjectTypeRequiresGravitino131(objectType string) bool {
 	}
 }
 
+// ValidServerVersion reports whether version is a Gravitino version string that
+// ServerVersionAtLeast can compare: a leading "v" and a pre-release or build
+// suffix are accepted, a missing component counts as zero.
+func ValidServerVersion(version string) bool {
+	_, ok := parseServerVersion(version)
+	return ok
+}
+
 // parseServerVersion splits a version string into its major, minor and patch
 // numbers, ignoring a leading "v" and any "-suffix"/"+build" metadata.
 func parseServerVersion(version string) ([3]int, bool) {

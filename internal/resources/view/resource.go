@@ -262,7 +262,7 @@ func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	tflog.Debug(ctx, "Creating view", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
 
-	resp.Diagnostics.Append(models.ExternalTypeColumnDiagnostics(plan.Columns, r.client.ServerVersion(), r.client.SupportsExternalType())...)
+	r.client.CheckExternalTypesSupported(plan.Columns, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

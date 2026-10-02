@@ -441,7 +441,7 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		"name":     plan.Name.ValueString(),
 	})
 
-	resp.Diagnostics.Append(models.ExternalTypeColumnDiagnostics(plan.Columns, r.client.ServerVersion(), r.client.SupportsExternalType())...)
+	r.client.CheckExternalTypesSupported(plan.Columns, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -546,7 +546,7 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		"name":     state.Name.ValueString(),
 	})
 
-	resp.Diagnostics.Append(models.ExternalTypeColumnDiagnostics(plan.Columns, r.client.ServerVersion(), r.client.SupportsExternalType())...)
+	r.client.CheckExternalTypesSupported(plan.Columns, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

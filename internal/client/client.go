@@ -32,10 +32,10 @@ type Client struct {
 	httpClient   *http.Client
 	authProvider auth.AuthProvider
 
-	// version is the server version detected by DetectServerVersion; nil when
+	// version is the server version detected by DetectServerVersion; empty when
 	// the probe failed, in which case the gates treat the server as current.
 	versionMu sync.RWMutex
-	version   *serverVersion
+	version   string
 }
 
 func New(uri string, authProvider auth.AuthProvider) (*Client, error) {
