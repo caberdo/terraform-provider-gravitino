@@ -79,7 +79,7 @@ func (d *StatisticsDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			},
 			"resource_type": schema.StringAttribute{
 				Required:    true,
-				Description: "The metadata object type (e.g. CATALOG, SCHEMA, TABLE, COLUMN, FILESET, TOPIC, MODEL, ROLE).",
+				Description: "The metadata object type (METALAKE, CATALOG, SCHEMA, TABLE, VIEW, COLUMN, FILESET, TOPIC, MODEL, FUNCTION, ROLE). VIEW and FUNCTION require Gravitino 1.3.1 or newer.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(models.StatisticsObjectTypes...),
 				},
@@ -124,10 +124,18 @@ func (d *StatisticsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
+	resourceType := config.ResourceType.ValueString()
+	resource := config.Resource.ValueString()
+
+	if err := d.client.CheckMetadataObjectTypeSupported(ctx, resourceType); err != nil {
+		resp.Diagnostics.Append(client.NewResourceError("reading statistics", resource, err)...)
+		return
+	}
+
 	result, err := d.client.ListStatistics(ctx,
 		config.Metalake.ValueString(),
-		config.ResourceType.ValueString(),
-		config.Resource.ValueString(),
+		resourceType,
+		resource,
 	)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to list statistics", err.Error())
