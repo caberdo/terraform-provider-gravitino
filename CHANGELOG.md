@@ -1,3 +1,64 @@
+## 0.9.0 (2026-10-08)
+
+FEATURES:
+- **`gravitino_policy` data source.** Reads a single policy by `metalake` and `name`,
+  exposing `comment`, `policy_type`, `enabled`, `supported_object_types`, `properties`,
+  `custom_rules` and `audit`. This completes the documented "get + list" pair for every
+  resource (`gravitino_policies` lists them); docs and an example are generated.
+
+BUG FIXES:
+- **`gravitino_table` no longer drops properties on an unrelated update.** `properties`
+  now carries `UseStateForUnknown` and the update path skips property reconciliation when
+  the planned map is unknown, so changing another attribute with `properties` left
+  unconfigured no longer sends a `removeProperty` for every stored key (regression test
+  added).
+- **Function data types are validated and version-gated like columns.** `gravitino_function`
+  parameter, return type and return column data types are parsed with the same rules as
+  table/view columns, and the `external` data type is refused on Gravitino < 1.3.1 with an
+  explicit diagnostic instead of the server's opaque 400. Parameter default values keep
+  accepting arbitrary JSON expressions.
+- **`gravitino_model`, `gravitino_model_version` and `gravitino_view` keep the planned
+  properties** on create/update instead of adopting the server map wholesale, avoiding
+  "Provider produced inconsistent result after apply" and property drift.
+- **`gravitino_catalog` sets a null `audit`** when the server omits it, instead of leaving
+  the computed value unknown.
+- **Silent data loss in `gravitino_statistics` / `gravitino_partition_statistics`** fixed: a
+  conversion failure is now reported as a diagnostic instead of dropping the record.
+- **OAuth client-credentials refresh is single-flight** and clamps a non-positive
+  `expires_in`, so concurrent requests share one token and a misreported expiry no longer
+  forces a refresh per request. Kerberos: the transport base is set under a lock, `Close` is
+  nil-safe, `KRB5_CONFIG` errors are surfaced and the `Negotiate` scheme match is
+  case-insensitive.
+- **Error and state consistency:** health and partition-statistics data sources use the
+  shared `client.NewResourceError`; `gravitino_metalakes` returns an empty list rather than
+  null; the HTTP error decoder only treats a JSON body as a Gravitino error envelope when it
+  carries a `type`/`message`.
+
+ENHANCEMENTS:
+- **Client errors name the request:** request and decode failures now read
+  `<METHOD> <path> failed: ...` (never the body), making bad routes and proxies far easier
+  to diagnose.
+- **`client.New` validates the URI** (scheme must be http/https, host must not be empty).
+- **`gravitino_idp_group.users` is guarded against an unknown plan** so it cannot wipe
+  membership, and every compound `id` uses the shared `models.CompoundID` plan modifier,
+  which is rename-aware.
+- **The live acceptance pre-check authenticates like the provider** (`GRAVITINO_*`), so the
+  gate works against a secured server.
+- **Provider `auth` documentation** mentions `none` and the `GRAVITINO_USER` fallback.
+
+INTERNAL / TOOLING:
+- Dependency and toolchain updates: `go.mod` go directive 1.27.1, refreshed `golang.org/x/*`,
+  `google.golang.org/grpc`, `protobuf` and HashiCorp libraries.
+- CI: example validation now actually runs (`hashicorp/setup-terraform` plus a fail-closed
+  script), a generated-docs drift gate, pinned `golangci-lint` and `goreleaser`, a coverage
+  artifact, `go mod tidy`/`verify`, a cross-platform build, and a `dependency-review` job.
+- Deduplication: shared `client.FromProviderData` (Configure), `models.AuditToObjectValue`,
+  `internal/tfutil`, `internal/resources/resourceutil` (import IDs), client path builders, a
+  shared function-definition schema, and `internal/resources/resourcetest`; dead models
+  removed.
+- Repository hygiene: aligned the repository and registry URLs, added `.editorconfig` and
+  `CODEOWNERS`.
+
 ## 0.8.0 (2026-10-02)
 
 FEATURES:
