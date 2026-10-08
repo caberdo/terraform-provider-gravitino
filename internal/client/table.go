@@ -2,19 +2,16 @@ package client
 
 import (
 	"context"
-	"fmt"
-	"net/url"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
 func tablesPath(metalake, catalog, schema string) string {
-	return fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/tables",
-		url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema))
+	return catalogCollectionPath(metalake, catalog, schema, "tables")
 }
 
 func tablePath(metalake, catalog, schema, table string) string {
-	return tablesPath(metalake, catalog, schema) + "/" + url.PathEscape(table)
+	return catalogEntityPath(metalake, catalog, schema, "tables", table)
 }
 
 // ListTables returns the identifiers of the tables in a schema.

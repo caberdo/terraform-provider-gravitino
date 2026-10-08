@@ -4,10 +4,10 @@ Thank you for considering contributing!
 
 ## Development Setup
 
-**Prerequisites:** Go 1.26.4+, Docker, Git
+**Prerequisites:** Go 1.27.1+, Docker, Git
 
 ```bash
-git clone https://github.com/dennismdejong/terraform-provider-gravitino.git
+git clone https://github.com/gravitino/terraform-provider-gravitino.git
 cd terraform-provider-gravitino
 go mod download
 ```
@@ -20,7 +20,7 @@ go mod download
 
 ## Code Conventions
 
-See [AGENTS.md](https://github.com/dennismdejong/terraform-provider-gravitino/blob/main/AGENTS.md) for:
+See [AGENTS.md](https://github.com/gravitino/terraform-provider-gravitino/blob/main/AGENTS.md) for:
 - Error handling: `client.NewResourceError`
 - 404 checks: `client.IsNotFoundError`
 - Logging: `tflog.Debug` at CRUD boundaries
@@ -48,4 +48,4 @@ docs(metalake): add import example
 
 ## Questions?
 
-Use [GitHub Discussions](https://github.com/dennismdejong/terraform-provider-gravitino/discussions) or open an issue.
+Use [GitHub Discussions](https://github.com/gravitino/terraform-provider-gravitino/discussions) or open an issue.

@@ -806,6 +806,58 @@ func TestTableResource_UpdateSendsRenameCommentPropertiesAndType(t *testing.T) {
 	}
 }
 
+// TestTableResource_UpdateUnknownPropertiesDoesNotRemove verifies that an
+// update whose planned properties map is unknown (a Computed value that the
+// configuration does not set) does not drop the properties already stored in
+// state. Regression test for the table property wipe.
+func TestTableResource_UpdateUnknownPropertiesDoesNotRemove(t *testing.T) {
+	table := map[string]interface{}{"name": testTable}
+
+	c, recorded := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool {
+		switch req.Method {
+		case http.MethodPut:
+			writeJSON(t, w, map[string]interface{}{"code": 0, "table": table})
+			return true
+		case http.MethodGet:
+			writeJSON(t, w, map[string]interface{}{"code": 0, "table": table})
+			return true
+		}
+		return false
+	})
+
+	r := NewTableResource().(*tableResource)
+	r.client = c
+
+	schemaObj := tableSchema(t, r)
+
+	state := hivePlan()
+
+	plan := hivePlan()
+	plan.Properties = types.MapUnknown(types.StringType)
+	plan.Columns[0].Comment = types.StringValue("changed id comment")
+
+	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Update(context.Background(), resource.UpdateRequest{
+		Plan:  planValue(t, schemaObj, plan),
+		State: stateValue(t, schemaObj, state),
+	}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected update diagnostics: %v", resp.Diagnostics)
+	}
+
+	updates, ok := (*recorded)[0].Body["updates"].([]interface{})
+	if !ok {
+		t.Fatalf("no updates in %v", (*recorded)[0].Body)
+	}
+	for _, u := range updates {
+		m, _ := u.(map[string]interface{})
+		if m["@type"] == "removeProperty" || m["@type"] == "setProperty" {
+			t.Errorf("unexpected property update when properties are unknown: %v", u)
+		}
+	}
+}
+
 // TestTableResource_UpdateRejectsChangedBlock asserts that a block change that
 // reached Update is reported instead of being ignored. The planned value is
 // unknown during plan, so ModifyPlan cannot turn it into a replacement.

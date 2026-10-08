@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/fileset"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -257,10 +258,13 @@ func TestFilesetResourceSchema(t *testing.T) {
 		t.Fatalf("id must be a computed string attribute, got %#v", s.Attributes["id"])
 	}
 	// The id embeds the fileset name, which the rename update request changes in
-	// place: pinning the id with UseStateForUnknown would make Terraform reject
-	// the renamed id after apply (measured).
-	if len(idAttr.PlanModifiers) != 0 {
-		t.Errorf("id must not have plan modifiers, got %d", len(idAttr.PlanModifiers))
+	// place: CompoundID keeps the id while unchanged and marks it unknown when a
+	// component changes, so a rename recomputes it instead of leaving a stale id.
+	if len(idAttr.PlanModifiers) != 1 {
+		t.Fatalf("id must carry exactly the CompoundID plan modifier, got %d", len(idAttr.PlanModifiers))
+	}
+	if _, ok := idAttr.PlanModifiers[0].(models.CompoundIDPlanModifier); !ok {
+		t.Errorf("id plan modifier = %T, want models.CompoundIDPlanModifier", idAttr.PlanModifiers[0])
 	}
 
 	typeAttr, ok := s.Attributes["type"].(resourceSchema.StringAttribute)

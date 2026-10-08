@@ -12,6 +12,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/user"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -75,16 +76,7 @@ func userSchema(t *testing.T) schema.Schema {
 }
 
 func tfValue(t *testing.T, ctx context.Context, s schema.Schema, model res.UserResourceModel) tftypes.Value {
-	t.Helper()
-	obj, diags := types.ObjectValueFrom(ctx, s.Type().(types.ObjectType).AttributeTypes(), model)
-	if diags.HasError() {
-		t.Fatalf("failed to build object value: %v", diags)
-	}
-	v, err := obj.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("failed to convert to terraform value: %v", err)
-	}
-	return v
+	return resourcetest.TFValue(t, ctx, s, model)
 }
 
 func baseModel() res.UserResourceModel {
@@ -574,10 +566,5 @@ func decodeBody(t *testing.T, raw []byte) map[string]any {
 }
 
 func assertJSONEqual(t *testing.T, want, got map[string]any) {
-	t.Helper()
-	wantJSON, _ := json.Marshal(want)
-	gotJSON, _ := json.Marshal(got)
-	if string(wantJSON) != string(gotJSON) {
-		t.Fatalf("unexpected payload:\n want %s\n  got %s", wantJSON, gotJSON)
-	}
+	resourcetest.AssertJSONEqual(t, want, got)
 }

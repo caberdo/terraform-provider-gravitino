@@ -2,13 +2,11 @@ package tag
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -24,7 +22,6 @@ import (
 var _ resource.Resource = &TagResource{}
 var _ resource.ResourceWithImportState = &TagResource{}
 var _ resource.ResourceWithConfigure = &TagResource{}
-var _ resource.ResourceWithModifyPlan = &TagResource{}
 
 type TagResource struct {
 	client *client.Client
@@ -48,26 +45,14 @@ type TagResourceModel struct {
 	Inherited  types.Bool   `tfsdk:"inherited"`
 }
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var AuditAttrTypes = models.AuditAttrTypes
 
 func (r *TagResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *TagResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -79,10 +64,10 @@ func (r *TagResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
-				// The id embeds the tag name, which a rename update changes in place;
-				// ModifyPlan marks it unknown in that case.
+				// The id embeds the tag name, which a rename update changes in
+				// place; CompoundID marks it unknown in that case.
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					models.CompoundID("metalake", "name"),
 				},
 				Description: "Composite identifier in the format 'metalake.tag_name'. It changes when the tag is renamed.",
 			},
@@ -127,27 +112,6 @@ func (r *TagResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 		},
-	}
-}
-
-// ModifyPlan marks the id unknown when the tag is renamed. The id embeds the tag
-// name and UseStateForUnknown would otherwise plan the old state value, which
-// Terraform rejects as an inconsistent result after the rename is applied.
-func (r *TagResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// Create (no state) and destroy (no plan): nothing to adjust.
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
-		return
-	}
-
-	var plan, state TagResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !plan.Name.Equal(state.Name) {
-		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("id"), types.StringUnknown())...)
 	}
 }
 
@@ -302,24 +266,12 @@ func (r *TagResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 }
 
 func (r *TagResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 2)
-	if len(parts) != 2 {
-		resp.Diagnostics.AddError(
-			"Invalid import ID",
-			fmt.Sprintf("Expected 'metalake.tag_name', got: %s", req.ID),
-		)
+	parts, ok := resourceutil.SplitImportID(req, resp, 2, "metalake.tag_name")
+	if !ok {
 		return
 	}
 
-	metalake := parts[0]
-	name := parts[1]
-	if metalake == "" || name == "" {
-		resp.Diagnostics.AddError(
-			"Invalid import ID",
-			fmt.Sprintf("Import ID must not contain empty segments, got: %s", req.ID),
-		)
-		return
-	}
+	metalake, name := parts[0], parts[1]
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("metalake"), metalake)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), name)...)
@@ -357,33 +309,7 @@ func setStateFromTag(ctx context.Context, diags *diag.Diagnostics, metalake stri
 }
 
 func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	creator := types.StringValue(audit.Creator)
-	lastModifier := types.StringValue(audit.LastModifier)
-
-	var createTime, lastModifiedTime types.String
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format("2006-01-02T15:04:05Z07:00"))
-	} else {
-		createTime = types.StringNull()
-	}
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format("2006-01-02T15:04:05Z07:00"))
-	} else {
-		lastModifiedTime = types.StringNull()
-	}
-
-	attrs := map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	}
-
-	return types.ObjectValue(AuditAttrTypes, attrs)
+	return models.AuditToObjectValue(ctx, audit)
 }
 
 // commentFromServer resolves a tag comment to a known value: the server value when

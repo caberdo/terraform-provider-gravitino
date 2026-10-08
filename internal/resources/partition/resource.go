@@ -3,10 +3,10 @@ package partition
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -191,18 +191,11 @@ func (r *PartitionResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 
 // Configure sets the API client from the provider data.
 func (r *PartitionResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 // ModifyPlan marks the name of an identity partition as unknown, because the
@@ -343,8 +336,8 @@ func (r *PartitionResource) Read(ctx context.Context, req resource.ReadRequest, 
 // Update is unreachable: every attribute of gravitino_partition uses
 // RequiresReplace, because Gravitino v1.3.0 offers no request to modify an
 // existing partition.
-func (r *PartitionResource) Update(_ context.Context, _ resource.UpdateRequest, resp *resource.UpdateResponse) {
-	tflog.Debug(context.Background(), "Updating partition")
+func (r *PartitionResource) Update(ctx context.Context, _ resource.UpdateRequest, resp *resource.UpdateResponse) {
+	tflog.Debug(ctx, "Updating partition")
 	resp.Diagnostics.AddError(
 		"Partition update not supported",
 		"Gravitino v1.3.0 only exposes add partitions and drop partition; a partition cannot be modified. "+
@@ -393,12 +386,8 @@ func (r *PartitionResource) Delete(ctx context.Context, req resource.DeleteReque
 
 // ImportState imports a partition from a metalake.catalog.schema.table.partition id.
 func (r *PartitionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 5)
-	if len(parts) != 5 {
-		resp.Diagnostics.AddError(
-			"Invalid import ID",
-			fmt.Sprintf("Expected format 'metalake.catalog.schema.table.partition', got %q", req.ID),
-		)
+	parts, ok := resourceutil.SplitImportID(req, resp, 5, "metalake.catalog.schema.table.partition")
+	if !ok {
 		return
 	}
 

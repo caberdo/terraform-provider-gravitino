@@ -24,7 +24,6 @@ import (
 
 var _ resource.Resource = (*MetalakeResource)(nil)
 var _ resource.ResourceWithImportState = (*MetalakeResource)(nil)
-var _ resource.ResourceWithModifyPlan = (*MetalakeResource)(nil)
 
 type MetalakeResource struct {
 	client *client.Client
@@ -74,7 +73,7 @@ func (r *MetalakeResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"id": schema.StringAttribute{
 				Computed: true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					models.CompoundID("name"),
 				},
 			},
 			"name": schema.StringAttribute{
@@ -113,41 +112,10 @@ func (r *MetalakeResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 }
 
 func (r *MetalakeResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	cli, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-
-	r.client = cli
-}
-
-// ModifyPlan marks the id as unknown when the metalake is renamed in place: the
-// identifier is the name itself, so pinning the planned id to the prior state
-// would make the applied id differ from the planned one ("Provider produced
-// inconsistent result after apply").
-func (r *MetalakeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// Nothing to pin down while creating or destroying.
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
-		return
-	}
-
-	var plan, state MetalakeResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !plan.Name.Equal(state.Name) {
-		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("id"), types.StringUnknown())...)
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
 }
 

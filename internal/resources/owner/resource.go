@@ -8,6 +8,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -46,18 +47,11 @@ type OwnerResourceModel struct {
 }
 
 func (r *OwnerResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *OwnerResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -238,12 +232,8 @@ func (r *OwnerResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 }
 
 func (r *OwnerResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 3)
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		resp.Diagnostics.AddError(
-			"Invalid import ID",
-			fmt.Sprintf("Expected 'metalake.object_type.object_full_name', got: %s", req.ID),
-		)
+	parts, ok := resourceutil.SplitImportID(req, resp, 3, "metalake.object_type.object_full_name")
+	if !ok {
 		return
 	}
 

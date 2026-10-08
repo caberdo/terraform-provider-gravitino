@@ -10,7 +10,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -26,7 +25,6 @@ import (
 var _ resource.Resource = &CatalogResource{}
 var _ resource.ResourceWithImportState = &CatalogResource{}
 var _ resource.ResourceWithConfigure = &CatalogResource{}
-var _ resource.ResourceWithModifyPlan = &CatalogResource{}
 
 type CatalogResource struct {
 	client *client.Client
@@ -51,26 +49,14 @@ type CatalogResourceModel struct {
 	Audit      types.Object `tfsdk:"audit"`
 }
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var AuditAttrTypes = models.AuditAttrTypes
 
 func (r *CatalogResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *CatalogResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -83,7 +69,7 @@ func (r *CatalogResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"id": schema.StringAttribute{
 				Computed: true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					models.CompoundID("metalake", "name"),
 				},
 				Description: "Composite identifier in the format 'metalake.catalog_name'.",
 			},
@@ -151,28 +137,6 @@ func (r *CatalogResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				// the planned value. Every code path writes a known audit.
 			},
 		},
-	}
-}
-
-// ModifyPlan marks the id as unknown when the catalog is renamed in place: the
-// identifier embeds the name, so pinning the planned id to the prior state
-// would make the applied id differ from the planned one ("Provider produced
-// inconsistent result after apply").
-func (r *CatalogResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// Nothing to pin down while creating or destroying.
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
-		return
-	}
-
-	var plan, state CatalogResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !plan.Name.Equal(state.Name) {
-		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("id"), types.StringUnknown())...)
 	}
 }
 
@@ -360,6 +324,11 @@ func setStateFromCatalog(ctx context.Context, diags *diag.Diagnostics, metalake 
 			if !diags.HasError() {
 				model.Audit = auditObj
 			}
+		} else {
+			// audit is Computed and unknown in the plan on create; leaving it
+			// unset would fail with "Provider produced inconsistent result after
+			// apply" when the server omits the audit block.
+			model.Audit = types.ObjectNull(AuditAttrTypes)
 		}
 	} else {
 		model.ID = types.StringValue(metalake + "." + model.Name.ValueString())
@@ -433,33 +402,7 @@ func mergeCatalogProperties(ctx context.Context, diags *diag.Diagnostics, model 
 }
 
 func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	creator := types.StringValue(audit.Creator)
-	lastModifier := types.StringValue(audit.LastModifier)
-
-	var createTime, lastModifiedTime types.String
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format("2006-01-02T15:04:05Z07:00"))
-	} else {
-		createTime = types.StringNull()
-	}
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format("2006-01-02T15:04:05Z07:00"))
-	} else {
-		lastModifiedTime = types.StringNull()
-	}
-
-	attrs := map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	}
-
-	return types.ObjectValue(AuditAttrTypes, attrs)
+	return models.AuditToObjectValue(ctx, audit)
 }
 
 func mapFromTF(m types.Map) map[string]string {

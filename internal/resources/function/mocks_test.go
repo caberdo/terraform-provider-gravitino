@@ -151,6 +151,26 @@ const specTableRegisterRequest = `{
   ]
 }`
 
+// A register request whose parameter uses the external data type variant that
+// Gravitino added in 1.3.1.
+const specRegisterRequestExternalType = `{
+  "name": "ext_fn",
+  "functionType": "SCALAR",
+  "deterministic": true,
+  "comment": "A function with an external parameter type",
+  "definitions": [
+    {
+      "parameters": [
+        {"name": "x", "dataType": {"type": "external", "catalogString": "user-defined"}}
+      ],
+      "returnType": "integer",
+      "impls": [
+        {"language": "SQL", "runtime": "SPARK", "sql": "x"}
+      ]
+    }
+  ]
+}`
+
 // mockRequest is one request the provider sent to the mocked Gravitino API.
 type mockRequest struct {
 	Method string

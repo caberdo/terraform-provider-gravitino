@@ -10,11 +10,6 @@ type Catalog struct {
 	Audit      *Audit            `json:"audit,omitempty"`
 }
 
-type CatalogListResponse struct {
-	Code        int              `json:"code"`
-	Identifiers []NameIdentifier `json:"identifiers"`
-}
-
 type CatalogInfoListResponse struct {
 	Code     int       `json:"code"`
 	Catalogs []Catalog `json:"catalogs"`

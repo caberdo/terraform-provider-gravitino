@@ -2,13 +2,12 @@ package user
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
+	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -44,26 +43,14 @@ type UserResourceModel struct {
 	Audit    types.Object `tfsdk:"audit"`
 }
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var AuditAttrTypes = models.AuditAttrTypes
 
 func (r *UserResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *UserResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -263,12 +250,8 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 }
 
 func (r *UserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.Split(req.ID, ".")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		resp.Diagnostics.AddError(
-			"Invalid import ID",
-			fmt.Sprintf("Expected 'metalake.user_name', got: %s", req.ID),
-		)
+	parts, ok := resourceutil.SplitImportID(req, resp, 2, "metalake.user_name")
+	if !ok {
 		return
 	}
 
@@ -327,47 +310,11 @@ func stateToModelUser(model, state *UserResourceModel) {
 }
 
 func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	creator := types.StringValue(audit.Creator)
-	lastModifier := types.StringValue(audit.LastModifier)
-
-	var createTime, lastModifiedTime types.String
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format("2006-01-02T15:04:05Z07:00"))
-	} else {
-		createTime = types.StringNull()
-	}
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format("2006-01-02T15:04:05Z07:00"))
-	} else {
-		lastModifiedTime = types.StringNull()
-	}
-
-	attrs := map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	}
-
-	return types.ObjectValue(AuditAttrTypes, attrs)
+	return models.AuditToObjectValue(ctx, audit)
 }
 
 func listFromTF(m types.Set) []string {
-	result := make([]string, 0)
-	if m.IsNull() || m.IsUnknown() {
-		return result
-	}
-	elements := m.Elements()
-	for _, v := range elements {
-		if strVal, ok := v.(types.String); ok {
-			result = append(result, strVal.ValueString())
-		}
-	}
-	return result
+	return tfutil.SetToStrings(m)
 }
 
 func diffRoles(a, b []string) []string {

@@ -3,17 +3,14 @@ package group
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var _ datasource.DataSource = &GroupDataSource{}
@@ -38,26 +35,14 @@ type GroupDataSourceModel struct {
 	Audit    types.Object `tfsdk:"audit"`
 }
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var AuditAttrTypes = models.AuditAttrTypes
 
 func (d *GroupDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		d.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected DataSource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	d.client = c
 }
 
 func (d *GroupDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -133,32 +118,6 @@ func setDataSourceStateFromGroup(ctx context.Context, diags *diag.Diagnostics, g
 	model.Audit = auditObj
 }
 
-func auditToObjectValueForDS(ctx context.Context, audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	creator := types.StringValue(audit.Creator)
-	lastModifier := types.StringValue(audit.LastModifier)
-
-	var createTime, lastModifiedTime types.String
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	} else {
-		createTime = types.StringNull()
-	}
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	} else {
-		lastModifiedTime = types.StringNull()
-	}
-
-	attrs := map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	}
-
-	return types.ObjectValue(AuditAttrTypes, attrs)
+func auditToObjectValueForDS(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {
+	return models.AuditToObjectValue(ctx, audit)
 }

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/provider"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -23,9 +22,9 @@ func LivePreCheck(t *testing.T) func() {
 			t.Skip("GRAVITINO_URI is not set; skipping live acceptance tests")
 		}
 
-		c, err := client.New(uri, nil)
+		c, err := provider.NewClientFromEnv(uri)
 		if err != nil {
-			t.Fatalf("invalid GRAVITINO_URI %q: %v", uri, err)
+			t.Fatalf("invalid GRAVITINO_URI %q or authentication configuration: %v", uri, err)
 		}
 
 		ver, err := c.GetVersion(context.Background())

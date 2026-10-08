@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
@@ -249,14 +250,46 @@ func (d FunctionDefinition) Shape() string {
 // document forms readable in HCL.
 
 // DataTypeFromString converts a Terraform data type expression into the JSON value
-// sent to the API.
+// sent to the API. It validates the expression with the same rules as a
+// table/view column, so functions and columns agree on what a valid Gravitino
+// data type is (a primitive name, a structured kind or the external variant).
 func DataTypeFromString(value string) (json.RawMessage, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return nil, fmt.Errorf("must not be empty")
 	}
 
+	if _, err := ParseDataType(trimmed); err != nil {
+		return nil, err
+	}
+
+	return encodeDataTypeExpression(trimmed)
+}
+
+// RawJSONFromString converts a Terraform JSON expression into the raw JSON sent
+// to the API without data-type validation. It is used for function parameter
+// default values, which are Gravitino argument documents rather than data types.
+func RawJSONFromString(value string) (json.RawMessage, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, fmt.Errorf("must not be empty")
+	}
+
+	return encodeDataTypeExpression(trimmed)
+}
+
+// encodeDataTypeExpression returns the JSON value for an already parsed data
+// type or expression: structured/string documents are passed through, bare
+// primitive names are encoded as a JSON string.
+func encodeDataTypeExpression(trimmed string) (json.RawMessage, error) {
 	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		if !json.Valid([]byte(trimmed)) {
+			return nil, fmt.Errorf("%q is not valid JSON", trimmed)
+		}
+		return json.RawMessage(trimmed), nil
+	}
+
+	if strings.HasPrefix(trimmed, "\"") {
 		if !json.Valid([]byte(trimmed)) {
 			return nil, fmt.Errorf("%q is not valid JSON", trimmed)
 		}
@@ -268,6 +301,56 @@ func DataTypeFromString(value string) (json.RawMessage, error) {
 		return nil, fmt.Errorf("failed to encode %q: %w", trimmed, err)
 	}
 	return encoded, nil
+}
+
+// FunctionExternalTypeDiagnostics reports every function parameter, return type
+// or return column whose data type uses the external variant, naming the server
+// version. serverSupportsExternalType is the result of the client version probe:
+// nothing is returned when the connected server accepts the variant, or when the
+// probe failed and the version is unknown. It mirrors
+// ExternalTypeColumnDiagnostics for the function surface.
+func FunctionExternalTypeDiagnostics(definitions []FunctionDefinition, serverVersion string, serverSupportsExternalType bool) diag.Diagnostics {
+	if serverSupportsExternalType {
+		return nil
+	}
+
+	var diags diag.Diagnostics
+
+	server := serverVersion
+	if server == "" {
+		server = "unknown"
+	}
+
+	check := func(raw json.RawMessage, attrPath path.Path, label, name string) {
+		if len(raw) == 0 {
+			return
+		}
+		dataType, err := ParseDataType(DataTypeToString(raw))
+		if err != nil || !dataType.UsesExternalType() {
+			return
+		}
+		subject := label
+		if name != "" {
+			subject = fmt.Sprintf("%s %q", label, name)
+		}
+		diags.AddAttributeError(attrPath,
+			"External function data type requires Gravitino 1.3.1 or later",
+			fmt.Sprintf("The %s uses the external data type, which the connected Gravitino %s server does not accept. "+
+				"Upgrade the server to 1.3.1 or later, or use a type Gravitino understands.", subject, server))
+	}
+
+	for i, definition := range definitions {
+		defPath := path.Root("definitions").AtListIndex(i)
+		for j, parameter := range definition.Parameters {
+			check(parameter.DataType, defPath.AtName("parameters").AtListIndex(j).AtName("data_type"), "parameter", parameter.Name)
+		}
+		check(definition.ReturnType, defPath.AtName("return_type"), "return type", "")
+		for j, column := range definition.ReturnColumns {
+			check(column.DataType, defPath.AtName("return_columns").AtListIndex(j).AtName("data_type"), "return column", column.Name)
+		}
+	}
+
+	return diags
 }
 
 // DataTypeToString converts a data type received from the API into its Terraform
@@ -483,7 +566,7 @@ func FunctionDefinitionFromTF(ctx context.Context, in FunctionDefinitionTFSDK, p
 				Comment:  tfParam.Comment.ValueString(),
 			}
 			if !tfParam.DefaultValue.IsNull() && !tfParam.DefaultValue.IsUnknown() && tfParam.DefaultValue.ValueString() != "" {
-				defaultValue, err := DataTypeFromString(tfParam.DefaultValue.ValueString())
+				defaultValue, err := RawJSONFromString(tfParam.DefaultValue.ValueString())
 				if err != nil {
 					diags.AddError("Invalid default value",
 						fmt.Sprintf("%s.default_value: %s (use jsonencode() for an argument document).", parameterPath, err))

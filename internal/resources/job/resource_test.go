@@ -2,7 +2,6 @@ package job_test
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +11,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/job"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -142,17 +142,7 @@ func jobResponseWithStatus(status string) string {
 }
 
 func assertJSONEqual(t *testing.T, want string, got []byte) {
-	t.Helper()
-	var wantVal, gotVal interface{}
-	if err := json.Unmarshal([]byte(want), &wantVal); err != nil {
-		t.Fatalf("invalid expected JSON: %v", err)
-	}
-	if err := json.Unmarshal(got, &gotVal); err != nil {
-		t.Fatalf("request body is not valid JSON: %q (%v)", string(got), err)
-	}
-	if !reflect.DeepEqual(wantVal, gotVal) {
-		t.Errorf("unexpected request body\n got: %s\nwant: %s", string(got), want)
-	}
+	resourcetest.AssertJSONEqualUnordered(t, want, got)
 }
 
 func TestJobResource_Schema(t *testing.T) {

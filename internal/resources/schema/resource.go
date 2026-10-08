@@ -3,13 +3,12 @@ package schema
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
+	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -25,12 +23,7 @@ var _ resource.Resource = &SchemaResource{}
 var _ resource.ResourceWithImportState = &SchemaResource{}
 var _ resource.ResourceWithConfigure = &SchemaResource{}
 
-var auditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var auditAttrTypes = models.AuditAttrTypes
 
 type SchemaResource struct {
 	client *client.Client
@@ -108,18 +101,11 @@ func (r *SchemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 }
 
 func (r *SchemaResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *SchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -274,22 +260,9 @@ func (r *SchemaResource) Delete(ctx context.Context, req resource.DeleteRequest,
 }
 
 func (r *SchemaResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 3)
-	if len(parts) != 3 {
-		resp.Diagnostics.AddError(
-			"Invalid import ID",
-			fmt.Sprintf("Expected format 'metalake.catalog.schema', got: %q", req.ID),
-		)
+	parts, ok := resourceutil.SplitImportID(req, resp, 3, "metalake.catalog.schema")
+	if !ok {
 		return
-	}
-	for _, part := range parts {
-		if part == "" {
-			resp.Diagnostics.AddError(
-				"Invalid import ID",
-				fmt.Sprintf("The metalake, catalog and schema segments must not be empty, got: %q", req.ID),
-			)
-			return
-		}
 	}
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("metalake"), parts[0])...)
@@ -301,12 +274,7 @@ func (r *SchemaResource) ImportState(ctx context.Context, req resource.ImportSta
 // propertyMap converts a Terraform map attribute into a plain Go map, appending
 // any conversion diagnostics. Null and unknown maps yield an empty map.
 func propertyMap(ctx context.Context, v types.Map, diags *diag.Diagnostics) map[string]string {
-	out := make(map[string]string)
-	if v.IsNull() || v.IsUnknown() {
-		return out
-	}
-	diags.Append(v.ElementsAs(ctx, &out, false)...)
-	return out
+	return tfutil.StringMap(ctx, v, diags)
 }
 
 // mergeSchemaResponse copies an API schema response into the Terraform model.
@@ -354,35 +322,6 @@ func (r *SchemaResource) mergeSchemaResponse(ctx context.Context, schemaResp *mo
 	m.Audit = auditObj
 }
 
-func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(auditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if audit.Creator != "" {
-		creator = types.StringValue(audit.Creator)
-	}
-
-	createTime := types.StringNull()
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if audit.LastModifier != "" {
-		lastModifier = types.StringValue(audit.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(auditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
+func auditToObject(audit *models.Audit) (types.Object, diag.Diagnostics) {
+	return models.AuditToObjectValue(context.Background(), audit)
 }

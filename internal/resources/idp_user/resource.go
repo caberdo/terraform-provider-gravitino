@@ -7,8 +7,8 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -55,18 +55,11 @@ type IdpUserResourceModel struct {
 }
 
 func (r *IdpUserResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *IdpUserResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -238,9 +231,5 @@ func (r *IdpUserResource) ImportState(ctx context.Context, req resource.ImportSt
 }
 
 func stringSliceToList(ctx context.Context, items []string) (types.Set, diag.Diagnostics) {
-	vals := make([]attr.Value, 0, len(items))
-	for _, s := range items {
-		vals = append(vals, types.StringValue(s))
-	}
-	return types.SetValue(types.StringType, vals)
+	return tfutil.StringsToSet(items)
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -99,6 +100,43 @@ func TestOAuthCredentialsProvider_RefreshesToken(t *testing.T) {
 
 	if requestCount != 2 {
 		t.Fatalf("expected 2 token requests (expired), got %d", requestCount)
+	}
+}
+
+func TestOAuthCredentialsProvider_SingleFlightRefresh(t *testing.T) {
+	var mu sync.Mutex
+	requestCount := 0
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requestCount++
+		mu.Unlock()
+		time.Sleep(50 * time.Millisecond)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": "shared-token",
+			"expires_in":   3600,
+		})
+	}))
+	defer tokenServer.Close()
+
+	p := auth.NewOAuthCredentialsProvider("c", "s", tokenServer.URL, "/token", "")
+
+	const goroutines = 20
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			if _, _, err := p.Header(context.Background()); err != nil {
+				t.Errorf("Header() error = %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if requestCount != 1 {
+		t.Fatalf("token requests = %d, want 1 (single-flight refresh)", requestCount)
 	}
 }
 

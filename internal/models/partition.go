@@ -42,13 +42,6 @@ type PartitionResponse struct {
 	Partition Partition `json:"partition"`
 }
 
-// PartitionNameListResponse is returned by
-// GET /tables/{table}/partitions without the details query parameter.
-type PartitionNameListResponse struct {
-	Code  int      `json:"code"`
-	Names []string `json:"names"`
-}
-
 // PartitionListResponse is returned by
 // GET /tables/{table}/partitions?details=true and by POST /tables/{table}/partitions.
 type PartitionListResponse struct {

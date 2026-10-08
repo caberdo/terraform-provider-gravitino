@@ -2,15 +2,13 @@ package client
 
 import (
 	"context"
-	"fmt"
-	"net/url"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
 func (c *Client) ListTopics(ctx context.Context, metalake, catalog, schema string) (*models.IdentifiersResponse, error) {
 	var result models.IdentifiersResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/topics", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema))
+	path := catalogCollectionPath(metalake, catalog, schema, "topics")
 	err := c.Get(ctx, path, &result)
 	return &result, err
 }
@@ -40,27 +38,27 @@ func (c *Client) ListTopicsDetails(ctx context.Context, metalake, catalog, schem
 
 func (c *Client) GetTopic(ctx context.Context, metalake, catalog, schema, name string) (*models.TopicResponse, error) {
 	var result models.TopicResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/topics/%s", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(name))
+	path := catalogEntityPath(metalake, catalog, schema, "topics", name)
 	err := c.Get(ctx, path, &result)
 	return &result, err
 }
 
 func (c *Client) CreateTopic(ctx context.Context, metalake, catalog, schema string, req *models.TopicCreateRequest) (*models.TopicResponse, error) {
 	var result models.TopicResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/topics", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema))
+	path := catalogCollectionPath(metalake, catalog, schema, "topics")
 	err := c.Post(ctx, path, req, &result)
 	return &result, err
 }
 
 func (c *Client) UpdateTopic(ctx context.Context, metalake, catalog, schema, name string, updates []interface{}) (*models.TopicResponse, error) {
 	var result models.TopicResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/topics/%s", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(name))
+	path := catalogEntityPath(metalake, catalog, schema, "topics", name)
 	err := c.Put(ctx, path, &models.TopicUpdateRequest{Updates: updates}, &result)
 	return &result, err
 }
 
 func (c *Client) DropTopic(ctx context.Context, metalake, catalog, schema, name string) (*models.DropResponse, error) {
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/topics/%s", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(name))
+	path := catalogEntityPath(metalake, catalog, schema, "topics", name)
 	var result models.DropResponse
 	err := c.Delete(ctx, path, &result)
 	return &result, err

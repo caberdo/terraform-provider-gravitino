@@ -43,6 +43,12 @@ func New(uri string, authProvider auth.AuthProvider) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid URI: %w", err)
 	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("invalid URI %q: scheme must be http or https", uri)
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("invalid URI %q: host must not be empty", uri)
+	}
 
 	c := &Client{
 		baseURL: u.String(),
@@ -64,14 +70,14 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+			return nil, fmt.Errorf("failed to marshal %s %s request body: %w", method, path, err)
 		}
 		bodyReader = bytes.NewReader(data)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+"/api"+path, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create %s %s request: %w", method, path, err)
 	}
 
 	req.Header.Set("Accept", contentType)
@@ -82,7 +88,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	if c.authProvider != nil {
 		key, value, err := c.authProvider.Header(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("auth header failed: %w", err)
+			return nil, fmt.Errorf("auth header for %s %s failed: %w", method, path, err)
 		}
 		if key != "" && value != "" {
 			req.Header.Set(key, value)
@@ -91,7 +97,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("%s %s failed: %w", method, path, err)
 	}
 
 	return resp, nil
@@ -117,7 +123,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, result inter
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
-		return fmt.Errorf("failed to decode response: %w", err)
+		return fmt.Errorf("failed to decode %s %s response: %w", method, path, err)
 	}
 
 	return nil
@@ -138,7 +144,7 @@ func newHTTPError(resp *http.Response) *HTTPError {
 	}
 
 	var errResp models.ErrorResponse
-	if err := json.Unmarshal(raw, &errResp); err != nil {
+	if err := json.Unmarshal(raw, &errResp); err != nil || (errResp.Type == "" && errResp.Message == "") {
 		httpErr.Status = fmt.Sprintf("%s: %s", httpErr.Status, truncateBody(raw))
 		return httpErr
 	}

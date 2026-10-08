@@ -3,13 +3,11 @@ package topic
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -18,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -26,12 +23,7 @@ var _ resource.Resource = &TopicResource{}
 var _ resource.ResourceWithImportState = &TopicResource{}
 var _ resource.ResourceWithConfigure = &TopicResource{}
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var AuditAttrTypes = models.AuditAttrTypes
 
 type TopicResource struct {
 	client *client.Client
@@ -122,18 +114,11 @@ func (r *TopicResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 }
 
 func (r *TopicResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *TopicResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -288,16 +273,9 @@ func (r *TopicResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 }
 
 func (r *TopicResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.Split(req.ID, ".")
-	if len(parts) != 4 {
-		resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.topic, got: %s", req.ID))
+	parts, ok := resourceutil.SplitImportIDExact(req, resp, 4, "metalake.catalog.schema.topic")
+	if !ok {
 		return
-	}
-	for _, part := range parts {
-		if part == "" {
-			resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Import ID must not contain empty segments, got: %s", req.ID))
-			return
-		}
 	}
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("metalake"), parts[0])...)
@@ -363,35 +341,6 @@ func propertiesToState(ctx context.Context, server map[string]string, planned ty
 	return props
 }
 
-func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if audit.Creator != "" {
-		creator = types.StringValue(audit.Creator)
-	}
-
-	createTime := types.StringNull()
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if audit.LastModifier != "" {
-		lastModifier = types.StringValue(audit.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(AuditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
+func auditToObject(audit *models.Audit) (types.Object, diag.Diagnostics) {
+	return models.AuditToObjectValue(context.Background(), audit)
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"strings"
+	"sync"
 
 	"github.com/jcmturner/gokrb5/v8/client"
 	"github.com/jcmturner/gokrb5/v8/config"
@@ -18,11 +19,12 @@ import (
 )
 
 // hasNegotiateChallenge reports whether the response carries an SPNEGO
-// challenge. Real servers answer with `Negotiate <base64-token>`, so a prefix
-// match is required (Gravitino's SPNEGO filter does not send a bare "Negotiate").
+// challenge. Real servers answer with `Negotiate <base64-token>`, so the scheme
+// (the first token) is compared case-insensitively, as RFC 7235 requires.
 func hasNegotiateChallenge(resp *http.Response) bool {
 	for _, v := range resp.Header.Values("Www-Authenticate") {
-		if strings.HasPrefix(strings.TrimSpace(v), "Negotiate") {
+		fields := strings.Fields(v)
+		if len(fields) > 0 && strings.EqualFold(fields[0], "Negotiate") {
 			return true
 		}
 	}
@@ -95,21 +97,43 @@ func (p *KerberosProvider) Header(ctx context.Context) (string, string, error) {
 
 func (p *KerberosProvider) WrapTransport(base http.RoundTripper) http.RoundTripper {
 	if rt, ok := p.transport.(*spnegoRoundTripper); ok {
-		if rt.base == nil {
-			rt.base = base
-		}
+		rt.setBase(base)
 	}
 	return p.transport
 }
 
 func (p *KerberosProvider) Close() error {
+	if p.krbClient == nil {
+		return nil
+	}
 	p.krbClient.Destroy()
 	return nil
 }
 
 type spnegoRoundTripper struct {
+	mu     sync.Mutex
 	base   http.RoundTripper
 	client *client.Client
+}
+
+// setBase records the underlying transport once. It is safe to call repeatedly
+// and from concurrent goroutines; the first base wins, so repeated wrapping does
+// not silently swap the transport under an in-flight request.
+func (rt *spnegoRoundTripper) setBase(base http.RoundTripper) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.base == nil {
+		rt.base = base
+	}
+}
+
+func (rt *spnegoRoundTripper) baseTransport() http.RoundTripper {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.base != nil {
+		return rt.base
+	}
+	return http.DefaultTransport
 }
 
 func (rt *spnegoRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -117,10 +141,7 @@ func (rt *spnegoRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		return nil, fmt.Errorf("kerberos authentication failed: %w", err)
 	}
 
-	base := rt.base
-	if base == nil {
-		base = http.DefaultTransport
-	}
+	base := rt.baseTransport()
 
 	resp, err := base.RoundTrip(req)
 	if err != nil {
@@ -175,14 +196,18 @@ func extractRealm(principal string) string {
 func loadKerberosConfig() (*config.Config, error) {
 	if cfgPath := os.Getenv("KRB5_CONFIG"); cfgPath != "" {
 		cfg, err := config.Load(cfgPath)
-		if err == nil {
-			return cfg, nil
+		if err != nil {
+			return nil, fmt.Errorf("failed to load KRB5_CONFIG %s: %w", cfgPath, err)
 		}
+		return cfg, nil
 	}
 
 	cfg, err := config.Load("/etc/krb5.conf")
 	if err == nil {
 		return cfg, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("failed to load /etc/krb5.conf: %w", err)
 	}
 
 	return config.New(), nil

@@ -5,7 +5,7 @@ A Terraform provider for managing [Apache Gravitino](https://gravitino.apache.or
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.26.4
+- [Go](https://golang.org/doc/install) >= 1.27.1
 
 ## Using the Provider
 

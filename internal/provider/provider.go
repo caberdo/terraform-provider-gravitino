@@ -118,14 +118,14 @@ func (p *GravitinoProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 			},
 			"auth": schema.StringAttribute{
 				Optional:    true,
-				Description: "Authentication method: 'simple', 'basic', 'oauth', or 'kerberos'. Can also be set via GRAVITINO_AUTH environment variable.",
+				Description: "Authentication method: 'none', 'simple', 'basic', 'oauth', or 'kerberos'. 'simple' authenticates as the OS user (honouring the GRAVITINO_USER environment variable). Can also be set via GRAVITINO_AUTH environment variable.",
 				Validators: []validator.String{
 					stringvalidator.OneOf("simple", "basic", "oauth", "kerberos", "none"),
 				},
 			},
 			"username": schema.StringAttribute{
 				Optional:    true,
-				Description: "Username for simple/basic authentication. Can also be set via GRAVITINO_USERNAME environment variable.",
+				Description: "Username for simple/basic authentication (simple falls back to GRAVITINO_USER). Can also be set via GRAVITINO_USERNAME environment variable.",
 			},
 			"password": schema.StringAttribute{
 				Optional:    true,
@@ -268,6 +268,36 @@ func readConfigString(val types.String, envVar string) string {
 	return os.Getenv(envVar)
 }
 
+// NewClientFromEnv builds a client for uri using the authentication configured
+// through the GRAVITINO_* environment variables. The live acceptance pre-check
+// uses it so it authenticates exactly like the provider does, instead of probing
+// anonymously against a server that requires authentication.
+func NewClientFromEnv(uri string) (*client.Client, error) {
+	ap, err := buildAuthProvider(
+		os.Getenv("GRAVITINO_AUTH"),
+		os.Getenv("GRAVITINO_USERNAME"),
+		os.Getenv("GRAVITINO_PASSWORD"),
+		os.Getenv("GRAVITINO_OAUTH_TOKEN"),
+		os.Getenv("GRAVITINO_OAUTH_CLIENT_ID"),
+		os.Getenv("GRAVITINO_OAUTH_CLIENT_SECRET"),
+		os.Getenv("GRAVITINO_OAUTH_SERVER_URI"),
+		os.Getenv("GRAVITINO_OAUTH_TOKEN_PATH"),
+		os.Getenv("GRAVITINO_OAUTH_SCOPE"),
+		os.Getenv("GRAVITINO_KERBEROS_PRINCIPAL"),
+		os.Getenv("GRAVITINO_KERBEROS_KEYTAB"),
+		envBool("GRAVITINO_KERBEROS_USE_TICKET_CACHE"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return client.New(uri, ap)
+}
+
+func envBool(name string) bool {
+	val, err := strconv.ParseBool(os.Getenv(name))
+	return err == nil && val
+}
+
 func buildAuthProvider(authMethod, username, password, oauthToken, oauthClientID, oauthClientSecret, oauthServerURI, oauthTokenPath, oauthScope, kerberosPrincipal, kerberosKeytab string, kerberosUseTicketCache bool) (auth.AuthProvider, error) {
 	switch authMethod {
 	case "", "none":
@@ -335,6 +365,7 @@ func (p *GravitinoProvider) DataSources(_ context.Context) []func() datasource.D
 		dshealth.NewReadinessDataSource,
 		dsicebergrest.New,
 		dspolicy.NewListDataSource,
+		dspolicy.NewDataSource,
 		dscredential.New,
 		dssecrets.New,
 		dsrole.New,

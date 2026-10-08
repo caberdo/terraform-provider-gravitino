@@ -95,6 +95,15 @@ func (c *Client) CheckExternalTypesSupported(columns []models.ColumnTFSDK, diags
 	diags.Append(models.ExternalTypeColumnDiagnostics(columns, c.ServerVersion(), c.SupportsExternalType())...)
 }
 
+// CheckFunctionExternalTypesSupported appends one diagnostic per function data
+// type (parameter, return type or return column) that uses the external variant
+// when the connected server predates Gravitino 1.3.1, which introduced it. An
+// undetected server version stays permissive, matching
+// CheckExternalTypesSupported.
+func (c *Client) CheckFunctionExternalTypesSupported(definitions []models.FunctionDefinition, diags *diag.Diagnostics) {
+	diags.Append(models.FunctionExternalTypeDiagnostics(definitions, c.ServerVersion(), c.SupportsExternalType())...)
+}
+
 func (c *Client) setServerVersion(version string) {
 	c.versionMu.Lock()
 	c.version = version

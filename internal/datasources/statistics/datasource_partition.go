@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -47,18 +48,11 @@ var PartitionStatisticItemAttrTypes = map[string]attr.Type{
 }
 
 func (d *PartitionStatisticsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		d.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected DataSource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	d.client = c
 }
 
 func (d *PartitionStatisticsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -138,14 +132,17 @@ func (d *PartitionStatisticsDataSource) Read(ctx context.Context, req datasource
 		fmt.Sprintf("%s.%s.%s", config.Catalog.ValueString(), config.Schema.ValueString(), config.Table.ValueString()),
 	)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to list partition statistics", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("listing partition statistics", config.Table.ValueString(), err)...)
 		return
 	}
 
 	items := make([]attr.Value, 0, len(result.Statistics))
 	for _, ps := range result.Statistics {
 		p := ps
-		item := partitionStatisticToItemModel(ctx, &p)
+		item := partitionStatisticToItemModel(ctx, &p, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 		if item == nil {
 			continue
 		}
@@ -167,7 +164,7 @@ func (d *PartitionStatisticsDataSource) Read(ctx context.Context, req datasource
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func partitionStatisticToItemModel(ctx context.Context, ps *models.PartitionStatistics) *partitionStatisticItemModel {
+func partitionStatisticToItemModel(ctx context.Context, ps *models.PartitionStatistics, diags *diag.Diagnostics) *partitionStatisticItemModel {
 	if ps == nil {
 		return nil
 	}
@@ -179,12 +176,16 @@ func partitionStatisticToItemModel(ctx context.Context, ps *models.PartitionStat
 	statsItems := make([]attr.Value, 0, len(ps.Statistics))
 	for _, s := range ps.Statistics {
 		st := s
-		statItem := statisticToItemModel(ctx, &st)
+		statItem := statisticToItemModel(ctx, &st, diags)
+		if diags.HasError() {
+			return nil
+		}
 		if statItem == nil {
 			continue
 		}
 		obj, objDiags := types.ObjectValueFrom(ctx, StatisticItemAttrTypes, statItem)
-		if objDiags.HasError() {
+		diags.Append(objDiags...)
+		if diags.HasError() {
 			return nil
 		}
 		statsItems = append(statsItems, obj)
@@ -192,7 +193,8 @@ func partitionStatisticToItemModel(ctx context.Context, ps *models.PartitionStat
 
 	if len(statsItems) > 0 {
 		statsList, d := types.ListValue(types.ObjectType{AttrTypes: StatisticItemAttrTypes}, statsItems)
-		if d.HasError() {
+		diags.Append(d...)
+		if diags.HasError() {
 			return nil
 		}
 		item.Statistics = statsList

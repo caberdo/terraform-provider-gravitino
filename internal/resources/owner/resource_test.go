@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/owner"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -52,16 +53,7 @@ func ownerSchema(t *testing.T) schema.Schema {
 }
 
 func tfValue(t *testing.T, ctx context.Context, s schema.Schema, model res.OwnerResourceModel) tftypes.Value {
-	t.Helper()
-	obj, diags := types.ObjectValueFrom(ctx, s.Type().(types.ObjectType).AttributeTypes(), model)
-	if diags.HasError() {
-		t.Fatalf("failed to build object value: %v", diags)
-	}
-	v, err := obj.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("failed to convert to terraform value: %v", err)
-	}
-	return v
+	return resourcetest.TFValue(t, ctx, s, model)
 }
 
 func baseModel() res.OwnerResourceModel {

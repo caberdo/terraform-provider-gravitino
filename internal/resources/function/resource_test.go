@@ -3,11 +3,14 @@ package function_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/function"
 
@@ -448,6 +451,106 @@ func TestFunctionResourceCreate_RegisterPayloadMatchesSpecExample(t *testing.T) 
 	impls := implsOf(t, definitions[0].Impls)
 	if len(impls) != 1 || impls[0].SQL.ValueString() != "x + 1" {
 		t.Errorf("impls = %+v, want the SQL implementation of the spec example", impls)
+	}
+}
+
+// TestFunctionResourceCreate_RejectsExternalTypeOnOlderServer asserts an external
+// function data type is refused with a version diagnostic before the function is
+// sent to a Gravitino 1.3.0 server, which has no ExternalType variant.
+func TestFunctionResourceCreate_RejectsExternalTypeOnOlderServer(t *testing.T) {
+	var posts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/version":
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.3.0"}}`))
+		case r.Method == http.MethodPost:
+			posts++
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("client.New() error = %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	schemaObj := functionResourceSchema(t)
+	plan := modelFromRegisterRequest(t, schemaObj, "probe_ml", "probe_cat", "probe_sch", specRegisterRequestExternalType)
+
+	r := res.New()
+	r.(*res.FunctionResource).SetClient(c)
+
+	response := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(context.Background(), resource.CreateRequest{Plan: planFor(t, schemaObj, plan)}, response)
+
+	if !response.Diagnostics.HasError() {
+		t.Fatal("expected an external function data type diagnostic")
+	}
+	first := response.Diagnostics[0]
+	if !strings.Contains(first.Summary(), "1.3.1") {
+		t.Errorf("summary = %q, want the required server version", first.Summary())
+	}
+	if !strings.Contains(first.Detail(), "1.3.0") {
+		t.Errorf("detail = %q, want the detected server version", first.Detail())
+	}
+	if posts != 0 {
+		t.Errorf("the function must not be registered, got %d POST requests", posts)
+	}
+}
+
+// TestFunctionResourceCreate_SendsExternalTypeOn131Server asserts an external
+// function data type reaches a Gravitino 1.3.1 server, which accepts the variant.
+func TestFunctionResourceCreate_SendsExternalTypeOn131Server(t *testing.T) {
+	var posts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/version":
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.3.1"}}`))
+		case r.Method == http.MethodPost:
+			posts++
+			body, _ := io.ReadAll(r.Body)
+			var function map[string]any
+			if err := json.Unmarshal(body, &function); err != nil {
+				t.Errorf("mock: failed to decode register request: %v", err)
+			}
+			payload, _ := json.Marshal(map[string]any{"code": 0, "function": function})
+			_, _ = w.Write(payload)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("client.New() error = %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	schemaObj := functionResourceSchema(t)
+	plan := modelFromRegisterRequest(t, schemaObj, "probe_ml", "probe_cat", "probe_sch", specRegisterRequestExternalType)
+
+	r := res.New()
+	r.(*res.FunctionResource).SetClient(c)
+
+	response := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(context.Background(), resource.CreateRequest{Plan: planFor(t, schemaObj, plan)}, response)
+
+	if response.Diagnostics.HasError() {
+		t.Fatalf("unexpected create diagnostics: %v", response.Diagnostics)
+	}
+	if posts != 1 {
+		t.Errorf("POST requests = %d, want 1", posts)
 	}
 }
 

@@ -9,7 +9,6 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -25,7 +24,6 @@ var _ resource.Resource = &JobTemplateResource{}
 var _ resource.ResourceWithImportState = &JobTemplateResource{}
 var _ resource.ResourceWithConfigure = &JobTemplateResource{}
 var _ resource.ResourceWithValidateConfig = &JobTemplateResource{}
-var _ resource.ResourceWithModifyPlan = &JobTemplateResource{}
 
 // jobTypes are the two job template variants Gravitino supports. They are
 // distinct object types on the wire (ShellJobTemplate/SparkJobTemplate), which is
@@ -63,26 +61,14 @@ type JobTemplateResourceModel struct {
 	Audit        types.Object `tfsdk:"audit"`
 }
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var AuditAttrTypes = models.AuditAttrTypes
 
 func (r *JobTemplateResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *JobTemplateResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -99,7 +85,7 @@ func (r *JobTemplateResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"id": schema.StringAttribute{
 				Computed: true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					models.CompoundID("metalake", "name"),
 				},
 				Description: "Composite identifier in the format 'metalake.job_template_name'.",
 			},
@@ -183,26 +169,6 @@ func (r *JobTemplateResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Description: "Audit information for the job template.",
 			},
 		},
-	}
-}
-
-// ModifyPlan marks the composite id as unknown when the template is renamed: the id is
-// derived from the name, so reusing the prior state value (UseStateForUnknown) would
-// conflict with the id the provider writes after a successful rename.
-func (r *JobTemplateResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
-		return
-	}
-
-	var plan, state JobTemplateResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !plan.Name.Equal(state.Name) {
-		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("id"), types.StringUnknown())...)
 	}
 }
 
@@ -583,28 +549,5 @@ func setStateFromJobTemplate(ctx context.Context, diags *diag.Diagnostics, metal
 }
 
 func auditToObjectValue(audit *models.Audit) (types.Object, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	var createTime, lastModifiedTime types.String
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(timeFormat))
-	} else {
-		createTime = types.StringNull()
-	}
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(timeFormat))
-	} else {
-		lastModifiedTime = types.StringNull()
-	}
-
-	attrs := map[string]attr.Value{
-		"creator":            types.StringValue(audit.Creator),
-		"create_time":        createTime,
-		"last_modifier":      types.StringValue(audit.LastModifier),
-		"last_modified_time": lastModifiedTime,
-	}
-
-	return types.ObjectValue(AuditAttrTypes, attrs)
+	return models.AuditToObjectValue(context.Background(), audit)
 }

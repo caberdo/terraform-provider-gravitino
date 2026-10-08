@@ -2,8 +2,6 @@ package client
 
 import (
 	"context"
-	"fmt"
-	"net/url"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
@@ -14,7 +12,7 @@ import (
 // depending on `details`.
 func (c *Client) ListFunctionsDetails(ctx context.Context, metalake, catalog, schema string) ([]models.Function, error) {
 	var result models.FunctionListResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/functions?details=true", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema))
+	path := catalogCollectionPath(metalake, catalog, schema, "functions") + "?details=true"
 	err := c.Get(ctx, path, &result)
 	if err != nil {
 		return nil, err
@@ -26,7 +24,7 @@ func (c *Client) ListFunctionsDetails(ctx context.Context, metalake, catalog, sc
 // (GET .../functions/{function}).
 func (c *Client) GetFunction(ctx context.Context, metalake, catalog, schema, name string) (*models.FunctionResponse, error) {
 	var result models.FunctionResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/functions/%s", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(name))
+	path := catalogEntityPath(metalake, catalog, schema, "functions", name)
 	err := c.Get(ctx, path, &result)
 	return &result, err
 }
@@ -35,7 +33,7 @@ func (c *Client) GetFunction(ctx context.Context, metalake, catalog, schema, nam
 // (POST .../functions, operationId registerFunction).
 func (c *Client) RegisterFunction(ctx context.Context, metalake, catalog, schema string, req *models.FunctionRegisterRequest) (*models.FunctionResponse, error) {
 	var result models.FunctionResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/functions", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema))
+	path := catalogCollectionPath(metalake, catalog, schema, "functions")
 	err := c.Post(ctx, path, req, &result)
 	return &result, err
 }
@@ -45,7 +43,7 @@ func (c *Client) RegisterFunction(ctx context.Context, metalake, catalog, schema
 // FunctionUpdateRequest values such as models.NewUpdateFunctionCommentRequest.
 func (c *Client) UpdateFunction(ctx context.Context, metalake, catalog, schema, name string, updates []any) (*models.FunctionResponse, error) {
 	var result models.FunctionResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/functions/%s", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(name))
+	path := catalogEntityPath(metalake, catalog, schema, "functions", name)
 	err := c.Put(ctx, path, &models.FunctionUpdatesRequest{Updates: updates}, &result)
 	return &result, err
 }
@@ -54,7 +52,7 @@ func (c *Client) UpdateFunction(ctx context.Context, metalake, catalog, schema, 
 // (DELETE .../functions/{function}, operationId dropFunction). The API documents
 // no query parameters for this operation.
 func (c *Client) DropFunction(ctx context.Context, metalake, catalog, schema, name string) (*models.DropResponse, error) {
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/functions/%s", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(name))
+	path := catalogEntityPath(metalake, catalog, schema, "functions", name)
 	var result models.DropResponse
 	err := c.Delete(ctx, path, &result)
 	return &result, err

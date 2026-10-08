@@ -10,6 +10,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 if ! command -v terraform >/dev/null 2>&1; then
+  if [ "${REQUIRE_TERRAFORM:-0}" = "1" ]; then
+    echo "terraform is required but not installed (REQUIRE_TERRAFORM=1)" >&2
+    exit 1
+  fi
   echo "terraform is not installed; skipping example validation" >&2
   exit 0
 fi

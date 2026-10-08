@@ -17,9 +17,6 @@ func optionalStringToTF(s string) types.String {
 	return types.StringValue(s)
 }
 
-// timeFormat matches the timestamp format used by the other resources.
-const timeFormat = "2006-01-02T15:04:05Z07:00"
-
 func mapFromTF(m types.Map) map[string]string {
 	result := make(map[string]string)
 	if m.IsNull() || m.IsUnknown() {

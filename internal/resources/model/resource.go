@@ -3,11 +3,11 @@ package model
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
+	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -17,7 +17,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -25,12 +24,7 @@ var _ resource.Resource = &ModelResource{}
 var _ resource.ResourceWithImportState = &ModelResource{}
 var _ resource.ResourceWithConfigure = &ModelResource{}
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var AuditAttrTypes = models.AuditAttrTypes
 
 type ModelResource struct {
 	client *client.Client
@@ -70,6 +64,9 @@ func (r *ModelResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"id": schema.StringAttribute{
 				Description: "The compound identifier in the format metalake.catalog.schema.model.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					models.CompoundID("metalake", "catalog", "schema", "name"),
+				},
 			},
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name. Changing it forces a new model to be registered, because Gravitino cannot move a model between metalakes.",
@@ -119,18 +116,11 @@ func (r *ModelResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 }
 
 func (r *ModelResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *ModelResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -159,7 +149,7 @@ func (r *ModelResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
-	r.readModelToState(ctx, &modelResp.Model, &plan, &resp.Diagnostics)
+	r.readModelToState(ctx, &modelResp.Model, &plan, false, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -188,7 +178,7 @@ func (r *ModelResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		return
 	}
 
-	r.readModelToState(ctx, &modelResp.Model, &state, &resp.Diagnostics)
+	r.readModelToState(ctx, &modelResp.Model, &state, true, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -240,7 +230,7 @@ func (r *ModelResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		modelResp = result
 	}
 
-	r.readModelToState(ctx, &modelResp.Model, &plan, &resp.Diagnostics)
+	r.readModelToState(ctx, &modelResp.Model, &plan, false, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -273,16 +263,9 @@ func (r *ModelResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 }
 
 func (r *ModelResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 4)
-	if len(parts) != 4 {
-		resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.model, got %q", req.ID))
+	parts, ok := resourceutil.SplitImportID(req, resp, 4, "metalake.catalog.schema.model")
+	if !ok {
 		return
-	}
-	for _, part := range parts {
-		if part == "" {
-			resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.model, got %q", req.ID))
-			return
-		}
 	}
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("metalake"), parts[0])...)
@@ -293,13 +276,19 @@ func (r *ModelResource) ImportState(ctx context.Context, req resource.ImportStat
 }
 
 // readModelToState writes every attribute, including the computed ones, so no
-// computed value is ever left unknown after an apply.
-func (r *ModelResource) readModelToState(ctx context.Context, m *models.Model, state *ModelResourceModel, diags *diag.Diagnostics) {
+// computed value is ever left unknown after an apply. refresh is true on a Read
+// (drift detection) and false during Create/Update: in apply mode the planned
+// properties are kept, because the server is free to normalise or add keys and a
+// differing applied value fails with "Provider produced inconsistent result
+// after apply".
+func (r *ModelResource) readModelToState(ctx context.Context, m *models.Model, state *ModelResourceModel, refresh bool, diags *diag.Diagnostics) {
 	state.Name = types.StringValue(m.Name)
 	state.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s", state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), m.Name))
 	state.LatestVersion = types.Int64Value(int64(m.LatestVersion))
 	state.Comment = optionalString(m.Comment, state.Comment)
-	state.Properties = mapValueFrom(ctx, m.Properties, state.Properties, diags)
+	if refresh || state.Properties.IsUnknown() {
+		state.Properties = mapValueFrom(ctx, m.Properties, state.Properties, diags)
+	}
 
 	auditObj, d := auditToObject(m.Audit)
 	diags.Append(d...)
@@ -333,12 +322,7 @@ func mapValueFrom(ctx context.Context, props map[string]string, current types.Ma
 }
 
 func propertiesFromTF(ctx context.Context, value types.Map, diags *diag.Diagnostics) map[string]string {
-	properties := make(map[string]string)
-	if value.IsNull() || value.IsUnknown() {
-		return properties
-	}
-	diags.Append(value.ElementsAs(ctx, &properties, false)...)
-	return properties
+	return tfutil.StringMap(ctx, value, diags)
 }
 
 // modelPropertyUpdates diffs the old and new property maps into the setProperty
@@ -364,35 +348,6 @@ func modelPropertyUpdates(ctx context.Context, oldValue, newValue types.Map, dia
 	return updates
 }
 
-func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if audit.Creator != "" {
-		creator = types.StringValue(audit.Creator)
-	}
-
-	createTime := types.StringNull()
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if audit.LastModifier != "" {
-		lastModifier = types.StringValue(audit.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(AuditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
+func auditToObject(audit *models.Audit) (types.Object, diag.Diagnostics) {
+	return models.AuditToObjectValue(context.Background(), audit)
 }

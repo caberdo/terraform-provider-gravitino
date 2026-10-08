@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -16,7 +17,7 @@ import (
 // function is immutable and forces replacement in the schema.
 
 // buildFunctionUpdates returns the update requests that turn state into plan.
-func buildFunctionUpdates(ctx context.Context, plan, state FunctionResourceModel) ([]any, diag.Diagnostics) {
+func buildFunctionUpdates(ctx context.Context, c *client.Client, plan, state FunctionResourceModel) ([]any, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	var updates []any
 
@@ -31,6 +32,11 @@ func buildFunctionUpdates(ctx context.Context, plan, state FunctionResourceModel
 	diags.Append(d...)
 	stateDefinitions, d := models.FunctionDefinitionsFromTF(ctx, state.Definitions)
 	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	c.CheckFunctionExternalTypesSupported(planDefinitions, &diags)
 	if diags.HasError() {
 		return nil, diags
 	}

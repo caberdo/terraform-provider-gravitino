@@ -2,8 +2,6 @@ package client
 
 import (
 	"context"
-	"fmt"
-	"net/url"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
@@ -17,7 +15,7 @@ import (
 // `credentialInfo`.
 func (c *Client) GetCredentials(ctx context.Context, metalake, resourceType, resource string) (*models.CredentialResponse, error) {
 	var result models.CredentialResponse
-	path := fmt.Sprintf("/metalakes/%s/objects/%s/%s/credentials", url.PathEscape(metalake), url.PathEscape(resourceType), url.PathEscape(resource))
+	path := objectPath(metalake, resourceType, resource) + "/credentials"
 	err := c.Get(ctx, path, &result)
 	return &result, err
 }

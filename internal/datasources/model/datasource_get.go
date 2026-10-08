@@ -2,28 +2,20 @@ package model
 
 import (
 	"context"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var _ datasource.DataSource = &ModelDataSource{}
 var _ datasource.DataSourceWithConfigure = &ModelDataSource{}
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var AuditAttrTypes = models.AuditAttrTypes
 
 type ModelDataSource struct {
 	client *client.Client
@@ -95,15 +87,11 @@ func (d *ModelDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 }
 
 func (d *ModelDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		d.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Invalid provider data", "Expected *client.Client, got unexpected type.")
-		return
-	}
-	d.client = c
 }
 
 func (d *ModelDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -146,35 +134,6 @@ func mapValueFrom(ctx context.Context, values map[string]string, diags *diag.Dia
 	return types.MapNull(types.StringType)
 }
 
-func auditToObject(a *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if a == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if a.Creator != "" {
-		creator = types.StringValue(a.Creator)
-	}
-
-	createTime := types.StringNull()
-	if a.CreateTime != nil {
-		createTime = types.StringValue(a.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if a.LastModifier != "" {
-		lastModifier = types.StringValue(a.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if a.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(a.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(AuditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
+func auditToObject(a *models.Audit) (types.Object, diag.Diagnostics) {
+	return models.AuditToObjectValue(context.Background(), a)
 }

@@ -3,10 +3,10 @@ package view
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -26,7 +26,6 @@ import (
 var _ resource.Resource = &ViewResource{}
 var _ resource.ResourceWithImportState = &ViewResource{}
 var _ resource.ResourceWithConfigure = &ViewResource{}
-var _ resource.ResourceWithModifyPlan = &ViewResource{}
 
 type ViewResource struct {
 	client *client.Client
@@ -67,7 +66,7 @@ func (r *ViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Description: "Compound identifier in the format metalake.catalog.schema.view.",
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					models.CompoundID("metalake", "catalog", "schema", "name"),
 				},
 			},
 			"metalake": schema.StringAttribute{
@@ -204,53 +203,11 @@ func (r *ViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 }
 
 func (r *ViewResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
-}
-
-// ModifyPlan keeps the planned compound ID in sync with the planned name.
-// Terraform compares the plan with the applied result, so a view that is
-// renamed in place must already plan the new ID: the id attribute carries
-// stringplanmodifier.UseStateForUnknown and would otherwise keep the old value.
-func (r *ViewResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// Destroying the resource has no plan to adjust.
-	if req.Plan.Raw.IsNull() {
-		return
-	}
-
-	var plan ViewResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	for _, value := range []types.String{plan.Metalake, plan.Catalog, plan.Schema, plan.Name} {
-		if value.IsNull() || value.IsUnknown() {
-			// Not known yet; Create/Update computes the ID after apply.
-			return
-		}
-	}
-
-	id := fmt.Sprintf("%s.%s.%s.%s",
-		plan.Metalake.ValueString(),
-		plan.Catalog.ValueString(),
-		plan.Schema.ValueString(),
-		plan.Name.ValueString(),
-	)
-
-	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("id"), id)...)
-
-	tflog.Debug(ctx, "Planned view id", map[string]interface{}{"id": id})
 }
 
 func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -294,7 +251,7 @@ func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	r.readViewToState(ctx, viewResp, &plan, &resp.Diagnostics)
+	r.readViewToState(ctx, viewResp, &plan, false, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -323,7 +280,7 @@ func (r *ViewResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	r.readViewToState(ctx, viewResp, &state, &resp.Diagnostics)
+	r.readViewToState(ctx, viewResp, &state, true, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -376,14 +333,14 @@ func (r *ViewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 			resp.Diagnostics.Append(client.NewResourceError("updating view", state.Name.ValueString(), err)...)
 			return
 		}
-		r.readViewToState(ctx, viewResp, &plan, &resp.Diagnostics)
+		r.readViewToState(ctx, viewResp, &plan, false, &resp.Diagnostics)
 	} else {
 		viewResp, err := r.client.GetView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("reading view after update", state.Name.ValueString(), err)...)
 			return
 		}
-		r.readViewToState(ctx, viewResp, &plan, &resp.Diagnostics)
+		r.readViewToState(ctx, viewResp, &plan, false, &resp.Diagnostics)
 	}
 	if resp.Diagnostics.HasError() {
 		return
@@ -417,16 +374,9 @@ func (r *ViewResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 }
 
 func (r *ViewResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 4)
-	if len(parts) != 4 {
-		resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.view, got: %s", req.ID))
+	parts, ok := resourceutil.SplitImportID(req, resp, 4, "metalake.catalog.schema.view")
+	if !ok {
 		return
-	}
-	for _, part := range parts {
-		if strings.TrimSpace(part) == "" {
-			resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.view, got: %s", req.ID))
-			return
-		}
 	}
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("metalake"), parts[0])...)
@@ -436,7 +386,11 @@ func (r *ViewResource) ImportState(ctx context.Context, req resource.ImportState
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 }
 
-func (r *ViewResource) readViewToState(ctx context.Context, viewResp *models.ViewResponse, m *ViewResourceModel, diags *diag.Diagnostics) {
+// readViewToState writes the view response into the model. refresh is true on a
+// Read and false during Create/Update: in apply mode the planned properties are
+// kept, because the server may normalise or add keys and a differing applied
+// value fails with "Provider produced inconsistent result after apply".
+func (r *ViewResource) readViewToState(ctx context.Context, viewResp *models.ViewResponse, m *ViewResourceModel, refresh bool, diags *diag.Diagnostics) {
 	view := viewResp.View
 
 	m.Name = types.StringValue(view.Name)
@@ -445,7 +399,9 @@ func (r *ViewResource) readViewToState(ctx context.Context, viewResp *models.Vie
 	m.Representations = models.ViewRepresentationsToState(view.Representations)
 	m.DefaultCatalog = stringFromResponse(view.DefaultCatalog, m.DefaultCatalog)
 	m.DefaultSchema = stringFromResponse(view.DefaultSchema, m.DefaultSchema)
-	m.Properties = mapFromResponse(ctx, view.Properties, m.Properties, diags)
+	if refresh || m.Properties.IsUnknown() {
+		m.Properties = mapFromResponse(ctx, view.Properties, m.Properties, diags)
+	}
 	m.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s",
 		m.Metalake.ValueString(),
 		m.Catalog.ValueString(),

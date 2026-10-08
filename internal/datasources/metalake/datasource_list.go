@@ -2,7 +2,6 @@ package metalake
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -65,20 +64,11 @@ func (d *MetalakesDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 }
 
 func (d *MetalakesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		d.client = c
 	}
-
-	cli, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Provider Data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-		return
-	}
-
-	d.client = cli
 }
 
 func (d *MetalakesDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -90,6 +80,7 @@ func (d *MetalakesDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
+	state.Metalakes = make([]MetalakeItemModel, 0, len(result.Metalakes))
 	for _, ml := range result.Metalakes {
 		item := MetalakeItemModel{
 			Name:       types.StringValue(ml.Name),

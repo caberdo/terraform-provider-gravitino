@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/catalog"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -75,16 +76,7 @@ func catalogSchema(t *testing.T) schema.Schema {
 }
 
 func tfValue(t *testing.T, ctx context.Context, s schema.Schema, model res.CatalogResourceModel) tftypes.Value {
-	t.Helper()
-	obj, diags := types.ObjectValueFrom(ctx, s.Type().(types.ObjectType).AttributeTypes(), model)
-	if diags.HasError() {
-		t.Fatalf("failed to build object value: %v", diags)
-	}
-	v, err := obj.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("failed to convert to terraform value: %v", err)
-	}
-	return v
+	return resourcetest.TFValue(t, ctx, s, model)
 }
 
 func baseModel() res.CatalogResourceModel {
@@ -134,7 +126,7 @@ func TestCatalogResource_SchemaUpdatePolicy(t *testing.T) {
 
 	// Every computed attribute must be known on every code path; the plan
 	// modifiers guarantee that for the "nothing changed" Update branch.
-	for _, name := range []string{"id", "comment", "catalog_provider"} {
+	for _, name := range []string{"comment", "catalog_provider"} {
 		attr := s.Attributes[name].(schema.StringAttribute)
 		planned, _ := stringPlanWithConfig(ctx, attr, types.StringValue("prior"), types.StringUnknown(), types.StringNull())
 		if planned.IsUnknown() || planned.IsNull() || planned.ValueString() != "prior" {
@@ -687,12 +679,7 @@ func TestCatalogResource_ImportState_Invalid(t *testing.T) {
 }
 
 func assertJSONEqual(t *testing.T, want, got map[string]any) {
-	t.Helper()
-	wantJSON, _ := json.Marshal(want)
-	gotJSON, _ := json.Marshal(got)
-	if string(wantJSON) != string(gotJSON) {
-		t.Fatalf("unexpected payload:\n want %s\n  got %s", wantJSON, gotJSON)
-	}
+	resourcetest.AssertJSONEqual(t, want, got)
 }
 
 func assertUpdatesEqual(t *testing.T, want, got []map[string]any) {
@@ -715,42 +702,21 @@ func assertUpdatesEqual(t *testing.T, want, got []map[string]any) {
 // TestCatalogResource_ModifyPlan: an in-place rename must mark the id as
 // unknown (the id embeds the name), otherwise the applied id differs from the
 // planned one ("Provider produced inconsistent result after apply").
-func TestCatalogResource_ModifyPlan(t *testing.T) {
-	ctx := context.Background()
+// TestCatalogResource_IdPlanModifier asserts the compound id is guarded by
+// models.CompoundID("metalake", "name"), which marks it unknown on a rename
+// instead of pinning the prior state value.
+func TestCatalogResource_IdPlanModifier(t *testing.T) {
 	s := catalogSchema(t)
-	r := res.New().(resource.ResourceWithModifyPlan)
 
-	state := baseModel()
-	state.ID = types.StringValue("my_test_metalake.my_hive_catalog")
-
-	rename := state
-	rename.Name = types.StringValue("my_hive_catalog_new")
-
-	for _, tc := range []struct {
-		name        string
-		plan        res.CatalogResourceModel
-		wantUnknown bool
-	}{
-		{"rename", rename, true},
-		{"no change", state, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			resp := &resource.ModifyPlanResponse{Plan: tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, tc.plan)}}
-			r.ModifyPlan(ctx, resource.ModifyPlanRequest{
-				Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, tc.plan)},
-				State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
-			}, resp)
-			if resp.Diagnostics.HasError() {
-				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
-			}
-
-			var got res.CatalogResourceModel
-			if diags := resp.Plan.Get(ctx, &got); diags.HasError() {
-				t.Fatalf("failed to read plan: %v", diags)
-			}
-			if got.ID.IsUnknown() != tc.wantUnknown {
-				t.Fatalf("expected id unknown=%v, got %v", tc.wantUnknown, got.ID)
-			}
-		})
+	idAttr, ok := s.Attributes["id"].(schema.StringAttribute)
+	if !ok || len(idAttr.PlanModifiers) != 1 {
+		t.Fatalf("id must carry exactly one plan modifier, got %#v", s.Attributes["id"])
+	}
+	modifier, ok := idAttr.PlanModifiers[0].(models.CompoundIDPlanModifier)
+	if !ok {
+		t.Fatalf("id plan modifier = %T, want models.CompoundIDPlanModifier", idAttr.PlanModifiers[0])
+	}
+	if got := modifier.Components; len(got) != 2 || got[0] != "metalake" || got[1] != "name" {
+		t.Errorf("id components = %v, want [metalake name]", got)
 	}
 }

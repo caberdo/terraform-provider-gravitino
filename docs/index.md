@@ -133,7 +133,7 @@ provider "gravitino" {
 
 ### Optional
 
-- `auth` (String) Authentication method: 'simple', 'basic', 'oauth', or 'kerberos'. Can also be set via GRAVITINO_AUTH environment variable.
+- `auth` (String) Authentication method: 'none', 'simple', 'basic', 'oauth', or 'kerberos'. 'simple' authenticates as the OS user (honouring the GRAVITINO_USER environment variable). Can also be set via GRAVITINO_AUTH environment variable.
 - `kerberos_keytab` (String, Sensitive) Path to Kerberos keytab file. Can also be set via GRAVITINO_KERBEROS_KEYTAB environment variable.
 - `kerberos_principal` (String) Kerberos principal (e.g. HTTP/server@REALM). Can also be set via GRAVITINO_KERBEROS_PRINCIPAL environment variable.
 - `kerberos_use_ticket_cache` (Boolean) Use Kerberos ticket cache instead of keytab. Can also be set via GRAVITINO_KERBEROS_USE_TICKET_CACHE environment variable.
@@ -145,4 +145,4 @@ provider "gravitino" {
 - `oauth_token_path` (String) OAuth2 token endpoint path (e.g. /oauth2/token). Can also be set via GRAVITINO_OAUTH_TOKEN_PATH environment variable.
 - `password` (String, Sensitive) Password for basic authentication. Can also be set via GRAVITINO_PASSWORD environment variable.
 - `uri` (String) The URI of the Gravitino server. Can also be set via GRAVITINO_URI environment variable.
-- `username` (String) Username for simple/basic authentication. Can also be set via GRAVITINO_USERNAME environment variable.
+- `username` (String) Username for simple/basic authentication (simple falls back to GRAVITINO_USER). Can also be set via GRAVITINO_USERNAME environment variable.

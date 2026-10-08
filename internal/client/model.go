@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strconv"
 
@@ -11,7 +10,7 @@ import (
 
 func (c *Client) ListModels(ctx context.Context, metalake, catalog, schema string) (*models.IdentifiersResponse, error) {
 	var result models.IdentifiersResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/models", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema))
+	path := catalogCollectionPath(metalake, catalog, schema, "models")
 	err := c.Get(ctx, path, &result)
 	return &result, err
 }
@@ -36,27 +35,27 @@ func (c *Client) ListModelsDetails(ctx context.Context, metalake, catalog, schem
 
 func (c *Client) GetModel(ctx context.Context, metalake, catalog, schema, model string) (*models.ModelResponse, error) {
 	var result models.ModelResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/models/%s", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(model))
+	path := catalogEntityPath(metalake, catalog, schema, "models", model)
 	err := c.Get(ctx, path, &result)
 	return &result, err
 }
 
 func (c *Client) CreateModel(ctx context.Context, metalake, catalog, schema string, req *models.ModelRegisterRequest) (*models.ModelResponse, error) {
 	var result models.ModelResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/models", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema))
+	path := catalogCollectionPath(metalake, catalog, schema, "models")
 	err := c.Post(ctx, path, req, &result)
 	return &result, err
 }
 
 func (c *Client) UpdateModel(ctx context.Context, metalake, catalog, schema, model string, updates []interface{}) (*models.ModelResponse, error) {
 	var result models.ModelResponse
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/models/%s", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(model))
+	path := catalogEntityPath(metalake, catalog, schema, "models", model)
 	err := c.Put(ctx, path, &models.ModelUpdatesRequest{Updates: updates}, &result)
 	return &result, err
 }
 
 func (c *Client) DropModel(ctx context.Context, metalake, catalog, schema, model string) (*models.DropResponse, error) {
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/models/%s", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(model))
+	path := catalogEntityPath(metalake, catalog, schema, "models", model)
 	var result models.DropResponse
 	err := c.Delete(ctx, path, &result)
 	return &result, err
@@ -66,7 +65,7 @@ func (c *Client) DropModel(ctx context.Context, metalake, catalog, schema, model
 // Gravitino answers with the full model version objects (`infos`), otherwise it
 // only returns the version numbers (`versions`).
 func (c *Client) ListModelVersions(ctx context.Context, metalake, catalog, schema, model string, details bool) (*models.ModelVersionListResponse, error) {
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/models/%s/versions", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(model))
+	path := catalogEntityPath(metalake, catalog, schema, "models", model) + "/versions"
 	if details {
 		path += "?" + url.Values{"details": []string{"true"}}.Encode()
 	}
@@ -81,7 +80,7 @@ func (c *Client) ListModelVersions(ctx context.Context, metalake, catalog, schem
 // version number and answers with a plain BaseResponse, so the assigned number
 // has to be read back with ListModelVersions.
 func (c *Client) LinkModelVersion(ctx context.Context, metalake, catalog, schema, model string, req *models.ModelVersionLinkRequest) (*models.BaseResponse, error) {
-	path := fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/models/%s/versions", url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(model))
+	path := catalogEntityPath(metalake, catalog, schema, "models", model) + "/versions"
 	var result models.BaseResponse
 	if err := c.Post(ctx, path, req, &result); err != nil {
 		return nil, err
@@ -90,13 +89,11 @@ func (c *Client) LinkModelVersion(ctx context.Context, metalake, catalog, schema
 }
 
 func modelVersionPath(metalake, catalog, schema, model string, version int32) string {
-	return fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/models/%s/versions/%s",
-		url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(model), strconv.FormatInt(int64(version), 10))
+	return catalogEntityPath(metalake, catalog, schema, "models", model) + "/versions/" + strconv.FormatInt(int64(version), 10)
 }
 
 func modelVersionAliasPath(metalake, catalog, schema, model, alias string) string {
-	return fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/models/%s/aliases/%s",
-		url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(model), url.PathEscape(alias))
+	return catalogEntityPath(metalake, catalog, schema, "models", model) + "/aliases/" + url.PathEscape(alias)
 }
 
 func (c *Client) GetModelVersion(ctx context.Context, metalake, catalog, schema, model string, version int32) (*models.ModelVersionResponse, error) {

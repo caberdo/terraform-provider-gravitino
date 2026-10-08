@@ -2,17 +2,17 @@ package idp_group
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -53,18 +53,11 @@ type IdpGroupResourceModel struct {
 }
 
 func (r *IdpGroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *IdpGroupResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -96,6 +89,9 @@ func (r *IdpGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Computed:    true,
 				ElementType: types.StringType,
 				Description: "The usernames of members in the group.",
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -178,7 +174,13 @@ func (r *IdpGroupResource) Update(ctx context.Context, req resource.UpdateReques
 	tflog.Debug(ctx, "Updating IDP group", map[string]interface{}{"name": state.Name.ValueString()})
 
 	oldUsers := listToSlice(state.Users)
-	newUsers := listToSlice(plan.Users)
+	// A Computed users set that the configuration does not manage is unknown in
+	// the plan; treat it as unchanged rather than as "remove every member".
+	planUsers := plan.Users
+	if planUsers.IsUnknown() {
+		planUsers = state.Users
+	}
+	newUsers := listToSlice(planUsers)
 
 	var toAdd, toRemove []string
 	for _, u := range newUsers {
@@ -253,24 +255,11 @@ func (r *IdpGroupResource) ImportState(ctx context.Context, req resource.ImportS
 }
 
 func stringSliceToList(ctx context.Context, items []string) (types.Set, diag.Diagnostics) {
-	vals := make([]attr.Value, 0, len(items))
-	for _, s := range items {
-		vals = append(vals, types.StringValue(s))
-	}
-	return types.SetValue(types.StringType, vals)
+	return tfutil.StringsToSet(items)
 }
 
 func listToSlice(l types.Set) []string {
-	if l.IsNull() || l.IsUnknown() {
-		return nil
-	}
-	result := make([]string, 0, len(l.Elements()))
-	for _, v := range l.Elements() {
-		if s, ok := v.(types.String); ok {
-			result = append(result, s.ValueString())
-		}
-	}
-	return result
+	return tfutil.SetToStrings(l)
 }
 
 func containsString(slice []string, s string) bool {

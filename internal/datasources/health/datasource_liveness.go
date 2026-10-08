@@ -2,7 +2,6 @@ package health
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 
@@ -32,18 +31,11 @@ type LivenessDataSourceModel struct {
 }
 
 func (d *LivenessDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		d.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected DataSource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	d.client = c
 }
 
 func (d *LivenessDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -92,7 +84,7 @@ func (d *LivenessDataSource) Read(ctx context.Context, req datasource.ReadReques
 
 	result, err := d.client.GetLiveness(ctx)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to read liveness", err.Error())
+		resp.Diagnostics.Append(client.NewResourceError("reading liveness", "liveness", err)...)
 		return
 	}
 

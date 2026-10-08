@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/metalake"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -68,16 +69,7 @@ func metalakeSchema(t *testing.T) schema.Schema {
 }
 
 func tfValue(t *testing.T, ctx context.Context, s schema.Schema, model res.MetalakeResourceModel) tftypes.Value {
-	t.Helper()
-	obj, diags := types.ObjectValueFrom(ctx, s.Type().(types.ObjectType).AttributeTypes(), model)
-	if diags.HasError() {
-		t.Fatalf("failed to build object value: %v", diags)
-	}
-	v, err := obj.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("failed to convert to terraform value: %v", err)
-	}
-	return v
+	return resourcetest.TFValue(t, ctx, s, model)
 }
 
 func props(t *testing.T, values map[string]string) types.Map {
@@ -563,42 +555,20 @@ func TestMetalakeResource_ReadReportsGravitinoError(t *testing.T) {
 // TestMetalakeResource_ModifyPlan: an in-place rename must mark the id as
 // unknown (the id is the name), otherwise the applied id differs from the
 // planned one ("Provider produced inconsistent result after apply").
-func TestMetalakeResource_ModifyPlan(t *testing.T) {
-	ctx := context.Background()
+// TestMetalakeResource_IdPlanModifier asserts the id is guarded by
+// models.CompoundID("name"), which marks it unknown on a rename.
+func TestMetalakeResource_IdPlanModifier(t *testing.T) {
 	s := metalakeSchema(t)
-	r := res.NewMetalakeResource().(resource.ResourceWithModifyPlan)
 
-	state := baseModel()
-	state.ID = types.StringValue("my_metalake")
-
-	rename := state
-	rename.Name = types.StringValue("my_metalake_new")
-
-	for _, tc := range []struct {
-		name        string
-		plan        res.MetalakeResourceModel
-		wantUnknown bool
-	}{
-		{"rename", rename, true},
-		{"no change", state, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			resp := &resource.ModifyPlanResponse{Plan: tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, tc.plan)}}
-			r.ModifyPlan(ctx, resource.ModifyPlanRequest{
-				Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, tc.plan)},
-				State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
-			}, resp)
-			if resp.Diagnostics.HasError() {
-				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
-			}
-
-			var got res.MetalakeResourceModel
-			if diags := resp.Plan.Get(ctx, &got); diags.HasError() {
-				t.Fatalf("failed to read plan: %v", diags)
-			}
-			if got.ID.IsUnknown() != tc.wantUnknown {
-				t.Fatalf("expected id unknown=%v, got %v", tc.wantUnknown, got.ID)
-			}
-		})
+	idAttr, ok := s.Attributes["id"].(schema.StringAttribute)
+	if !ok || len(idAttr.PlanModifiers) != 1 {
+		t.Fatalf("id must carry exactly one plan modifier, got %#v", s.Attributes["id"])
+	}
+	modifier, ok := idAttr.PlanModifiers[0].(models.CompoundIDPlanModifier)
+	if !ok {
+		t.Fatalf("id plan modifier = %T, want models.CompoundIDPlanModifier", idAttr.PlanModifiers[0])
+	}
+	if got := modifier.Components; len(got) != 1 || got[0] != "name" {
+		t.Errorf("id components = %v, want [name]", got)
 	}
 }

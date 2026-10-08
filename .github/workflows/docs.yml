@@ -35,7 +35,7 @@ jobs:
           cache: true
 
       - name: Generate docs
-        run: go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.25.0
+        run: go generate ./...
 
       - name: Open PR with updated docs
         env:

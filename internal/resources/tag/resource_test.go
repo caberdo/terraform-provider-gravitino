@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/tag"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -599,69 +600,22 @@ func TestTagResource_ImportState_Invalid(t *testing.T) {
 // UseStateForUnknown, so ModifyPlan must mark it unknown as soon as the name
 // changes; otherwise Terraform rejects the applied rename with "provider
 // produced inconsistent result after apply".
-func TestTagResource_ModifyPlan_MarksIdUnknownOnRename(t *testing.T) {
+// TestTagResource_IdPlanModifier asserts the id is guarded by
+// models.CompoundID("metalake", "name"), which marks it unknown on a rename and
+// keeps it otherwise.
+func TestTagResource_IdPlanModifier(t *testing.T) {
 	s := tagSchema(t)
-	modifier, ok := res.New().(resource.ResourceWithModifyPlan)
+
+	idAttr, ok := s.Attributes["id"].(schema.StringAttribute)
+	if !ok || len(idAttr.PlanModifiers) != 1 {
+		t.Fatalf("id must carry exactly one plan modifier, got %#v", s.Attributes["id"])
+	}
+	modifier, ok := idAttr.PlanModifiers[0].(models.CompoundIDPlanModifier)
 	if !ok {
-		t.Fatal("tag resource must implement ResourceWithModifyPlan so that a rename can mark the id unknown")
+		t.Fatalf("id plan modifier = %T, want models.CompoundIDPlanModifier", idAttr.PlanModifiers[0])
 	}
-
-	ctx := context.Background()
-	state := tagModel(t, types.StringValue("my_tag1"), types.StringValue("This is my tag1"),
-		types.MapNull(types.StringType), types.ObjectNull(res.AuditAttrTypes), types.BoolNull())
-	// The id UseStateForUnknown would copy into the plan during a rename.
-	plan := tagModel(t, types.StringValue("my_tag_new"), types.StringValue("This is my tag1"),
-		types.MapNull(types.StringType), types.ObjectNull(res.AuditAttrTypes), types.BoolNull())
-	plan.ID = types.StringValue("test_metalake.my_tag1")
-
-	planValue := tagValue(t, s, plan)
-	resp := &resource.ModifyPlanResponse{Plan: tfsdk.Plan{Schema: s, Raw: planValue}}
-	modifier.ModifyPlan(ctx, resource.ModifyPlanRequest{
-		Plan:  tfsdk.Plan{Schema: s, Raw: planValue},
-		State: tfsdk.State{Schema: s, Raw: tagValue(t, s, state)},
-	}, resp)
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("modify plan diagnostics: %v", resp.Diagnostics)
-	}
-
-	var got res.TagResourceModel
-	if diags := resp.Plan.Get(ctx, &got); diags.HasError() {
-		t.Fatalf("read plan: %v", diags)
-	}
-	if !got.ID.IsUnknown() {
-		t.Errorf("id = %v, want unknown after a rename", got.ID)
-	}
-}
-
-func TestTagResource_ModifyPlan_KeepsIdWhenNameUnchanged(t *testing.T) {
-	s := tagSchema(t)
-	modifier, ok := res.New().(resource.ResourceWithModifyPlan)
-	if !ok {
-		t.Fatal("tag resource must implement ResourceWithModifyPlan")
-	}
-
-	ctx := context.Background()
-	state := tagModel(t, types.StringValue("my_tag1"), types.StringValue("This is my tag1"),
-		types.MapNull(types.StringType), types.ObjectNull(res.AuditAttrTypes), types.BoolNull())
-	plan := tagModel(t, types.StringValue("my_tag1"), types.StringValue("This is my tag2"),
-		types.MapNull(types.StringType), types.ObjectNull(res.AuditAttrTypes), types.BoolNull())
-
-	planValue := tagValue(t, s, plan)
-	resp := &resource.ModifyPlanResponse{Plan: tfsdk.Plan{Schema: s, Raw: planValue}}
-	modifier.ModifyPlan(ctx, resource.ModifyPlanRequest{
-		Plan:  tfsdk.Plan{Schema: s, Raw: planValue},
-		State: tfsdk.State{Schema: s, Raw: tagValue(t, s, state)},
-	}, resp)
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("modify plan diagnostics: %v", resp.Diagnostics)
-	}
-
-	var got res.TagResourceModel
-	if diags := resp.Plan.Get(ctx, &got); diags.HasError() {
-		t.Fatalf("read plan: %v", diags)
-	}
-	if got.ID.IsUnknown() || got.ID.ValueString() != "test_metalake.my_tag1" {
-		t.Errorf("id = %v, want the planned UseStateForUnknown value when the name is unchanged", got.ID)
+	if got := modifier.Components; len(got) != 2 || got[0] != "metalake" || got[1] != "name" {
+		t.Errorf("id components = %v, want [metalake name]", got)
 	}
 }
 

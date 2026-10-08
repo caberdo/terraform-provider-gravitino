@@ -205,6 +205,63 @@ func TestModelResource_Create_SpecExample(t *testing.T) {
 	}
 }
 
+// TestModelResource_Create_KeepsPlannedProperties asserts the server may add or
+// normalise property keys without leaking them into the applied state, which
+// would fail with "Provider produced inconsistent result after apply".
+func TestModelResource_Create_KeepsPlannedProperties(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		_, _ = w.Write([]byte(`{
+  "code": 0,
+  "model": {
+    "name": "model1",
+    "latestVersion": 0,
+    "comment": "This is a comment",
+    "properties": {"key1": "value1", "server_added": "x"},
+    "audit": {"creator": "user1", "createTime": "2021-01-01T00:00:00Z", "lastModifier": "user1", "lastModifiedTime": "2021-01-01T00:00:00Z"}
+  }
+}`))
+	}))
+	defer server.Close()
+
+	r, _ := newModelResource(server)
+	ctx := context.Background()
+	sch := modelSchema(t, r)
+
+	plan := res.ModelResourceModel{
+		Metalake:      types.StringValue("ml"),
+		Catalog:       types.StringValue("cat"),
+		Schema:        types.StringValue("sch"),
+		Name:          types.StringValue("model1"),
+		Comment:       types.StringValue("This is a comment"),
+		LatestVersion: types.Int64Unknown(),
+		Properties: types.MapValueMust(types.StringType, map[string]attr.Value{
+			"key1": types.StringValue("value1"),
+		}),
+		Audit: types.ObjectNull(res.AuditAttrTypes),
+	}
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: sch}}
+	r.Create(ctx, resource.CreateRequest{Plan: modelPlan(t, sch, plan)}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+
+	var got res.ModelResourceModel
+	resp.Diagnostics.Append(resp.State.Get(ctx, &got)...)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("state diagnostics: %v", resp.Diagnostics)
+	}
+
+	var props map[string]string
+	if diags := got.Properties.ElementsAs(ctx, &props, false); diags.HasError() {
+		t.Fatalf("properties diagnostics: %v", diags)
+	}
+	if len(props) != 1 || props["key1"] != "value1" {
+		t.Errorf("state properties = %v, want only the planned key1=value1", props)
+	}
+}
+
 func TestModelResource_Update_Payload(t *testing.T) {
 	var gotUpdates []interface{}
 

@@ -26,10 +26,15 @@ type OAuthCredentialsProvider struct {
 	serverURI    string
 	tokenPath    string
 	scope        string
+	httpClient   *http.Client
 
 	mu     sync.RWMutex
 	token  string
 	expiry time.Time
+
+	// refreshMu serialises token refreshes so concurrent Header calls do not all
+	// hit the token endpoint at once.
+	refreshMu sync.Mutex
 }
 
 func NewOAuthCredentialsProvider(clientID, clientSecret, serverURI, tokenPath, scope string) *OAuthCredentialsProvider {
@@ -39,15 +44,12 @@ func NewOAuthCredentialsProvider(clientID, clientSecret, serverURI, tokenPath, s
 		serverURI:    strings.TrimRight(serverURI, "/"),
 		tokenPath:    tokenPath,
 		scope:        scope,
+		httpClient:   tokenHTTPClient,
 	}
 }
 
 func (p *OAuthCredentialsProvider) Header(ctx context.Context) (string, string, error) {
-	p.mu.RLock()
-	valid := p.token != "" && time.Now().Before(p.expiry)
-	p.mu.RUnlock()
-
-	if !valid {
+	if !p.tokenValid() {
 		if err := p.refresh(ctx); err != nil {
 			return "", "", fmt.Errorf("oauth token refresh failed: %w", err)
 		}
@@ -58,7 +60,23 @@ func (p *OAuthCredentialsProvider) Header(ctx context.Context) (string, string, 
 	return "Authorization", "Bearer " + p.token, nil
 }
 
+func (p *OAuthCredentialsProvider) tokenValid() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.token != "" && time.Now().Before(p.expiry)
+}
+
+// refresh obtains a new token, serialising concurrent callers behind refreshMu
+// and re-checking the cache once the lock is held so a token fetched by another
+// goroutine in the meantime is reused.
 func (p *OAuthCredentialsProvider) refresh(ctx context.Context) error {
+	p.refreshMu.Lock()
+	defer p.refreshMu.Unlock()
+
+	if p.tokenValid() {
+		return nil
+	}
+
 	data := url.Values{}
 	data.Set("grant_type", "client_credentials")
 	data.Set("client_id", p.clientID)
@@ -74,7 +92,11 @@ func (p *OAuthCredentialsProvider) refresh(ctx context.Context) error {
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := tokenHTTPClient.Do(req)
+	httpClient := p.httpClient
+	if httpClient == nil {
+		httpClient = tokenHTTPClient
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -98,7 +120,7 @@ func (p *OAuthCredentialsProvider) refresh(ctx context.Context) error {
 	}
 
 	duration := time.Duration(tr.ExpiresIn) * time.Second
-	if duration == 0 {
+	if duration <= 0 {
 		duration = 3600 * time.Second
 	}
 	refreshAfter := time.Duration(float64(duration) * 0.9)

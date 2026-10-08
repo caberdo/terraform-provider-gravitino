@@ -157,15 +157,11 @@ func (d *ViewsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 }
 
 func (ds *ViewsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		ds.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Invalid provider data", "Expected *client.Client, got unexpected type.")
-		return
-	}
-	ds.client = c
 }
 
 func (ds *ViewsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
+	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -20,7 +20,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -28,12 +27,7 @@ var _ resource.Resource = &ModelVersionResource{}
 var _ resource.ResourceWithImportState = &ModelVersionResource{}
 var _ resource.ResourceWithConfigure = &ModelVersionResource{}
 
-var AuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var AuditAttrTypes = models.AuditAttrTypes
 
 type ModelVersionResource struct {
 	client *client.Client
@@ -150,18 +144,11 @@ func (r *ModelVersionResource) Schema(_ context.Context, _ resource.SchemaReques
 }
 
 func (r *ModelVersionResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *ModelVersionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -216,7 +203,7 @@ func (r *ModelVersionResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	r.setModelVersionState(ctx, linkedVersion, &plan, &resp.Diagnostics)
+	r.setModelVersionState(ctx, linkedVersion, &plan, false, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -245,7 +232,7 @@ func (r *ModelVersionResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	r.setModelVersionState(ctx, result.ModelVersion, &state, &resp.Diagnostics)
+	r.setModelVersionState(ctx, result.ModelVersion, &state, true, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -322,7 +309,7 @@ func (r *ModelVersionResource) Update(ctx context.Context, req resource.UpdateRe
 		result = current
 	}
 
-	r.setModelVersionState(ctx, result.ModelVersion, &plan, &resp.Diagnostics)
+	r.setModelVersionState(ctx, result.ModelVersion, &plan, false, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -355,16 +342,9 @@ func (r *ModelVersionResource) Delete(ctx context.Context, req resource.DeleteRe
 }
 
 func (r *ModelVersionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 5)
-	if len(parts) != 5 {
-		resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.model.version, got %q", req.ID))
+	parts, ok := resourceutil.SplitImportID(req, resp, 5, "metalake.catalog.schema.model.version")
+	if !ok {
 		return
-	}
-	for _, part := range parts {
-		if part == "" {
-			resp.Diagnostics.AddError("Invalid import ID", fmt.Sprintf("Expected format: metalake.catalog.schema.model.version, got %q", req.ID))
-			return
-		}
 	}
 
 	version, err := strconv.ParseInt(parts[4], 10, 64)
@@ -419,14 +399,22 @@ func (r *ModelVersionResource) newestModelVersion(ctx context.Context, metalake,
 }
 
 // setModelVersionState writes every attribute, including the computed ones, so
-// no computed value is ever left unknown after an apply.
-func (r *ModelVersionResource) setModelVersionState(ctx context.Context, mv models.ModelVersion, state *ModelVersionResourceModel, diags *diag.Diagnostics) {
+// no computed value is ever left unknown after an apply. refresh is true on a
+// Read and false during Create/Update: in apply mode the planned uris and
+// properties are kept, because the server may normalise or add keys and a
+// differing applied value fails with "Provider produced inconsistent result
+// after apply".
+func (r *ModelVersionResource) setModelVersionState(ctx context.Context, mv models.ModelVersion, state *ModelVersionResourceModel, refresh bool, diags *diag.Diagnostics) {
 	state.Version = types.Int64Value(int64(mv.Version))
 	state.ID = types.StringValue(fmt.Sprintf("%s.%s.%s.%s.%d", state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), mv.Version))
 	state.URI = optionalString(mv.URI, state.URI)
 	state.Comment = optionalString(mv.Comment, state.Comment)
-	state.URIs = mapValueFrom(ctx, mv.URIs, state.URIs, diags)
-	state.Properties = mapValueFrom(ctx, mv.Properties, state.Properties, diags)
+	if refresh || state.URIs.IsUnknown() {
+		state.URIs = mapValueFrom(ctx, mv.URIs, state.URIs, diags)
+	}
+	if refresh || state.Properties.IsUnknown() {
+		state.Properties = mapValueFrom(ctx, mv.Properties, state.Properties, diags)
+	}
 	state.Aliases = setValueFrom(ctx, mv.Aliases, state.Aliases, diags)
 
 	auditObj, d := auditToObject(mv.Audit)
@@ -485,12 +473,7 @@ func setValueFrom(ctx context.Context, values []string, current types.Set, diags
 }
 
 func propertiesFromTF(ctx context.Context, value types.Map, diags *diag.Diagnostics) map[string]string {
-	properties := make(map[string]string)
-	if value.IsNull() || value.IsUnknown() {
-		return properties
-	}
-	diags.Append(value.ElementsAs(ctx, &properties, false)...)
-	return properties
+	return tfutil.StringMap(ctx, value, diags)
 }
 
 func stringSetFromTF(ctx context.Context, value types.Set, diags *diag.Diagnostics) []string {
@@ -591,35 +574,6 @@ func sortedKeys(values map[string]string) []string {
 	return keys
 }
 
-func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(AuditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if audit.Creator != "" {
-		creator = types.StringValue(audit.Creator)
-	}
-
-	createTime := types.StringNull()
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if audit.LastModifier != "" {
-		lastModifier = types.StringValue(audit.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(AuditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
+func auditToObject(audit *models.Audit) (types.Object, diag.Diagnostics) {
+	return models.AuditToObjectValue(context.Background(), audit)
 }

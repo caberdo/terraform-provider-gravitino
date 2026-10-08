@@ -3,15 +3,13 @@ package function
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -22,7 +20,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -30,12 +27,7 @@ var _ resource.Resource = &FunctionResource{}
 var _ resource.ResourceWithImportState = &FunctionResource{}
 var _ resource.ResourceWithConfigure = &FunctionResource{}
 
-var auditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var auditAttrTypes = models.AuditAttrTypes
 
 const dataTypeDescription = "The Gravitino data type. Primitive types use the name Gravitino spells " +
 	"(`integer`, `long`, `float`, `double`, `decimal(10,2)`, `date`, `timestamp(3)`, `string`, " +
@@ -289,18 +281,11 @@ func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 }
 
 func (r *FunctionResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Invalid provider data",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue.", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *FunctionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -319,6 +304,11 @@ func (r *FunctionResource) Create(ctx context.Context, req resource.CreateReques
 
 	definitions, d := models.FunctionDefinitionsFromTF(ctx, plan.Definitions)
 	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	r.client.CheckFunctionExternalTypesSupported(definitions, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -424,7 +414,7 @@ func (r *FunctionResource) Update(ctx context.Context, req resource.UpdateReques
 		"name":     state.Name.ValueString(),
 	})
 
-	updates, d := buildFunctionUpdates(ctx, plan, state)
+	updates, d := buildFunctionUpdates(ctx, r.client, plan, state)
 	resp.Diagnostics.Append(d...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -511,10 +501,8 @@ func (r *FunctionResource) Delete(ctx context.Context, req resource.DeleteReques
 }
 
 func (r *FunctionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 4)
-	if len(parts) != 4 || parts[0] == "" || parts[1] == "" || parts[2] == "" || parts[3] == "" {
-		resp.Diagnostics.AddError("Invalid import ID",
-			fmt.Sprintf("Expected the format metalake.catalog.schema.function, got %q.", req.ID))
+	parts, ok := resourceutil.SplitImportID(req, resp, 4, "metalake.catalog.schema.function")
+	if !ok {
 		return
 	}
 
@@ -560,35 +548,6 @@ func applyFunctionToModel(ctx context.Context, function *models.Function, m *Fun
 	m.Audit = audit
 }
 
-func auditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(auditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if audit.Creator != "" {
-		creator = types.StringValue(audit.Creator)
-	}
-
-	createTime := types.StringNull()
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if audit.LastModifier != "" {
-		lastModifier = types.StringValue(audit.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(auditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
+func auditToObject(audit *models.Audit) (types.Object, diag.Diagnostics) {
+	return models.AuditToObjectValue(context.Background(), audit)
 }

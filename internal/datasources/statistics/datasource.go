@@ -2,7 +2,6 @@ package statistics
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -11,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -52,18 +52,11 @@ var StatisticItemAttrTypes = map[string]attr.Type{
 }
 
 func (d *StatisticsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		d.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected DataSource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	d.client = c
 }
 
 func (d *StatisticsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -145,7 +138,10 @@ func (d *StatisticsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	items := make([]attr.Value, 0, len(result.Statistics))
 	for _, stat := range result.Statistics {
 		s := stat
-		item := statisticToItemModel(ctx, &s)
+		item := statisticToItemModel(ctx, &s, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 		if item == nil {
 			continue
 		}
@@ -167,7 +163,7 @@ func (d *StatisticsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func statisticToItemModel(ctx context.Context, s *models.Statistics) *statisticItemModel {
+func statisticToItemModel(ctx context.Context, s *models.Statistics, diags *diag.Diagnostics) *statisticItemModel {
 	if s == nil {
 		return nil
 	}
@@ -179,7 +175,8 @@ func statisticToItemModel(ctx context.Context, s *models.Statistics) *statisticI
 	}
 
 	props, d := types.MapValueFrom(ctx, types.StringType, s.Properties)
-	if d.HasError() {
+	diags.Append(d...)
+	if diags.HasError() {
 		return nil
 	}
 	item.Properties = props

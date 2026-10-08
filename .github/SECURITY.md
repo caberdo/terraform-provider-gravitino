@@ -10,7 +10,7 @@
 
 If you discover a security vulnerability, please **DO NOT** open a public issue.
 
-**How to Report:** Use GitHub's [Private Vulnerability Reporting](https://github.com/dennismdejong/terraform-provider-gravitino/security/advisories/new)
+**How to Report:** Use GitHub's [Private Vulnerability Reporting](https://github.com/gravitino/terraform-provider-gravitino/security/advisories/new)
 
 **What to Include:**
 - Affected versions

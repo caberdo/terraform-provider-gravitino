@@ -167,7 +167,6 @@ def build_union(workdir: pathlib.Path):
             out_lines.append("")
 
     declared = {(key[1], key[2]) for key in seen if key[0] in ("resource", "data")}
-    declared |= {(key[1], key[2]) for key in seen if key[0] == "data"}
 
     stubs = 0
     for type_name, label in sorted(references - declared):

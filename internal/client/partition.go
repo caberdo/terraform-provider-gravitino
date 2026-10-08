@@ -2,15 +2,13 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
 func partitionsPath(metalake, catalog, schema, table string) string {
-	return fmt.Sprintf("/metalakes/%s/catalogs/%s/schemas/%s/tables/%s/partitions",
-		url.PathEscape(metalake), url.PathEscape(catalog), url.PathEscape(schema), url.PathEscape(table))
+	return catalogEntityPath(metalake, catalog, schema, "tables", table) + "/partitions"
 }
 
 // ListPartitions returns the partitions of a table, including their type,

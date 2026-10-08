@@ -12,8 +12,10 @@ import (
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/policy"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -84,16 +86,7 @@ func policySchema(t *testing.T) schema.Schema {
 }
 
 func tfValue(t *testing.T, ctx context.Context, s schema.Schema, model res.PolicyResourceModel) tftypes.Value {
-	t.Helper()
-	obj, diags := types.ObjectValueFrom(ctx, s.Type().(types.ObjectType).AttributeTypes(), model)
-	if diags.HasError() {
-		t.Fatalf("failed to build object value: %v", diags)
-	}
-	v, err := obj.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("failed to convert to terraform value: %v", err)
-	}
-	return v
+	return resourcetest.TFValue(t, ctx, s, model)
 }
 
 func allObjectTypes() types.Set {
@@ -158,7 +151,7 @@ func TestPolicyResource_SchemaUpdatePolicy(t *testing.T) {
 
 	// Every computed attribute must be known on every code path; the plan
 	// modifiers guarantee that for the "nothing changed" Update branch.
-	for _, name := range []string{"id", "comment", "policy_type"} {
+	for _, name := range []string{"comment", "policy_type"} {
 		attr := s.Attributes[name].(schema.StringAttribute)
 		planned, _ := stringPlan(ctx, attr, types.StringValue("prior"), types.StringUnknown())
 		if planned.IsUnknown() || planned.IsNull() || planned.ValueString() != "prior" {
@@ -1047,51 +1040,21 @@ func TestPolicyResource_ImportState_Invalid(t *testing.T) {
 // TestPolicyResource_ModifyPlanMarksIDUnknownOnRename proves the ID is planned
 // as unknown when the name changes, so the new ID computed by Update is not an
 // inconsistent result.
-func TestPolicyResource_ModifyPlanMarksIDUnknownOnRename(t *testing.T) {
-	ctx := context.Background()
+// TestPolicyResource_IdPlanModifier asserts the id is guarded by
+// models.CompoundID("metalake", "name"), which marks it unknown on a rename.
+func TestPolicyResource_IdPlanModifier(t *testing.T) {
 	s := policySchema(t)
-	r := res.New().(resource.ResourceWithModifyPlan)
 
-	state := baseModel()
-	state.ID = types.StringValue("my_test_metalake.my_policy1")
-
-	plan := baseModel()
-	plan.Name = types.StringValue("my_policy_new")
-	plan.ID = types.StringValue("my_test_metalake.my_policy1")
-
-	resp := &resource.ModifyPlanResponse{Plan: tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)}}
-	r.ModifyPlan(ctx, resource.ModifyPlanRequest{
-		Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)},
-		State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
-	}, resp)
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	idAttr, ok := s.Attributes["id"].(schema.StringAttribute)
+	if !ok || len(idAttr.PlanModifiers) != 1 {
+		t.Fatalf("id must carry exactly one plan modifier, got %#v", s.Attributes["id"])
 	}
-
-	var planned res.PolicyResourceModel
-	if diags := resp.Plan.Get(ctx, &planned); diags.HasError() {
-		t.Fatalf("failed to read plan: %v", diags)
+	modifier, ok := idAttr.PlanModifiers[0].(models.CompoundIDPlanModifier)
+	if !ok {
+		t.Fatalf("id plan modifier = %T, want models.CompoundIDPlanModifier", idAttr.PlanModifiers[0])
 	}
-	if !planned.ID.IsUnknown() {
-		t.Fatalf("expected the planned id to be unknown on rename, got %v", planned.ID)
-	}
-
-	// Without a rename the prior ID is kept.
-	plan = baseModel()
-	plan.ID = types.StringValue("my_test_metalake.my_policy1")
-	resp = &resource.ModifyPlanResponse{Plan: tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)}}
-	r.ModifyPlan(ctx, resource.ModifyPlanRequest{
-		Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)},
-		State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
-	}, resp)
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
-	}
-	if diags := resp.Plan.Get(ctx, &planned); diags.HasError() {
-		t.Fatalf("failed to read plan: %v", diags)
-	}
-	if planned.ID.ValueString() != "my_test_metalake.my_policy1" {
-		t.Fatalf("expected the planned id to be unchanged, got %v", planned.ID)
+	if got := modifier.Components; len(got) != 2 || got[0] != "metalake" || got[1] != "name" {
+		t.Errorf("id components = %v, want [metalake name]", got)
 	}
 }
 
@@ -1175,12 +1138,7 @@ func decodeBody(t *testing.T, raw []byte) map[string]any {
 }
 
 func assertJSONEqual(t *testing.T, want, got map[string]any) {
-	t.Helper()
-	wantJSON, _ := json.Marshal(want)
-	gotJSON, _ := json.Marshal(got)
-	if string(wantJSON) != string(gotJSON) {
-		t.Fatalf("unexpected payload:\n want %s\n  got %s", wantJSON, gotJSON)
-	}
+	resourcetest.AssertJSONEqual(t, want, got)
 }
 
 func assertUpdatesEqual(t *testing.T, want, got []map[string]any) {

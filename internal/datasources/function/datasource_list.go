@@ -2,7 +2,6 @@ package function
 
 import (
 	"context"
-	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -12,18 +11,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var _ datasource.DataSource = &FunctionsDataSource{}
 var _ datasource.DataSourceWithConfigure = &FunctionsDataSource{}
 
-var dslAuditAttrTypes = map[string]attr.Type{
-	"creator":            types.StringType,
-	"create_time":        types.StringType,
-	"last_modifier":      types.StringType,
-	"last_modified_time": types.StringType,
-}
+var dslAuditAttrTypes = models.AuditAttrTypes
 
 type FunctionsDataSource struct {
 	client *client.Client
@@ -86,120 +79,7 @@ func (d *FunctionsDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 							Description: "The function comment.",
 							Computed:    true,
 						},
-						"definitions": schema.ListNestedAttribute{
-							Description: "The definitions of the function, including their implementations.",
-							Computed:    true,
-							NestedObject: schema.NestedAttributeObject{
-								Attributes: map[string]schema.Attribute{
-									"parameters": schema.ListNestedAttribute{
-										Description: "The parameters of the definition.",
-										Computed:    true,
-										NestedObject: schema.NestedAttributeObject{
-											Attributes: map[string]schema.Attribute{
-												"name": schema.StringAttribute{
-													Description: "The name of the parameter.",
-													Computed:    true,
-												},
-												"data_type": schema.StringAttribute{
-													Description: "The Gravitino data type of the parameter.",
-													Computed:    true,
-												},
-												"comment": schema.StringAttribute{
-													Description: "The comment of the parameter.",
-													Computed:    true,
-												},
-												"default_value": schema.StringAttribute{
-													Description: "The default value expression of the parameter.",
-													Computed:    true,
-												},
-											},
-										},
-									},
-									"return_type": schema.StringAttribute{
-										Description: "The return type of the definition (SCALAR and AGGREGATE functions).",
-										Computed:    true,
-									},
-									"return_columns": schema.ListNestedAttribute{
-										Description: "The return columns of the definition (TABLE functions).",
-										Computed:    true,
-										NestedObject: schema.NestedAttributeObject{
-											Attributes: map[string]schema.Attribute{
-												"name": schema.StringAttribute{
-													Description: "The name of the return column.",
-													Computed:    true,
-												},
-												"data_type": schema.StringAttribute{
-													Description: "The Gravitino data type of the return column.",
-													Computed:    true,
-												},
-												"comment": schema.StringAttribute{
-													Description: "The comment of the return column.",
-													Computed:    true,
-												},
-											},
-										},
-									},
-									"impls": schema.ListNestedAttribute{
-										Description: "The implementations of the definition.",
-										Computed:    true,
-										NestedObject: schema.NestedAttributeObject{
-											Attributes: map[string]schema.Attribute{
-												"language": schema.StringAttribute{
-													Description: "The implementation language (SQL, JAVA or PYTHON).",
-													Computed:    true,
-												},
-												"runtime": schema.StringAttribute{
-													Description: "The runtime of the implementation (SPARK or TRINO).",
-													Computed:    true,
-												},
-												"sql": schema.StringAttribute{
-													Description: "The SQL expression of a SQL implementation.",
-													Computed:    true,
-												},
-												"class_name": schema.StringAttribute{
-													Description: "The class name of a JAVA implementation.",
-													Computed:    true,
-												},
-												"handler": schema.StringAttribute{
-													Description: "The handler of a PYTHON implementation.",
-													Computed:    true,
-												},
-												"code_block": schema.StringAttribute{
-													Description: "The code block of a PYTHON implementation.",
-													Computed:    true,
-												},
-												"resources": schema.SingleNestedAttribute{
-													Description: "External resources required by the implementation.",
-													Computed:    true,
-													Attributes: map[string]schema.Attribute{
-														"jars": schema.ListAttribute{
-															Description: "JAR file URIs.",
-															Computed:    true,
-															ElementType: types.StringType,
-														},
-														"files": schema.ListAttribute{
-															Description: "File URIs.",
-															Computed:    true,
-															ElementType: types.StringType,
-														},
-														"archives": schema.ListAttribute{
-															Description: "Archive URIs.",
-															Computed:    true,
-															ElementType: types.StringType,
-														},
-													},
-												},
-												"properties": schema.MapAttribute{
-													Description: "Additional properties of the implementation.",
-													Computed:    true,
-													ElementType: types.StringType,
-												},
-											},
-										},
-									},
-								},
-							},
-						},
+						"definitions": functionDefinitionsAttribute(),
 						"audit": schema.ObjectAttribute{
 							Description:    "Audit information for the function.",
 							Computed:       true,
@@ -213,15 +93,11 @@ func (d *FunctionsDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 }
 
 func (d *FunctionsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		d.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Invalid provider data", "Expected *client.Client, got unexpected type.")
-		return
-	}
-	d.client = c
 }
 
 func (d *FunctionsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -295,35 +171,6 @@ func dslFunctionListItemToObject(ctx context.Context, f *models.Function) (types
 	})
 }
 
-func dslAuditToObject(audit *models.Audit) (basetypes.ObjectValue, diag.Diagnostics) {
-	if audit == nil {
-		return types.ObjectNull(dslAuditAttrTypes), nil
-	}
-
-	creator := types.StringNull()
-	if audit.Creator != "" {
-		creator = types.StringValue(audit.Creator)
-	}
-
-	createTime := types.StringNull()
-	if audit.CreateTime != nil {
-		createTime = types.StringValue(audit.CreateTime.Format(time.RFC3339))
-	}
-
-	lastModifier := types.StringNull()
-	if audit.LastModifier != "" {
-		lastModifier = types.StringValue(audit.LastModifier)
-	}
-
-	lastModifiedTime := types.StringNull()
-	if audit.LastModifiedTime != nil {
-		lastModifiedTime = types.StringValue(audit.LastModifiedTime.Format(time.RFC3339))
-	}
-
-	return types.ObjectValue(dslAuditAttrTypes, map[string]attr.Value{
-		"creator":            creator,
-		"create_time":        createTime,
-		"last_modifier":      lastModifier,
-		"last_modified_time": lastModifiedTime,
-	})
+func dslAuditToObject(audit *models.Audit) (types.Object, diag.Diagnostics) {
+	return models.AuditToObjectValue(context.Background(), audit)
 }

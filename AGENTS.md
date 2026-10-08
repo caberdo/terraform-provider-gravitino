@@ -235,7 +235,7 @@ Use `tflog` from `github.com/hashicorp/terraform-plugin-log/tflog`:
 Fields use `map[string]interface{}` format. Logs respect `TF_LOG`, `TF_LOG_PATH`, `TF_LOG_PROVIDER` env vars.
 
 ### Dependencies
-- Go 1.26.4
+- Go 1.27.1
 - `terraform-plugin-framework` v1.19.0
 - `terraform-plugin-framework-validators` v0.19.0
 - `terraform-plugin-testing` v1.16.0

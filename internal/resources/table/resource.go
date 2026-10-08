@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -40,18 +41,11 @@ func NewTableResource() resource.Resource {
 }
 
 func (r *tableResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	c, diags := client.FromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	if c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *tableResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -103,6 +97,9 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Optional:    true,
 				Computed:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"id": schema.StringAttribute{
 				Description: "The compound identifier in the format metalake.catalog.schema.table.",
@@ -608,12 +605,14 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		updates = append(updates, models.NewUpdateTableCommentRequest(plan.Comment.ValueString()))
 	}
 
-	propertyUpdates, propertyDiags := tablePropertyUpdates(ctx, plan.Properties, state.Properties)
-	resp.Diagnostics.Append(propertyDiags...)
-	if resp.Diagnostics.HasError() {
-		return
+	if !plan.Properties.IsUnknown() {
+		propertyUpdates, propertyDiags := tablePropertyUpdates(ctx, plan.Properties, state.Properties)
+		resp.Diagnostics.Append(propertyDiags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		updates = append(updates, propertyUpdates...)
 	}
-	updates = append(updates, propertyUpdates...)
 
 	columnUpdates, columnDiags := tableColumnUpdates(plan.Columns, state.Columns)
 	resp.Diagnostics.Append(columnDiags...)
@@ -702,12 +701,8 @@ func (r *tableResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 // ImportState imports a table from a metalake.catalog.schema.table id.
 func (r *tableResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.SplitN(req.ID, ".", 4)
-	if len(parts) != 4 {
-		resp.Diagnostics.AddError(
-			"Invalid import ID",
-			fmt.Sprintf("Expected format 'metalake.catalog.schema.table', got %q", req.ID),
-		)
+	parts, ok := resourceutil.SplitImportID(req, resp, 4, "metalake.catalog.schema.table")
+	if !ok {
 		return
 	}
 
