@@ -2,50 +2,130 @@
 page_title: "Gravitino Provider"
 subcategory: ""
 description: |-
-  The Gravitino provider manages metadata resources in Apache Gravitino, the unified metadata lakehouse service.
+  Terraform provider for Apache Gravitino, the unified metadata lakehouse: metalakes, catalogs, schemas, tables, views, filesets, topics, functions, models, tags, policies, roles, users, groups, ownership and jobs - 21 resources and 50 data sources.
 ---
 
 # Gravitino Provider
 
-The Gravitino provider allows you to manage [Apache Gravitino](https://gravitino.apache.org) resources including metalakes, catalogs, schemas, tables, filesets, topics, views, functions, models, partitions, tags, policies, and jobs.
+Terraform provider for [Apache Gravitino](https://gravitino.apache.org/), the unified metadata
+lakehouse. It speaks the Gravitino REST API directly, so metadata and access control live in the
+same Terraform state as the rest of your infrastructure.
 
-## API compatibility
+**21 resources and 50 data sources**, covering:
 
-The provider targets the Apache Gravitino **v1.3.0** REST API and supports **v1.3.1** from the
-same build. The provider asks the server for its version once, when it is configured
-(`GET /api/version`), and against a server older than 1.3.1 a value that only exists on 1.3.1
-fails with an explicit `requires Gravitino 1.3.1 or newer` diagnostic instead of the server's
-opaque `400`.
+- **Metadata** - metalakes, catalogs (relational, fileset, messaging, model), schemas, tables with
+  columns, partitioning and indexes, partitions, views, filesets, topics and functions
+- **ML assets** - models and model versions
+- **Governance** - tags, policies, roles and privileges, ownership, users and groups
+- **Jobs** - job templates and job runs
+- **Identity provider** - IDP users and groups
+- **Server state** - the authenticated principal, health, liveness, readiness, the Iceberg REST
+  endpoint, statistics and credentials
+
+## Quick start
+
+```terraform
+terraform {
+  required_providers {
+    gravitino = {
+      source  = "caberdo/gravitino"
+      version = "~> 0.9"
+    }
+  }
+}
+
+provider "gravitino" {
+  uri      = "http://localhost:8090"
+  auth     = "basic"
+  username = "admin"
+  password = "admin"
+}
+
+resource "gravitino_metalake" "lake" {
+  name    = "analytics"
+  comment = "Metadata for the analytics platform"
+}
+
+resource "gravitino_catalog" "hive" {
+  metalake         = gravitino_metalake.lake.name
+  name             = "warehouse"
+  type             = "relational"
+  catalog_provider = "hive"
+  properties = {
+    "metastore.uris" = "thrift://localhost:9083"
+  }
+}
+
+resource "gravitino_schema" "bronze" {
+  metalake = gravitino_metalake.lake.name
+  catalog  = gravitino_catalog.hive.name
+  name     = "bronze"
+}
+
+resource "gravitino_table" "events" {
+  metalake = gravitino_metalake.lake.name
+  catalog  = gravitino_catalog.hive.name
+  schema   = gravitino_schema.bronze.name
+  name     = "events"
+
+  column {
+    name = "id"
+    type = "integer"
+  }
+  column {
+    name = "payload"
+    type = "string"
+  }
+}
+```
+
+The [README](https://github.com/caberdo/terraform-provider-gravitino#readme) documents every
+resource, the complete resource and data source tables, release verification and a troubleshooting
+FAQ.
+
+## Requirements and compatibility
+
+- Terraform 1.0 or later is required (plugin protocol 6.0).
+- One provider build serves Apache Gravitino **v1.3.0** and **v1.3.1**. The provider asks the
+  server for its version once, when it is configured (`GET /api/version`); CI runs the acceptance
+  suite against both, from [`.github/gravitino-versions.txt`](https://github.com/caberdo/terraform-provider-gravitino/blob/main/.github/gravitino-versions.txt).
+- The schema accepts the union of both versions and a runtime gate refuses a 1.3.1-only value
+  against an older server with a diagnostic naming the required version (`Gravitino >= 1.3.1`)
+  instead of the server's opaque `400`. Restricted attributes say so in their schema description.
+- Some resources need server-side configuration: `gravitino_role`, `gravitino_owner`,
+  `gravitino_user` and `gravitino_group` require `gravitino.authorization.enable=true`;
+  `gravitino_idp_user` and `gravitino_idp_group` require the built-in IDP plugin with the `basic`
+  authenticator; jobs require a configured job executor; tables, views, functions, partitions and
+  statistics require a lakehouse catalog (Hive or Iceberg).
 
 ### Gravitino 1.3.0 vs 1.3.1
 
 | Capability | 1.3.0 | 1.3.1 |
 |---|---|---|
 | `gravitino_policy.supported_object_types` (`VIEW`, `FUNCTION`) | rejected at create/update | accepted |
-| `gravitino_statistics.resource_type` / `gravitino_credentials.resource_type` (`VIEW`, `FUNCTION`) | rejected on read | accepted |
-| `gravitino_table` `index` `index_type` (`data_skipping_minmax`, `data_skipping_bloom_filter`, `data_skipping_set`) and `properties` | rejected at create/update | accepted |
+| `gravitino_statistics` / `gravitino_credentials` `resource_type` (`VIEW`, `FUNCTION`) | rejected on read | accepted |
+| `gravitino_table` index `index_type` (`data_skipping_minmax`, `data_skipping_bloom_filter`, `data_skipping_set`) and index `properties` | rejected at create/update | accepted |
 | `gravitino_table` / `gravitino_view` column type `external` (`{"type":"external","catalogString":"..."}`) | rejected at create/update | accepted |
 | `gravitino_principal.service_admin` | always `false` | reported |
 | `gravitino_iceberg_rest_service` data source | endpoint does not exist | returns `uri`, or `null` when the service is unavailable |
 | `gravitino_catalog_connection_test` existing-catalog variant | endpoint does not exist | supported |
 | `gravitino_catalog_connection_test` proposed-configuration variant | supported | supported |
 
-Beyond the API version, some resources need server-side configuration:
+The `gravitino_secrets` data source needs Gravitino 1.4 or newer.
 
-- `gravitino_role`, `gravitino_owner`, `gravitino_user` and `gravitino_group` require
-  `gravitino.authorization.enable=true` on the server; without it those endpoints answer HTTP 405
-  `UnsupportedOperationException`.
-- `gravitino_idp_user` and `gravitino_idp_group` require the built-in IDP plugin
-  (`gravitino.server.rest.extensionPackages=org.apache.gravitino.idp.web.rest.feature`) together
-  with the `basic` authenticator; on a default server `/api/idp/*` returns 404.
-- `gravitino_secrets` requires Gravitino 1.4 or newer.
-- `gravitino_iceberg_rest_service` requires Gravitino 1.3.1 or newer; on older servers
-  `GET /api/system/iceberg-rest` does not exist and the data source fails with a version
-  diagnostic instead of a raw HTTP 404.
-- Tables, views, functions, partitions and statistics require a lakehouse catalog (Hive or
-  Iceberg); a fileset catalog rejects those operations.
-- Jobs require a job executor configured on the server, and a job template can only be deleted
-  once none of its job runs are active.
+## Verifying a release
+
+Releases are built from GPG-signed tags and ship checksums signed with the
+[release signing key](https://github.com/caberdo/terraform-provider-gravitino/blob/main/.github/release-signing-key.asc)
+(fingerprint `B6E21D8E7BE46C88492A7516BAD489AD0A93C1F6`), SLSA build provenance, an SPDX SBOM and
+the Terraform registry manifest:
+
+```bash
+gpg --verify terraform-provider-gravitino_<version>_SHA256SUMS.sig \
+             terraform-provider-gravitino_<version>_SHA256SUMS
+gh attestation verify terraform-provider-gravitino_<version>_linux_amd64.zip \
+  --repo caberdo/terraform-provider-gravitino
+```
 
 ## Authentication
 
@@ -127,5 +207,13 @@ provider "gravitino" {
   kerberos_use_ticket_cache = true
 }
 ```
+
+## Community
+
+- [Issues and feature requests](https://github.com/caberdo/terraform-provider-gravitino/issues)
+- [Changelog](https://github.com/caberdo/terraform-provider-gravitino/blob/main/CHANGELOG.md)
+- [Security policy](https://github.com/caberdo/terraform-provider-gravitino/blob/main/.github/SECURITY.md)
+- [Contributing](https://github.com/caberdo/terraform-provider-gravitino/blob/main/.github/CONTRIBUTING.md)
+- [Support](https://github.com/caberdo/terraform-provider-gravitino/blob/main/SUPPORT.md)
 
 {{ .SchemaMarkdown | trimspace }}
