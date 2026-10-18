@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     gravitino = {
-      source = "gravitino/gravitino"
+      source = "caberdo/gravitino"
     }
   }
 }

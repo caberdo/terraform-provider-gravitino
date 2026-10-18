@@ -22,7 +22,7 @@ VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
 OS="$(go env GOOS)"
 ARCH="$(go env GOARCH)"
 PLUGIN_DIR="${GRAVITINO_PLUGIN_DIR:-${TMPDIR:-/tmp}/gravitino-provider-dev}"
-BIN_DIR="${PLUGIN_DIR}/registry.terraform.io/gravitino/gravitino/${VERSION}/${OS}_${ARCH}"
+BIN_DIR="${PLUGIN_DIR}/registry.terraform.io/caberdo/gravitino/${VERSION}/${OS}_${ARCH}"
 CLI_CONFIG="${PLUGIN_DIR}/dev.tfrc"
 
 mkdir -p "$BIN_DIR"
@@ -31,9 +31,9 @@ go build -o "${BIN_DIR}/terraform-provider-gravitino" \
   -ldflags "-X main.version=${VERSION}" .
 
 # The resource snippets in examples/ carry no terraform block, so Terraform infers
-# hashicorp/gravitino as the source; the provider block in examples/complete uses
-# gravitino/gravitino. Override both, so no example needs network access.
-printf 'provider_installation {\n  dev_overrides {\n    "gravitino/gravitino" = "%s"\n    "hashicorp/gravitino" = "%s"\n  }\n  direct {}\n}\n' \
+# hashicorp/gravitino as the source; examples/provider declares caberdo/gravitino.
+# Override both, so no example needs network access.
+printf 'provider_installation {\n  dev_overrides {\n    "caberdo/gravitino" = "%s"\n    "hashicorp/gravitino" = "%s"\n  }\n  direct {}\n}\n' \
   "$BIN_DIR" "$BIN_DIR" >"$CLI_CONFIG"
 
 export TF_CLI_CONFIG_FILE="$CLI_CONFIG"
