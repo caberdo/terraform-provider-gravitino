@@ -2,6 +2,9 @@
   "ignorePatterns": [
     {
       "pattern": "^https?://(registry\\.terraform\\.io|opentofu\\.org|gravitino\\.apache\\.org|github\\.com|localhost)"
+    },
+    {
+      "pattern": "^https?://(api\\.securityscorecards\\.dev|scorecard\\.dev)"
     }
   ]
 }

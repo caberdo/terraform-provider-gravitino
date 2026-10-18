@@ -1,5 +1,7 @@
 # Terraform Provider for Apache Gravitino
 
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/caberdo/terraform-provider-gravitino/badge)](https://scorecard.dev/viewer/?uri=github.com/caberdo/terraform-provider-gravitino)
+
 A Terraform provider for managing [Apache Gravitino](https://gravitino.apache.org) resources — the unified metadata lakehouse service.
 
 ## Requirements
