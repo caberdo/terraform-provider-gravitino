@@ -222,6 +222,12 @@ their behaviour end-to-end, the acceptance container also writes `coverage-accep
 (`-coverpkg=./internal/...`); `make coverage-merge` merges both profiles into `coverage-union.out`
 and prints the same table. Both CI jobs publish it in their job summary.
 
+The statement counts come straight from the cover profile, so they depend on the Go patch
+release that produced it: `go 1.27.1` — the `go.mod` toolchain, which CI installs — counts 9766
+statements for `./internal/...`, where `go 1.27.2` counts 7661 for the same tree (the block set
+is identical, the statements per block are not). Compare coverage numbers only within one
+toolchain; CI is authoritative.
+
 **Acceptance tests** (real Gravitino via Docker):
 ```bash
 docker compose run --rm test
