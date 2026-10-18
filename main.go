@@ -20,7 +20,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/gravitino/gravitino",
+		Address: "registry.terraform.io/caberdo/gravitino",
 		Debug:   debug,
 	}
 

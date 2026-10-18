@@ -1,3 +1,15 @@
+# This GitHub action publishes assets for a release when a tag is created, when
+# it is invoked through workflow_call with an explicit tag, or when it is
+# dispatched manually with the tag to (re)publish.
+#
+# It uses an action (crazy-max/ghaction-import-gpg) that assumes you set your
+# private key in the `GPG_PRIVATE_KEY` secret and passphrase in the `PASSPHRASE`
+# secret. If you would rather own your own GPG handling, please fork this action
+# or use an alternative one for key handling.
+#
+# You will need to pass the `--batch` flag to `gpg` in your signing step
+# in `goreleaser` to indicate this is being used in a non-interactive mode.
+#
 name: Release
 
 on:
@@ -5,6 +17,12 @@ on:
     inputs:
       tag:
         description: "Tag to release"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish (or republish), e.g. v0.9.0"
         required: true
         type: string
   push:
@@ -17,8 +35,14 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    # `contents: write` uploads the release. `id-token: write` mints the OIDC
+    # identity `actions/attest` signs the build provenance with, and
+    # `attestations: write` stores that provenance in the repository's
+    # attestation record. Nothing else in this job needs write access.
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     timeout-minutes: 30
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -45,12 +69,44 @@ jobs:
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
-          version: "v2.18.2"
+          version: "~> v2"
           args: release --clean --config .github/goreleaser.yml
         env:
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_TAG: ${{ env.RELEASE_TAG }}
+
+      # GoReleaser names the checksum file after the version without the `v`
+      # prefix, which is also the version the tag is checked out at.
+      - name: Resolve the release artifact names
+        id: artifacts
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          echo "checksums=dist/terraform-provider-gravitino_${VERSION}_SHA256SUMS" >> "$GITHUB_OUTPUT"
+          echo "provenance=terraform-provider-gravitino_${VERSION}_provenance.intoto.jsonl" >> "$GITHUB_OUTPUT"
+
+      # The checksum file lists exactly the artifacts the release publishes, so
+      # attesting it attests the same set the GPG signature, the SBOM and the
+      # Terraform Registry manifest describe. The result is SLSA v1.0 build
+      # provenance, verifiable with `gh attestation verify`.
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: ${{ steps.artifacts.outputs.checksums }}
+
+      # The attestation record is not a release asset and OpenSSF Scorecard's
+      # Signed-Releases check reads release assets, so the Sigstore bundle that
+      # `actions/attest` just produced is attached to the release as well. It
+      # holds the same in-toto statement in a DSSE envelope, which `gh
+      # attestation verify --bundle` checks against a downloaded release.
+      - name: Publish the provenance bundle
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          PROVENANCE: ${{ steps.artifacts.outputs.provenance }}
+        run: |
+          cp "${BUNDLE_PATH}" "${PROVENANCE}"
+          test -s "${PROVENANCE}"
 
       - name: Generate SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
@@ -59,8 +115,10 @@ jobs:
           format: spdx-json
           output-file: sbom.spdx.json
 
-      - name: Upload SBOM to release
+      - name: Upload the SBOM and the provenance to release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          files: sbom.spdx.json
+          files: |
+            sbom.spdx.json
+            ${{ steps.artifacts.outputs.provenance }}
           tag_name: ${{ env.RELEASE_TAG }}

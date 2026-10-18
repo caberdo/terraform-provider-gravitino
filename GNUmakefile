@@ -47,8 +47,8 @@ vet:
 	go vet ./...
 
 install: build
-	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/gravitino/gravitino/$(VERSION)/$$(go env GOOS)_$$(go env GOARCH)
-	cp bin/$(BINARY_NAME) ~/.terraform.d/plugins/registry.terraform.io/gravitino/gravitino/$(VERSION)/$$(go env GOOS)_$$(go env GOARCH)/$(BINARY_NAME)
+	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/caberdo/gravitino/$(VERSION)/$$(go env GOOS)_$$(go env GOARCH)
+	cp bin/$(BINARY_NAME) ~/.terraform.d/plugins/registry.terraform.io/caberdo/gravitino/$(VERSION)/$$(go env GOOS)_$$(go env GOARCH)/$(BINARY_NAME)
 
 testacc-docker:
 	GRAVITINO_VERSION=$(GRAVITINO_VERSION) docker compose run --rm test
