@@ -199,6 +199,8 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 ### Commands
 - **Build**: `go build ./...`
 - **Test (unit)**: `go test -v -cover ./internal/...`
+- **Coverage (unit)**: `make coverage` (per-package table) / `make coverage-html`
+- **Coverage (unit + acceptance)**: `make coverage-merge`, after `make testacc-docker` wrote `coverage-acceptance.out`
 - **Test (acceptance via Docker)**: `make testacc-docker`
 - **Live acceptance (real server via podman)**: `make testacc-live` / `make testacc-live-filter F=<TestLiveAcc...>`
 - **Lint**: `golangci-lint run --config .github/golangci.yml ./...`
@@ -212,6 +214,13 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 go test -v -cover ./internal/...
 ```
 Each resource package has `resource_test.go` with: schema, create, delete, import (valid + invalid).
+
+**Coverage.** `make coverage` writes `coverage.out` for the unit suite only (`TestAcc*` and
+`TestLiveAcc*` are skipped) and prints a per-package table, weakest first
+(`scripts/coverage-summary.sh`). Because packages such as `internal/resources/*` assert most of
+their behaviour end-to-end, the acceptance container also writes `coverage-acceptance.out`
+(`-coverpkg=./internal/...`); `make coverage-merge` merges both profiles into `coverage-union.out`
+and prints the same table. Both CI jobs publish it in their job summary.
 
 **Acceptance tests** (real Gravitino via Docker):
 ```bash

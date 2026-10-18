@@ -114,7 +114,26 @@ jobs:
           git diff --exit-code -- docs/
 
       - name: Run tests
-        run: go test -v -coverprofile=coverage.out -covermode=atomic -race ./internal/...
+        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./internal/...
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [[ ! -f coverage.out ]]; then
+            echo "No coverage profile: the test step failed before writing one." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## Coverage"
+            echo ""
+            echo "Unit tests only: \`TestAcc*\` needs \`TF_ACC\` and \`TestLiveAcc*\` needs a"
+            echo "reachable server, so packages whose behaviour is asserted end-to-end read"
+            echo "low. Run \`make coverage\` locally, or see the acceptance job for the"
+            echo "merged unit + acceptance number."
+            echo ""
+            ./scripts/coverage-summary.sh coverage.out
+          } >> "$GITHUB_STEP_SUMMARY"
+          ./scripts/coverage-summary.sh coverage.out
 
       - name: Upload coverage report
         if: always()
@@ -174,5 +193,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      # The acceptance container writes coverage-acceptance.out into the mounted
+      # worktree; the unit profile is produced here so both can be merged into the
+      # one statement-coverage number the project publishes.
+      - name: Unit-test coverage
+        run: go test -count=1 -skip '^(TestAcc|TestLiveAcc)' -covermode=atomic -coverprofile=coverage.out ./internal/...
+
       - name: Run acceptance tests
         run: docker compose run --rm test
+
+      - name: Combined coverage (unit + acceptance)
+        if: always()
+        run: |
+          if [[ ! -f coverage.out || ! -f coverage-acceptance.out ]]; then
+            echo "Incomplete coverage profiles: unit \`coverage.out\` and acceptance" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`coverage-acceptance.out\` are both required; one is missing." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          ./scripts/merge-coverage.sh coverage-union.out coverage.out coverage-acceptance.out
+          {
+            echo "## Coverage (unit + acceptance)"
+            echo ""
+            echo "\`coverage.out\` and \`coverage-acceptance.out\` merged by \`scripts/merge-coverage.sh\`."
+            echo ""
+            ./scripts/coverage-summary.sh coverage-union.out
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -222,6 +222,27 @@ Unit and mock-based tests:
 make test
 ```
 
+### Coverage
+
+Coverage is reported per package, weakest first:
+
+```sh
+make coverage        # writes coverage.out and prints a per-package table
+make coverage-html   # same run, then the HTML report
+```
+
+The unit suite alone under-reports packages whose behaviour is asserted end-to-end against a
+real Gravitino server. The acceptance container therefore also writes
+`coverage-acceptance.out`, and the two profiles can be merged into one number:
+
+```sh
+make testacc-docker   # unit + acceptance container, writes coverage-acceptance.out
+make coverage-merge   # writes coverage-union.out and prints the merged table
+```
+
+Both CI jobs publish the same table in their job summary: the `test` job for the unit profile
+and the `acceptance` job for the merged one.
+
 The provider supports Gravitino **1.3.0** and **1.3.1**. Both are exercised by the
 container-based acceptance suite, which selects the server image through `GRAVITINO_VERSION`
 (default `1.3.0`):
