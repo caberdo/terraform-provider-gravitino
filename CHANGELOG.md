@@ -21,7 +21,9 @@ ENHANCEMENTS:
   profile is absent, the baseline cannot be parsed, or a scope named in the baseline is missing
   from the profile. The new `Coverage` job runs it (and `coverage-readme.sh --check`, so the
   published README block cannot drift) on every pull request after the acceptance container, so
-  the floor is never compared against a unit-only number. Floors sit below the measurement (total
+  the floor is never compared against a unit-only number. The `Coverage` job runs the container
+  against the newest supported server (`GRAVITINO_VERSION` from `.github/gravitino-versions.txt`),
+  so it is never compared against a 1.3.0 run either. Floors sit below the measurement (total
   83.4% measured, 82.5 enforced) so environment jitter cannot fail a run on its own.
 - **The measured coverage gaps are closed.** Merged coverage rose from 79.2% to **83.4%**
   (6387/7661; 86.8% of the `go.mod` toolchain's statements for the same block set), and eight
@@ -33,12 +35,19 @@ ENHANCEMENTS:
   92.4%. Every mock payload is the `examples:` block of the matching OpenAPI spec;
   `internal/datasources/secrets` stays deliberately ungated because it wraps the Gravitino 1.4
   secrets API, which the supported servers cannot serve. The 80% milestone is met; 90% is next.
+- **`main` repeats the coverage gate in the newest acceptance cell.** The version-list job now also
+  emits `latest` (version-sorted max of `.github/gravitino-versions.txt`) and the acceptance job
+  runs `scripts/coverage-gate.sh` on the merged profile only in that cell; the older cells are not
+  gated because they legitimately skip the version-gated tests. The combined-coverage step now
+  fails when either profile is missing — naming the input — instead of exiting 0, so the gate
+  never reports "profile not found" in place of the real cause.
 - **OpenSSF Scorecard.** The supply-chain assessment now runs weekly, on pushes to `main` and on
   branch-protection changes, publishes its result for the README badge and uploads the SARIF to
   code scanning.
 - **CI hygiene.** Every pinned action comment now names the release its SHA belongs to, and
   Dependabot may only bump `golang` in the compose stack, so the Gravitino server image stays on
-  the version `.github/gravitino-versions.txt` drives.
+  the version `.github/gravitino-versions.txt` drives. The gosec summary step no longer trips
+  `actionlint` (shellcheck `SC2086`/`SC2129`), so the workflow passes the linter cleanly.
 
 DOCUMENTATION:
 - **Documentation pack.** `ARCHITECTURE.md` describes the package layout, request flow,

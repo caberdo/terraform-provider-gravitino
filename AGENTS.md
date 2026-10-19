@@ -286,16 +286,23 @@ printing a wrong number.
 against [`.github/coverage-baseline.txt`](.github/coverage-baseline.txt) — the same file
 `scripts/coverage-readme.sh` renders README.md's badge and block from — and exits non-zero for
 every scope below its `floor_*`. The `Coverage` job runs it on every pull request, after running
-the acceptance container, so the gate never sees a unit-only number, and it also runs
-`coverage-readme.sh --check` so the published block cannot drift. A scope named in the baseline
-that drops out of the profile, a missing, misspelled or stray `floor_*`, and an absent profile are
-configuration errors (exit 2), never a pass. Raise a floor in the same pull request that adds the
-tests and run `make coverage-readme`. The `test` job publishes the unit table in its job summary,
-the `acceptance` job the merged one.
+the acceptance container on the newest supported server (`GRAVITINO_VERSION` from
+`.github/gravitino-versions.txt`), so the gate never sees a unit-only number or a 1.3.0 run, and it
+also runs `coverage-readme.sh --check` so the published block cannot drift. A scope named in the
+baseline that drops out of the profile, a missing, misspelled or stray `floor_*`, and an absent
+profile are configuration errors (exit 2), never a pass. On `main` the same script runs again
+inside the newest (`1.3.1`) acceptance-matrix cell — `latest`, read from
+`.github/gravitino-versions.txt` — and the older cells are deliberately not gated because they skip
+the version-gated tests. Raise a floor in the same pull request that adds the tests and run
+`make coverage-readme`. The `test` job publishes the unit table in its job summary, the
+`acceptance` job the merged one.
 
 Measured on the committed tooling at revision `c2fc783` (merged profile: Gravitino 1.3.0,
-`go 1.27.2`, one line per block). Always use a distinct profile per run; `-coverpkg=./...`
-instruments every package, a bare `-coverprofile` reports the owning package only.
+`go 1.27.2`, one line per block) and reproduced on Gravitino 1.3.1, the server the `Coverage` job
+runs. Always use a distinct profile per run; `-coverpkg=./...` instruments every package, a bare
+`-coverprofile` reports the owning package only. The unit-only row below is that local run; CI's
+`test` job installs the `go.mod` toolchain (1.27.1) and prints a different denominator in its own
+summary — the gated number is always the merged one.
 
 | Command | Coverage |
 |---|---|

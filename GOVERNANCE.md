@@ -49,7 +49,7 @@ responsibilities and the workflows in `.github/workflows/` do the mechanical par
 | `Test` — build, `go vet`, `go mod tidy`/`verify`, cross-platform build, `make validate-examples`, generated-docs drift, `go test -race` with coverage | `test.yml` | every pull request, every push to `main` | same |
 | `Dependency Review` | `test.yml` | pull requests | vulnerable dependency introduced by the pull request |
 | `Coverage` — the acceptance container's profile merged with the unit profile, checked against `.github/coverage-baseline.txt` by `scripts/coverage-gate.sh`, plus the README/baseline drift check (`scripts/coverage-readme.sh --check`) | `test.yml` | pull requests | a change that drops a scope below its coverage floor, or a README coverage block that no longer matches the enforced baseline (the gate exits 2, not 0, when the profile or a floor is missing) |
-| `Acceptance Tests (Gravitino 1.3.0 / 1.3.1)` | `test.yml` | push to `main` | a release from a `main` whose acceptance matrix is red |
+| `Acceptance Tests (Gravitino 1.3.0 / 1.3.1)` | `test.yml` | push to `main` | a release from a `main` whose acceptance matrix is red; the newest (`1.3.1`) cell repeats the merged-coverage gate, while the older cells are not gated because they skip the version-gated tests |
 | `Generate Docs` (opens a PR when `docs/` drifts) / `Validate Markdown Files` | `docs.yml` | push to `main` / pull request | merged documentation that no longer matches the schema, and broken markdown links |
 | `Release` — GoReleaser from a GPG-signed tag, GPG-signed checksums, SLSA v1.0 build provenance, SPDX SBOM | `release.yml` | tag `v*`, `workflow_call`, or a manual dispatch with a tag to republish | a release whose artifacts are unsigned or un-attested |
 

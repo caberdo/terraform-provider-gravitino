@@ -55,15 +55,17 @@ jobs:
       - name: Fail on Gosec findings
         if: always() && steps.gosec.outcome == 'failure'
         run: |
-          echo "## Gosec Security Scanner Found Issues" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f gosec.sarif ]; then
-            echo "| Rule | File | Line | Description |" >> $GITHUB_STEP_SUMMARY
-            echo "|------|------|------|-------------|" >> $GITHUB_STEP_SUMMARY
-            jq -r '.runs[0].results[] | "| \(.ruleId) | \(.locations[0].physicalLocation.artifactLocation.uri) | \(.locations[0].physicalLocation.region.startLine) | \(.message.text) |"' gosec.sarif >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "See the **Security** tab for full details." >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Gosec Security Scanner Found Issues"
+            echo ""
+            if [ -f gosec.sarif ]; then
+              echo "| Rule | File | Line | Description |"
+              echo "|------|------|------|-------------|"
+              jq -r '.runs[0].results[] | "| \(.ruleId) | \(.locations[0].physicalLocation.artifactLocation.uri) | \(.locations[0].physicalLocation.region.startLine) | \(.message.text) |"' gosec.sarif
+            fi
+            echo ""
+            echo "See the **Security** tab for full details."
+          } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
   test:
@@ -174,9 +176,14 @@ jobs:
       - name: Unit-test coverage
         run: go test -count=1 -skip '^(TestAcc|TestLiveAcc)' -covermode=atomic -coverprofile=coverage.out ./internal/...
 
-      # The container writes coverage-acceptance.out into the mounted worktree.
+      # The container writes coverage-acceptance.out into the mounted worktree. The
+      # floor is calibrated on the newest supported server, so run that one, not the
+      # compose default: a 1.3.0 server skips the 1.3.1-gated tests and must not be
+      # gated against a 1.3.1-calibrated floor.
       - name: Run acceptance tests
-        run: docker compose run --rm test
+        run: |
+          GRAVITINO_VERSION="$(grep -v '^[[:space:]]*$' .github/gravitino-versions.txt | sort -V | tail -n 1)" \
+            docker compose run --rm test
 
       - name: Coverage gate (unit + acceptance)
         run: |
@@ -213,6 +220,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
       list: ${{ steps.read.outputs.list }}
+      latest: ${{ steps.read.outputs.latest }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -220,8 +228,17 @@ jobs:
       - name: Read the supported versions into a JSON array
         id: read
         run: |
-          list=$(jq -R -s -c 'split("\n") | map(select(length > 0))' .github/gravitino-versions.txt)
+          # Both sides filter on non-whitespace so a blank or whitespace-only line cannot
+          # make the matrix non-empty while `latest` is empty, which would skip every
+          # cell's coverage gate without failing a step.
+          list=$(jq -R -s -c 'split("\n") | map(select(test("\\S")))' .github/gravitino-versions.txt)
+          latest=$(grep -v '^[[:space:]]*$' .github/gravitino-versions.txt | sort -V | tail -n 1)
+          if [[ -z "$latest" ]]; then
+            echo "no supported Gravitino version found in .github/gravitino-versions.txt" >&2
+            exit 1
+          fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
   acceptance:
     name: Acceptance Tests (Gravitino ${{ matrix.gravitino }})
@@ -263,7 +280,10 @@ jobs:
           if [[ ! -f coverage.out || ! -f coverage-acceptance.out ]]; then
             echo "Incomplete coverage profiles: unit \`coverage.out\` and acceptance" >> "$GITHUB_STEP_SUMMARY"
             echo "\`coverage-acceptance.out\` are both required; one is missing." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            # Fail here, with the missing input named, rather than leaving the gate
+            # below to report "profile not found" and mask the cause. The gate still
+            # fails closed (exit 2) if it is ever invoked without a profile.
+            exit 1
           fi
           ./scripts/merge-coverage.sh coverage-union.out coverage.out coverage-acceptance.out
           {
@@ -273,3 +293,10 @@ jobs:
             echo ""
             ./scripts/coverage-summary.sh coverage-union.out
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # `main` repeats the pull-request gate in the newest cell only: the older
+      # cells legitimately skip version-gated tests, so a floor calibrated on the
+      # newest server would fail them for the wrong reason.
+      - name: Coverage gate (unit + acceptance)
+        if: matrix.gravitino == needs.gravitino_versions.outputs.latest
+        run: ./scripts/coverage-gate.sh coverage-union.out
