@@ -136,7 +136,7 @@ func TestPartitionDataSource_ReadUsesTheSpecExample(t *testing.T) {
 	})
 
 	d := NewPartitionDataSource().(*PartitionDataSource)
-	d.client = c
+	d.SetClient(c)
 
 	schemaObj := partitionSchema(t, d).Schema
 	config := PartitionDataSourceModel{
@@ -234,7 +234,7 @@ func TestPartitionsDataSource_ReadRequestsDetails(t *testing.T) {
 	})
 
 	d := NewPartitionsDataSource().(*PartitionsDataSource)
-	d.client = c
+	d.SetClient(c)
 
 	schemaObj := partitionSchema(t, d).Schema
 	config := PartitionsDataSourceModel{
@@ -303,7 +303,7 @@ func TestPartitionDataSource_ReadNotFoundIsAnError(t *testing.T) {
 	})
 
 	d := NewPartitionDataSource().(*PartitionDataSource)
-	d.client = c
+	d.SetClient(c)
 
 	schemaObj := partitionSchema(t, d).Schema
 	config := PartitionDataSourceModel{

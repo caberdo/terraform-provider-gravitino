@@ -185,7 +185,7 @@ Change `templates/` or `examples/`, never `docs/` directly.
 
 | Layer | Count | Location | Needs a server | What it proves |
 |---|---|---|---|---|
-| Unit | 615 `Test*` functions overall | `internal/**/*_test.go` | no — `httptest.NewServer` in 75 files | request shape, payload decoding, schema, plan modifiers, error mapping |
+| Unit | 700 `Test*` functions overall | `internal/**/*_test.go` | no — `httptest.NewServer` in 79 files | request shape, payload decoding, schema, plan modifiers, error mapping |
 | Acceptance (`TestAcc*`) | 66 | `*_test.go` | no — an `httptest` server, driven by `TF_ACC=1` through Terraform Core (`providerserver.NewProtocol6WithError`) | that the provider produces consistent state end to end, which direct framework calls miss |
 | Live acceptance (`TestLiveAcc*`) | 26 | `*_test.go` + `internal/acceptance` | yes — real Gravitino via podman | that real server behaviour matches the spec; `LivePreCheck` refuses to run against a mock (`contributing/live-acceptance-tests.md`) |
 | Version matrix | 2 server versions | `.github/gravitino-versions.txt` | yes — Docker | the same suite passes on 1.3.0 and 1.3.1 (`make testacc-matrix`) |
@@ -199,9 +199,9 @@ merged profile is below a floor in `.github/coverage-baseline.txt`, the same fil
 
 | Command | Total |
 |---|---|
-| `make coverage` (unit only, per package) | 59.8% |
-| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | 79.2% |
-| `make coverage-gate` floors | 78.5% total (`internal/client` 76.5, `internal/models` 84.0, `internal/provider` 69.5) |
+| `make coverage` (unit only, per package) | 64.2% |
+| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | 83.4% |
+| `make coverage-gate` floors | 82.5% total, plus a floor per scope in `.github/coverage-baseline.txt` (`internal/provider` 94.0, `internal/datasources/schema` 94.0, `internal/datasources/partition` 91.5, `internal/client` 79.0, …) |
 
 The merged profile is the number to quote, and the gate is the number that blocks a pull request; a
 bare `-coverprofile` measures each package against its own statements only. Statement counts depend
