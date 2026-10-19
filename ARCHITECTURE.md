@@ -195,7 +195,9 @@ writes the unit profile, `make coverage-merge` merges it with the profile the ac
 writes (`-coverpkg=./internal/...`), and both print a per-package table that the `test`, `Coverage`
 and `acceptance` jobs publish in their job summaries. `make coverage-gate` fails when a scope of the
 merged profile is below a floor in `.github/coverage-baseline.txt`, the same file
-`make coverage-readme` renders README.md's badge and block from.
+`make coverage-readme` renders README.md's badge and block from. The `Coverage` job runs it on
+every pull request; on `main` the acceptance job repeats it in the newest (`1.3.1`)
+acceptance-matrix cell only, because the older cells skip the version-gated tests.
 
 | Command | Total |
 |---|---|

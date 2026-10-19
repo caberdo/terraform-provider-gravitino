@@ -117,11 +117,15 @@ Merged (unit + acceptance) statement coverage is enforced. `make coverage-gate`
 (`scripts/coverage-gate.sh`) compares `coverage-union.out` against
 [`.github/coverage-baseline.txt`](./coverage-baseline.txt) — the file `scripts/coverage-readme.sh`
 renders README.md's badge and block from — and fails, naming each scope below its `floor_*`. The
-`Coverage` job runs both scripts on every pull request, after running the acceptance container, so
-the floor is never compared against a unit-only number and the published block cannot drift. The
-gate fails closed: an absent profile, a scope named in the baseline that the profile does not
-report, and a missing, misspelled or stray `floor_*` are configuration errors (exit 2), never a
-pass.
+`Coverage` job runs both scripts on every pull request, after running the acceptance container on
+the newest supported server (`GRAVITINO_VERSION` read from `.github/gravitino-versions.txt`), so
+the floor is never compared against a unit-only number or a 1.3.0 run, and the published block
+cannot drift. On `main` the same gate runs again inside the newest (`1.3.1`) acceptance-matrix
+cell — read as `latest` from [`.github/gravitino-versions.txt`](./gravitino-versions.txt) — while
+the older cells are not gated: they skip the 1.3.1-gated tests, so a floor calibrated on the newest
+server would fail them for the wrong reason. The gate fails closed: an absent profile, a scope
+named in the baseline that the profile does not report, and a missing, misspelled or stray
+`floor_*` are configuration errors (exit 2), never a pass.
 
 ```bash
 make coverage            # unit profile + per-package table
@@ -134,7 +138,8 @@ To raise a floor: update the `measured_*` and `floor_*` values in
 [`.github/coverage-baseline.txt`](./coverage-baseline.txt), run `make coverage-readme` to refresh
 the README block, and run `make coverage-gate` in the same pull request that adds the tests.
 
-Measured at revision `c2fc783` on the committed tooling (`go 1.27.2`, Gravitino 1.3.0):
+Measured at revision `c2fc783` on the committed tooling (`go 1.27.2`, Gravitino 1.3.0), and
+reproduced on Gravitino 1.3.1 — the server the `Coverage` job runs:
 
 | Command | Statement coverage |
 |---|---|
@@ -148,7 +153,9 @@ the acceptance job (main) merge it with the container's profile. Statement count
 patch release that produced the profile (`go 1.27.1`, the `go.mod` toolchain, sums this tree to
 9766 statements against 7661 for `go 1.27.2`), so compare numbers only within one toolchain, and
 note that a merged profile takes its statement counts from the profile `merge-coverage.sh` reads
-last — the acceptance container's, in CI.
+last — the acceptance container's, in CI. The table above is a local run on the recorded toolchain;
+CI's `test` job installs the `go.mod` toolchain (1.27.1), so its own summary prints a different
+denominator for the unit profile — the gated number is always the merged one.
 
 ## Code conventions
 
@@ -213,7 +220,8 @@ chore(ci): bump golangci-lint
    `go mod tidy` and `go mod verify`, cross-builds for windows/amd64 and darwin/arm64, the
    example validator, the docs-drift check, and the unit tests with `-race`. A pull request
    also runs the acceptance container, the merged-coverage gate and the README/baseline drift
-   check (the `Coverage` check); the acceptance matrix runs only on pushes to `main`.
+   check (the `Coverage` check); the acceptance matrix runs only on pushes to `main`, where the
+   newest (`1.3.1`) cell repeats the coverage gate.
 8. The maintainer reviews the change; address the comments and push follow-ups to the
    same branch. `.github/CODEOWNERS` currently reads `* @caberdo`, naming the
    organization rather than a user or team, so GitHub's code-owner rule has no effective
