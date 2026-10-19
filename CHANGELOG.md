@@ -13,7 +13,7 @@ ENHANCEMENTS:
   `coverage-summary.sh` rejects any other shape (exit 2) instead of printing a wrong number. The
   `test` job publishes the unit profile in its job summary; the `Coverage` job (pull requests) and
   the `acceptance` job (`main`) merge it with the profile the instrumented acceptance container
-  writes — 79.2% merged.
+  writes — 83.4% merged.
 - **A coverage floor fails a pull request that drops it.** `.github/coverage-baseline.txt` records
   the merged coverage of `internal/client`, `internal/models`, `internal/provider` and the total
   against a per-scope floor; `make coverage-gate` (`scripts/coverage-gate.sh`) prints a
@@ -22,7 +22,17 @@ ENHANCEMENTS:
   from the profile. The new `Coverage` job runs it (and `coverage-readme.sh --check`, so the
   published README block cannot drift) on every pull request after the acceptance container, so
   the floor is never compared against a unit-only number. Floors sit below the measurement (total
-  79.2% measured, 78.5 enforced) so environment jitter cannot fail a run on its own.
+  83.4% measured, 82.5 enforced) so environment jitter cannot fail a run on its own.
+- **The measured coverage gaps are closed.** Merged coverage rose from 79.2% to **83.4%**
+  (6387/7661; 86.8% of the `go.mod` toolchain's statements for the same block set), and eight
+  previously weak areas are now gated scopes: `internal/datasources/schema` 8.1% → 94.6%,
+  `internal/provider` 70.3% → 94.6%, `internal/client/auth` 45.9% → 76.7% (the Kerberos/SPNEGO
+  provider, its transport and its failure paths), `internal/datasources/policy` 50.4% → 86.1%,
+  `internal/datasources/role` 62.7% → 85.6%, `internal/datasources/fileset` 66.3% → 86.5%,
+  `internal/datasources/partition` 68.8% → 92.2% and `internal/resources/partition` 70.8% →
+  92.4%. Every mock payload is the `examples:` block of the matching OpenAPI spec;
+  `internal/datasources/secrets` stays deliberately ungated because it wraps the Gravitino 1.4
+  secrets API, which the supported servers cannot serve. The 80% milestone is met; 90% is next.
 - **OpenSSF Scorecard.** The supply-chain assessment now runs weekly, on pushes to `main` and on
   branch-protection changes, publishes its result for the README badge and uploads the SARIF to
   code scanning.

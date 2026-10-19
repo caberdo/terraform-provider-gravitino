@@ -218,7 +218,7 @@ func TestPartitionResource_CreateSendsAddPartitionsRequest(t *testing.T) {
 	})
 
 	r := NewPartitionResource().(*PartitionResource)
-	r.client = c
+	r.SetClient(c)
 	schemaObj := resourceSchema(t, r)
 
 	plan := identityPlan()
@@ -317,7 +317,7 @@ func TestPartitionResource_CreateRangePartition(t *testing.T) {
 	})
 
 	r := NewPartitionResource().(*PartitionResource)
-	r.client = c
+	r.SetClient(c)
 	schemaObj := resourceSchema(t, r)
 
 	plan := identityPlan()
@@ -361,7 +361,7 @@ func TestPartitionResource_CreateValidatesThePartitionSpec(t *testing.T) {
 	})
 
 	r := NewPartitionResource().(*PartitionResource)
-	r.client = c
+	r.SetClient(c)
 	schemaObj := resourceSchema(t, r)
 
 	plan := identityPlan()
@@ -406,7 +406,7 @@ func TestPartitionResource_CreateKeepsManagedProperties(t *testing.T) {
 	})
 
 	r := NewPartitionResource().(*PartitionResource)
-	r.client = c
+	r.SetClient(c)
 	schemaObj := resourceSchema(t, r)
 
 	plan := identityPlan()
@@ -447,7 +447,7 @@ func TestPartitionResource_ReadNotFoundRemovesResource(t *testing.T) {
 	})
 
 	r := NewPartitionResource().(*PartitionResource)
-	r.client = c
+	r.SetClient(c)
 	schemaObj := resourceSchema(t, r)
 
 	state := identityPlan()
@@ -475,7 +475,7 @@ func TestPartitionResource_DeleteToleratesNotFound(t *testing.T) {
 	})
 
 	r := NewPartitionResource().(*PartitionResource)
-	r.client = c
+	r.SetClient(c)
 	schemaObj := resourceSchema(t, r)
 
 	state := identityPlan()

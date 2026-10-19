@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/role"
@@ -107,5 +108,63 @@ func TestRolesDataSource_Read(t *testing.T) {
 	if state.Names.Elements()[0].(types.String).ValueString() != "user1" ||
 		state.Names.Elements()[1].(types.String).ValueString() != "user2" {
 		t.Fatalf("unexpected role names: %v", state.Names.Elements())
+	}
+}
+
+func TestRolesDataSource_Configure(t *testing.T) {
+	d := ds.New()
+	configured := d.(datasource.DataSourceWithConfigure)
+
+	resp := &datasource.ConfigureResponse{}
+	configured.Configure(context.Background(), datasource.ConfigureRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("nil provider data must configure without diagnostics: %v", resp.Diagnostics)
+	}
+
+	resp = &datasource.ConfigureResponse{}
+	configured.Configure(context.Background(), datasource.ConfigureRequest{ProviderData: 42}, resp)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a diagnostic for unexpected provider data")
+	}
+}
+
+func TestRolesDataSource_ReadError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"code":1100,"type":"InternalServerError","message":"boom","stack":["..."]}`))
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	d := ds.New()
+	d.(*ds.RolesDataSource).SetClient(c)
+
+	ctx := context.Background()
+	schemaResp := &datasource.SchemaResponse{}
+	d.Schema(ctx, datasource.SchemaRequest{}, schemaResp)
+
+	configObj, diags := types.ObjectValueFrom(ctx, schemaResp.Schema.Type().(types.ObjectType).AttributeTypes(), ds.RolesDataSourceModel{
+		Metalake:     types.StringValue("probe_ml"),
+		ResourceType: types.StringValue("CATALOG"),
+		Resource:     types.StringValue("probe_cat"),
+		Names:        types.ListNull(types.StringType),
+	})
+	if diags.HasError() {
+		t.Fatalf("failed to create config object: %v", diags)
+	}
+	raw, err := configObj.ToTerraformValue(ctx)
+	if err != nil {
+		t.Fatalf("failed to convert config: %v", err)
+	}
+
+	resp := &datasource.ReadResponse{State: tfsdk.State{Schema: schemaResp.Schema}}
+	d.Read(ctx, datasource.ReadRequest{Config: tfsdk.Config{Schema: schemaResp.Schema, Raw: raw}}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an error for a 500 response")
+	}
+	if !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), `Failed listing roles for "probe_cat"`) {
+		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
 	}
 }

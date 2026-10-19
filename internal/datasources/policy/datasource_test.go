@@ -217,3 +217,93 @@ func TestPoliciesDataSource_ReadServerError(t *testing.T) {
 		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
 	}
 }
+
+func TestPoliciesDataSource_Configure(t *testing.T) {
+	d := ds.NewListDataSource()
+	configured := d.(datasource.DataSourceWithConfigure)
+
+	resp := &datasource.ConfigureResponse{}
+	configured.Configure(context.Background(), datasource.ConfigureRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("nil provider data must configure without diagnostics: %v", resp.Diagnostics)
+	}
+
+	resp = &datasource.ConfigureResponse{}
+	configured.Configure(context.Background(), datasource.ConfigureRequest{ProviderData: 42}, resp)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a diagnostic for unexpected provider data")
+	}
+	if !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), "Unexpected provider data type") {
+		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
+	}
+}
+
+func readPolicies(t *testing.T, handler http.HandlerFunc) ds.PoliciesDataSourceModel {
+	t.Helper()
+	ctx := context.Background()
+	s := policiesSchema(t)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	d := ds.NewListDataSource()
+	d.(*ds.PoliciesDataSource).SetClient(c)
+
+	config := ds.PoliciesDataSourceModel{
+		Metalake: types.StringValue("my_test_metalake"),
+		Policies: types.ListNull(types.ObjectType{AttrTypes: ds.PolicyItemAttrTypes}),
+	}
+
+	resp := &datasource.ReadResponse{State: tfsdk.State{Schema: s}}
+	d.Read(ctx, datasource.ReadRequest{Config: tfsdk.Config{Schema: s, Raw: tfValue(t, ctx, s, config)}}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+
+	var state ds.PoliciesDataSourceModel
+	if diags := resp.State.Get(ctx, &state); diags.HasError() {
+		t.Fatalf("failed to read state: %v", diags)
+	}
+	return state
+}
+
+// TestPoliciesDataSource_ReadEmpty asserts an empty policies array is reported as
+// an empty list rather than a null one.
+func TestPoliciesDataSource_ReadEmpty(t *testing.T) {
+	state := readPolicies(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		fmt.Fprint(w, `{"code":0,"policies":[]}`)
+	})
+
+	if state.Policies.IsNull() {
+		t.Fatal("an empty result must not be a null list")
+	}
+	if len(state.Policies.Elements()) != 0 {
+		t.Fatalf("expected no policies, got %d", len(state.Policies.Elements()))
+	}
+}
+
+// TestPoliciesDataSource_ReadPolicyWithoutContent covers a policy that carries no
+// content object.
+func TestPoliciesDataSource_ReadPolicyWithoutContent(t *testing.T) {
+	state := readPolicies(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		fmt.Fprint(w, `{"code":0,"policies":[{"name":"my_policy1","comment":"","policyType":"custom","enabled":true}]}`)
+	})
+
+	elements := state.Policies.Elements()
+	if len(elements) != 1 {
+		t.Fatalf("expected one policy, got %d", len(elements))
+	}
+	attrs := elements[0].(types.Object).Attributes()
+	if !attrs["enabled"].(types.Bool).ValueBool() {
+		t.Error("enabled = false, want true")
+	}
+	if !attrs["properties"].(types.Map).IsNull() {
+		t.Errorf("properties = %v, want null", attrs["properties"])
+	}
+	if !attrs["custom_rules"].(types.Map).IsNull() {
+		t.Errorf("custom_rules = %v, want null", attrs["custom_rules"])
+	}
+}

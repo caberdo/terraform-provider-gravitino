@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/role"
@@ -227,5 +228,37 @@ func TestRoleDataSource_Read_NotFound(t *testing.T) {
 
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected an error for a missing role")
+	}
+}
+
+func TestRoleDataSource_Configure(t *testing.T) {
+	d := ds.NewRoleDataSource()
+	configured := d.(datasource.DataSourceWithConfigure)
+
+	resp := &datasource.ConfigureResponse{}
+	configured.Configure(context.Background(), datasource.ConfigureRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("nil provider data must configure without diagnostics: %v", resp.Diagnostics)
+	}
+
+	resp = &datasource.ConfigureResponse{}
+	configured.Configure(context.Background(), datasource.ConfigureRequest{ProviderData: 42}, resp)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a diagnostic for unexpected provider data")
+	}
+}
+
+func TestRoleDataSource_Read_ServerError(t *testing.T) {
+	_, resp := readRoleDataSource(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"code":1100,"type":"InternalServerError","message":"boom","stack":["..."]}`))
+	}), "role1")
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an error for a 500 response")
+	}
+	if !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), `Failed reading role "role1"`) {
+		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
 	}
 }

@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/caberdo/terraform-provider-gravitino/test.yml?branch=main&label=CI)](https://github.com/caberdo/terraform-provider-gravitino/actions/workflows/test.yml)
 <!-- coverage-badge:start -->
-[![Coverage](https://img.shields.io/badge/coverage-79.2%25-yellow)](#coverage)
+[![Coverage](https://img.shields.io/badge/coverage-83.4%25-green)](#coverage)
 <!-- coverage-badge:end -->
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/caberdo/terraform-provider-gravitino/badge)](https://scorecard.dev/viewer/?uri=github.com/caberdo/terraform-provider-gravitino)
 [![Release](https://img.shields.io/github/v/release/caberdo/terraform-provider-gravitino?label=release)](https://github.com/caberdo/terraform-provider-gravitino/releases)
@@ -21,7 +21,7 @@ Terraform state as the rest of your infrastructure.
 | | |
 |---|---|
 | 🎯 **Broad Gravitino coverage** | Metalakes, catalogs, schemas, tables and partitions, views, filesets, topics, functions, models and model versions, tags, policies, roles, users, groups, ownership, job templates and job runs, IDP users and groups |
-| 🧪 **Tested against real servers** | 524 tests run by `make test` and 615 in the container suite, which runs against Gravitino `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
+| 🧪 **Tested against real servers** | 609 tests run by `make test` and 700 in the container suite, which runs against Gravitino `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
 | 🧱 **Version gates, not opaque 400s** | One build serves both server versions: the schema accepts the union and a runtime gate refuses a 1.3.1-only value against an older server with a diagnostic naming the required version (`Gravitino >= 1.3.1`) |
 | 🔐 **Verifiable supply chain** | GPG-signed release tags, signed `SHA256SUMS`, SLSA build provenance, SPDX SBOM and the Terraform registry manifest in every release |
 | ⚡ **Modern internals** | terraform-plugin-framework v1.19.0 (plugin protocol 6.0), Go 1.27.1, Docker/Podman acceptance harness against a real server |
@@ -441,9 +441,9 @@ registered to the releasing account.
 
 | Command | What it runs |
 |---|---|
-| `make test` | The unit and schema suite plus the mock acceptance tests, which skip themselves without `TF_ACC`: 524 tests run, 91 skipped |
+| `make test` | The unit and schema suite plus the mock acceptance tests, which skip themselves without `TF_ACC`: 609 tests run, 91 skipped |
 | `make testacc` | The same suite with `TF_ACC=1`, so the `TestAcc*` mock acceptance tests run too |
-| `make testacc-docker` | The full 615-test suite in a Go container against Gravitino in Docker on `GRAVITINO_VERSION` (default `1.3.0`); the 1.3.1-only tests skip themselves on a 1.3.0 server |
+| `make testacc-docker` | The full 700-test suite in a Go container against Gravitino in Docker on `GRAVITINO_VERSION` (default `1.3.0`); the 1.3.1-only tests skip themselves on a 1.3.0 server |
 | `make testacc-matrix` | `testacc-docker` once per supported server version (`.github/gravitino-versions.txt`, currently `1.3.0` and `1.3.1`) |
 | `make testacc-live` | Starts Gravitino with `podman compose` and runs the 26 `TestLiveAcc*` tests against it — a real server, no HTTP mock |
 | `make testacc-live-filter F=<TestName>` | One live test, e.g. `F=TestLiveAccMetalakeResource` |
@@ -451,11 +451,11 @@ registered to the releasing account.
 CI runs the unit suite with `-race` on every pull request, and the acceptance matrix on every push
 to `main`.
 
-The suite is 615 tests in total:
+The suite is 700 tests in total:
 
 | Group | Count | Needs |
 |---|---|---|
-| Unit and schema tests | 523 | Go only |
+| Unit and schema tests | 608 | Go only |
 | Mock acceptance tests (`TestAcc*`) | 66 | `TF_ACC=1`; the server is an `httptest` instance |
 | Live acceptance tests (`TestLiveAcc*`) | 26 | `GRAVITINO_URI` pointing at a real server, started by `make testacc-live` |
 
@@ -493,17 +493,24 @@ The `test` job publishes the unit table in its job summary, the `acceptance` job
 
 <!-- coverage:start -->
 ```
-internal/client    ███████████████░░░░░  77.2%   floor 76.5%
-internal/models    █████████████████░░░  84.7%   floor 84.0%
-internal/provider  ██████████████░░░░░░  70.3%   floor 69.5%
-total              ████████████████░░░░  79.2%   floor 78.5%   -> 80%, then 90%
+internal/client                 ████████████████░░░░  79.7%   floor 79.0%
+internal/models                 █████████████████░░░  86.3%   floor 85.5%
+internal/provider               ███████████████████░  94.6%   floor 94.0%
+internal/client/auth            ███████████████░░░░░  76.7%   floor 76.0%
+internal/datasources/schema     ███████████████████░  94.6%   floor 94.0%
+internal/datasources/policy     █████████████████░░░  86.1%   floor 85.5%
+internal/datasources/role       █████████████████░░░  85.6%   floor 85.0%
+internal/datasources/fileset    █████████████████░░░  86.5%   floor 86.0%
+internal/datasources/partition  ██████████████████░░  92.2%   floor 91.5%
+internal/resources/partition    ██████████████████░░  92.4%   floor 91.5%
+total                           █████████████████░░░  83.4%   floor 82.5%   -> 80%, then 90%
 ```
 
 Merged statement coverage from `coverage.out` (unit) and `coverage-acceptance.out`
 (acceptance, `-covermode=atomic -coverpkg=./internal/...`) via `scripts/merge-coverage.sh`
 (`make coverage-merge`).
 
-Measured on `9c94a46` (unit + acceptance) on 2026-10-19.
+Measured on `c2fc783` (unit + acceptance) on 2026-10-19.
 <!-- coverage:end -->
 
 The block above is generated from `.github/coverage-baseline.txt` by

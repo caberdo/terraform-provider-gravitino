@@ -76,13 +76,13 @@ The suite is deliberately layered; each layer catches what the previous one cann
 
 | Layer | Prefix | Count | Needs | Command |
 |---|---|---|---|---|
-| Unit and mock | `Test*` | 615 `Test*` functions across 116 `*_test.go` files | nothing | `make test` |
+| Unit and mock | `Test*` | 700 `Test*` functions across 122 `*_test.go` files | nothing | `make test` |
 | Acceptance through Terraform Core | `TestAcc*` | 66 | nothing beyond Go (mock server) | `make testacc` |
 | Container acceptance matrix | `TestAcc*` | same 66 | Docker | `make testacc-matrix` |
 | Live acceptance against a real server | `TestLiveAcc*` | 26 | Podman | `make testacc-live` |
 
 - **Unit tests** run the resource and client code directly. Provider HTTP interaction is
-  served by `httptest.NewServer`; 75 files across the suite start one. There is no fuzzing.
+  served by `httptest.NewServer`; 79 files across the suite start one. There is no fuzzing.
 - **`TestAcc*` tests** exercise the provider the way Terraform does: they call
   `resource.Test` with providers built by `providerserver.NewProtocol6WithError`, so the
   requests really travel through Terraform Core in-process and the mock Gravitino server is
@@ -134,12 +134,12 @@ To raise a floor: update the `measured_*` and `floor_*` values in
 [`.github/coverage-baseline.txt`](./coverage-baseline.txt), run `make coverage-readme` to refresh
 the README block, and run `make coverage-gate` in the same pull request that adds the tests.
 
-Measured at revision `9c94a46` on the committed tooling (`go 1.27.2`, Gravitino 1.3.0):
+Measured at revision `c2fc783` on the committed tooling (`go 1.27.2`, Gravitino 1.3.0):
 
 | Command | Statement coverage |
 |---|---|
-| `make coverage` (unit only, per package — `make test`'s shape) | 59.8% (4584/7661) |
-| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | 79.2% (6069/7661) |
+| `make coverage` (unit only, per package — `make test`'s shape) | 64.2% (4918/7661) |
+| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | 83.4% (6387/7661) |
 
 `make test` produces the per-package number because it passes `-cover`, not `-coverpkg`. CI's test
 job runs `go test -v -race -covermode=atomic -coverprofile=coverage.out ./internal/...`, publishes

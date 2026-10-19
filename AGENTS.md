@@ -94,7 +94,7 @@ internal/
 ├── tfutil/                    # Plan/state and types helpers shared by both layers
 ```
 
-Tests live beside the code: 272 Go files, 116 of them `*_test.go`; 56 packages under
+Tests live beside the code: 278 Go files, 122 of them `*_test.go`; 56 packages under
 `./internal/...`, 55 with tests.
 
 ## API compatibility target
@@ -267,7 +267,7 @@ unless `GRAVITINO_URI` answers `/api/version`. They never start their own HTTP m
 
 Write `Test*` for mocks, `TestAcc*` when the path must go through Terraform Core
 (`providerserver.NewProtocol6WithError`), and `TestLiveAcc*` only for behaviour that a mock
-cannot prove. 615 `Test*` functions today, 66 of them `TestAcc*` and 26 `TestLiveAcc*`.
+cannot prove. 700 `Test*` functions today, 66 of them `TestAcc*` and 26 `TestLiveAcc*`.
 
 #### Coverage
 
@@ -293,17 +293,22 @@ configuration errors (exit 2), never a pass. Raise a floor in the same pull requ
 tests and run `make coverage-readme`. The `test` job publishes the unit table in its job summary,
 the `acceptance` job the merged one.
 
-Measured on the committed tooling at revision `9c94a46` (merged profile: Gravitino 1.3.0,
+Measured on the committed tooling at revision `c2fc783` (merged profile: Gravitino 1.3.0,
 `go 1.27.2`, one line per block). Always use a distinct profile per run; `-coverpkg=./...`
 instruments every package, a bare `-coverprofile` reports the owning package only.
 
 | Command | Coverage |
 |---|---|
-| `make coverage` (unit only, per package) | 59.8% (4584/7661) |
-| `make coverage-merge` (unit + acceptance, the profile `make coverage-gate` enforces) | 79.2% (6069/7661) |
+| `make coverage` (unit only, per package) | 64.2% (4918/7661) |
+| `make coverage-merge` (unit + acceptance, the profile `make coverage-gate` enforces) | 83.4% (6387/7661) |
 
-Scopes the gate enforces, with the floors currently committed: `internal/client` 77.2% (floor
-76.5), `internal/models` 84.7 (84.0), `internal/provider` 70.3 (69.5), `total` 79.2 (78.5).
+Scopes the gate enforces, with the floors currently committed: `internal/client` 79.7% (floor
+79.0), `internal/models` 86.3 (85.5), `internal/provider` 94.6 (94.0), `internal/client/auth` 76.7
+(76.0), `internal/datasources/schema` 94.6 (94.0), `internal/datasources/policy` 86.1 (85.5),
+`internal/datasources/role` 85.6 (85.0), `internal/datasources/fileset` 86.5 (86.0),
+`internal/datasources/partition` 92.2 (91.5), `internal/resources/partition` 92.4 (91.5), `total`
+83.4 (82.5). `internal/datasources/secrets` is deliberately not a scope: it wraps the Gravitino 1.4
+secrets API, which the supported 1.3.0/1.3.1 servers cannot serve.
 
 Statement counts come straight from the cover profile, so they depend on the Go patch release that
 produced it: for this tree `go 1.27.1` — the `go.mod` toolchain, which CI installs — sums
