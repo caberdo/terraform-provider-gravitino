@@ -1,0 +1,43 @@
+# Statement-coverage baseline for the merged unit + acceptance profile.
+#
+# `scripts/coverage-readme.sh` renders README.md's badge and coverage block from
+# this file, and `scripts/coverage-gate.sh` fails a run whose merged coverage
+# falls below a `floor_*` value. The badge, the block and the gate therefore
+# cannot disagree: they all read this file, and CI fails when README.md is out
+# of sync with it.
+#
+# Keys. `measured_<scope>` names a scope and needs a matching `floor_<scope>`;
+# `_` is the path separator in the rendered label, so `measured_internal_client`
+# renders `internal/client`. `measured_total` is required and drives the badge.
+# `measured_commit` and `measured_date` describe the last measurement,
+# `target`/`gold` are the tracked milestones.
+#
+# The measurement is the merged profile the committed tooling produces: the bare
+# unit profile (`make coverage`, `coverage.out`) merged with the instrumented
+# acceptance container's profile (`coverage-acceptance.out`,
+# `-covermode=atomic -coverpkg=./internal/...`) by `scripts/merge-coverage.sh`
+# (`make coverage-merge`). To raise the floor: run `make coverage` and
+# `make coverage-merge`, update `measured_*` and `floor_*` here, then run
+# `make coverage-readme` and commit the result.
+#
+# `measured_*` is what the project last observed; `floor_*` is the enforced
+# minimum, kept half a point below the measurement so environment jitter cannot
+# fail a run on its own.
+
+# Last measurement: merged unit + acceptance on Go 1.27.2, 7,661 statements.
+measured_internal_client=77.2
+measured_internal_models=84.7
+measured_internal_provider=70.3
+measured_total=79.2
+measured_commit=9c94a46
+measured_date=2026-10-19
+
+# Enforced floor.
+floor_internal_client=76.5
+floor_internal_models=84.0
+floor_internal_provider=69.5
+floor_total=78.5
+
+# Milestones tracked in the issue tracker.
+target=80
+gold=90
