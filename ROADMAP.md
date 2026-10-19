@@ -23,7 +23,6 @@ Gravitino. Open work, in the order it unblocks itself:
 | Work | Issue |
 |---|---|
 | Publish the governance, roadmap and architecture documents plus an OpenSSF Best Practices evidence pack | [#50](https://github.com/caberdo/terraform-provider-gravitino/issues/50) |
-| Publish OpenSSF Scorecard results and make CI report the merged unit + acceptance coverage profile | [#49](https://github.com/caberdo/terraform-provider-gravitino/issues/49) |
 
 Landed in this cycle already: every GitHub Action pinned to a commit SHA, a `dependency-review` job
 on pull requests, the docs-drift gate, example validation against the provider built from the tree,
@@ -33,7 +32,10 @@ rebuilt as the front door
 ([#47](https://github.com/caberdo/terraform-provider-gravitino/issues/47)), and the release chain
 hardened — GPG-signed tags, GPG-signed checksums, the public signing key committed in the
 repository, and SLSA v1.0 build provenance attached to every release
-([#48](https://github.com/caberdo/terraform-provider-gravitino/issues/48)).
+([#48](https://github.com/caberdo/terraform-provider-gravitino/issues/48)). OpenSSF Scorecard now
+runs weekly on `main`, on branch-protection changes and publishes its result for the README badge,
+and CI reports the merged unit + acceptance statement coverage in its job summaries
+([#49](https://github.com/caberdo/terraform-provider-gravitino/issues/49)).
 
 Still open, with no issue filed yet: six modules in the dependency graph carry OSV advisories
 (measured with `go list -m all` against `api.osv.dev/v1/querybatch`). The ones that matter are in
@@ -50,15 +52,15 @@ organization also has 2FA enforcement and secret scanning turned off.
 
 ## Next — correctness, coverage and honest compatibility
 
-* **Raise the merged statement coverage above 85%.** Measured today with
-  `TF_ACC=1 go test -coverpkg=./... -coverprofile=cover.out ./internal/...` the provider is at
-  **78.0%**; the unit-only merged number is 75.5%. The gap is concentrated where the tests are
-  acceptance-shaped rather than unit-shaped, so the work is unit tests for the error and drift
-  paths of `internal/datasources/schema`, `internal/datasources/secrets`, `internal/provider`,
-  `internal/client` and `internal/models`, and wiring the merged profile into CI
-  ([#49](https://github.com/caberdo/terraform-provider-gravitino/issues/49)). Per-package
-  `go test -cover` numbers understate this badly (the client reads 14.3% there because its callers
-  live in other packages); always quote the merged profile.
+* **Raise the merged statement coverage above 85%.** `make coverage-merge` reports the number CI
+  publishes: **82.1%** (8021/9766) for the merged unit + acceptance profile, 65.8% for the unit
+  profile alone — above the 80% the OpenSSF Best Practices programme requires. The gap is
+  concentrated where the tests are acceptance-shaped rather than unit-shaped, so the work is unit
+  tests for the error and drift paths of `internal/datasources/schema`,
+  `internal/datasources/secrets`, `internal/provider`, `internal/client` and `internal/models`;
+  `make coverage` ranks the packages, weakest first. Per-package `go test -cover` numbers understate
+  this badly (the client reads 14.3% there because its callers live in other packages); always
+  quote the merged profile.
 * **Keep the version matrix honest.** `.github/gravitino-versions.txt` is the single source of truth
   for the acceptance matrix; a new Gravitino release is added there once its REST API is checked
   against the schema, and every version-restricted field keeps its union-schema-plus-runtime-gate

@@ -34,11 +34,12 @@ GET https://www.bestpractices.dev/projects.json?url=https://github.com/caberdo/t
 Source: [`clients/cii_http_client.go`](https://github.com/ossf/scorecard/blob/main/clients/cii_http_client.go).
 The README badge is for humans; Scorecard never parses it.
 
-**Where the climb stands.** Passing (5) is reachable now. Silver (7) is short of two items, both
-recorded in §5: merged statement coverage is **78.0%** against the 80% requirement, and the badge
-itself cannot be linked from the README before the project is registered. `signed_releases` and
-`version_tags_signed` are **Met** since the tagged release became GPG-signed with the public key
-committed (§4.3). Gold (10) is **not reachable while the project has one
+**Where the climb stands.** Passing (5) is reachable now. Silver (7) is short of one item,
+recorded in §5: the badge itself cannot be linked from the README before the project is
+registered. Merged statement coverage is **82.1%** — the acceptance job merges the unit profile
+with the acceptance container's before publishing it — which clears the 80% requirement.
+`signed_releases` and `version_tags_signed` are **Met** since the tagged release became GPG-signed
+with the public key committed (§4.3). Gold (10) is **not reachable while the project has one
 maintainer**: `bus_factor`, `contributors_unassociated` and `two_person_review` are MUST criteria
 there, and no amount of code satisfies them.
 
@@ -199,7 +200,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `updateable_reused_components` | Met | Every reused component is a versioned Go module declared in `go.mod` with hashes in `go.sum`; nothing is vendored or copied in, so an update is `go get` plus a pull request. | `blob/go.mod` |
 | `automated_integration_testing` | Met | Every pull request runs build, vet, example validation, docs-drift check and `go test -race` with a coverage artifact; every push to `main` runs the acceptance matrix against real Gravitino servers. Both publish their result as a job summary. | `blob/.github/workflows/test.yml` |
 | `regression_tests_added50` | Met | The 0.9.0 bug fixes came with tests (property drift, inconsistent results after apply, statistics conversion, OAuth refresh), and the pull request template makes a regression test a checklist item. | `blob/CHANGELOG.md`, `blob/.github/PULL_REQUEST_TEMPLATE.md` |
-| `test_statement_coverage80` | **Unmet — see §5** | Merged statement coverage is **78.0%** with `TF_ACC=1 go test -coverpkg=./... ./internal/...`, 75.5% unit-only. The gap is the error and drift paths of the packages with the fewest unit tests. | `blob/CONTRIBUTING.md` |
+| `test_statement_coverage80` | Met | The acceptance job merges the unit profile with the acceptance container's (`make coverage-merge`, `-coverpkg=./internal/...`) and publishes the result: **82.1%** (8021/9766) under the `go.mod` toolchain, against 65.8% unit-only. The ad-hoc commands below read 78.0% merged and 75.5% unit-only at revision `9dbf159`. | `blob/.github/workflows/test.yml`, `blob/scripts/merge-coverage.sh` |
 | `test_policy_mandated` | Met | Written policy in `CONTRIBUTING.md`: tests for major new functionality, a regression test for every bug fix, enforced by the pull request checklist. | `blob/.github/CONTRIBUTING.md` |
 | `tests_documented_added` | Met | Same files state that tests are part of the change, with the commands. | `blob/.github/PULL_REQUEST_TEMPLATE.md` |
 | `warnings_strict` | Met | Nearly all `go vet` checks enabled (only `fieldalignment` and `shadow` excluded, with the reason in the config), staticcheck and gofmt enforced. | `blob/.github/golangci.yml` |
@@ -237,7 +238,7 @@ true.
 | `build_reproducible` | Met (see §6.5) | The release build is reproducible from the tag: `go.mod`/`go.sum` pin the module graph, `-trimpath` removes checkout paths, `mod_timestamp` is the commit timestamp, `CGO_ENABLED=0` removes toolchain variance. | `blob/.github/goreleaser.yml` |
 | `test_invocation` | Met | Standard Go invocation, plus the documented `make` split for the server-backed layers. | `blob/GNUmakefile` |
 | `test_continuous_integration` | Met | `test.yml` integrates every pull request after lint, vet, example validation, docs drift and `go test -race`, and runs the acceptance matrix on `main`. | `blob/.github/workflows/test.yml` |
-| `test_statement_coverage90` | **Unmet** | 78.0% merged today; 90% needs unit coverage of the client, models, provider and data-source error paths. | `blob/CONTRIBUTING.md` |
+| `test_statement_coverage90` | **Unmet** | 82.1% merged today; 90% needs unit coverage of the client, models, provider and data-source error paths. | `blob/.github/workflows/test.yml` |
 | `test_branch_coverage80` | N/A (see §6.3) | Go's coverage tooling measures statement coverage (`-covermode=set|count|atomic`); no mature FLOSS branch-coverage tool exists for Go, so this cannot be measured with the standard toolchain. | — |
 | `crypto_used_network` | Met for the API path (see §6.2) | Go's TLS client defaults; HTTPS when the configured endpoint is HTTPS, and no way to weaken verification. | `blob/internal/client/client.go` |
 | `crypto_tls12` | Met | Go's default minimum is TLS 1.2 and the provider configures no lower bound. | `blob/internal/client/client.go` |
@@ -251,7 +252,7 @@ true.
 
 | # | Criterion (level) | What has to happen | Who |
 |---|---|---|---|
-| 1 | `test_statement_coverage80` (Silver) / `…90` (Gold) | Raise merged statement coverage from 78.0% to 80% and beyond: unit tests for the error and drift paths of `internal/datasources/schema` (5.4% per-package), `internal/provider` (12.2%), `internal/datasources/secrets` (13.0%), `internal/models` (24.2%) — always measured with `-coverpkg=./...`, since per-package numbers understate them. | Code work |
+| 1 | `test_statement_coverage90` (Gold) | 80% is met (82.1% merged, `make coverage-merge`); the remaining gap to 90% is unit tests for the error and drift paths of the packages `make coverage` ranks lowest — `internal/datasources/schema`, `internal/datasources/secrets`, `internal/datasources/policy`, `internal/models` — measured as merged profiles, since per-package numbers understate them. | Code work |
 | 2 | `documentation_achievements` (Silver) | Merge the badge line from §3 after registration. | Maintainer |
 | 3 | `access_continuity` + `bus_factor` (Silver/Gold) | A second person with `maintain`/`admin` on the organization, the release secrets and a documented hand-over in `GOVERNANCE.md`. | Maintainer |
 | 4 | `contributors_unassociated` (Gold) | A significant contributor outside the `caberdo` organization. | Maintainer + community |
@@ -320,7 +321,8 @@ Commands behind every figure in this pack (run from the repository root on 2026-
 | 56 packages, 55 with tests | `go list ./internal/... \| wc -l`, `find internal -name '*_test.go' -exec dirname {} + \| sort -u \| wc -l` |
 | 272 Go files, 116 test files, 25,733 non-test / 34,003 test lines | `find . -name '*.go' \| wc -l`, `cat` the sets into `wc -l` |
 | 12 `Sensitive` attributes, 30 `OneOf`, 71 `RequiresReplace`, 41 `UseStateForUnknown` | `grep -r 'Sensitive: *true' internal/ \| wc -l`, same for the other patterns |
-| 75.5% / 59.8% / 61.6% / 78.0% coverage | `go test [-coverpkg=./...] [TF_ACC=1] -coverprofile=cover.out ./internal/...` then `go tool cover -func=cover.out \| tail -1` |
+| 75.5% / 59.8% / 61.6% / 78.0% coverage (at `9dbf159`) | `go test [-coverpkg=./...] [TF_ACC=1] -coverprofile=cover.out ./internal/...` then `go tool cover -func=cover.out \| tail -1` |
+| 65.8% unit / 82.1% merged coverage | `make coverage` and `make coverage-merge` (`scripts/coverage-summary.sh`, `scripts/merge-coverage.sh`) |
 | 7 direct dependencies, 155 modules | `awk` over `go.mod`, `go list -m all \| wc -l` |
 | OSV advisories per module | `go list -m all` → `POST https://api.osv.dev/v1/querybatch` |
 | Ruleset, 2FA, secret scanning, contributors, 24 tags | `gh api repos/caberdo/terraform-provider-gravitino/…` |

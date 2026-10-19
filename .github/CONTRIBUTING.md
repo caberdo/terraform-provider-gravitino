@@ -98,6 +98,12 @@ The suite is deliberately layered; each layer catches what the previous one cann
 
 ## Coverage
 
+`make coverage` writes the unit profile (`coverage.out`) and prints a per-package table, weakest
+first; `make coverage-html` opens it as HTML. `make coverage-merge` merges it with the profile the
+acceptance container writes (`coverage-acceptance.out`, `-coverpkg=./internal/...`) into
+`coverage-union.out` and prints the same table. CI publishes both tables in its job summaries: the
+`test` job for the unit profile, the `acceptance` job for the merged one.
+
 Measured at revision `9dbf159`:
 
 | Command | Statement coverage |
@@ -107,11 +113,11 @@ Measured at revision `9dbf159`:
 | `TF_ACC=1 go test -coverprofile=c.out ./internal/...` | 61.6% (per package, unit + acceptance) |
 | `TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 78.0% (unit + acceptance, merged) |
 
-`make test` produces the per-package number because it passes `-cover`, not `-coverpkg`.
-CI's test job runs `go test -v -coverprofile=coverage.out -covermode=atomic -race ./internal/...`
-and publishes `coverage.out` as a build artifact, so the number CI reports today is the
-per-package 59.8% figure. Publishing one merged unit-plus-acceptance number is tracked in
-[#49](https://github.com/caberdo/terraform-provider-gravitino/issues/49).
+`make test` produces the per-package number because it passes `-cover`, not `-coverpkg`. CI's test
+job runs `go test -v -race -covermode=atomic -coverprofile=coverage.out ./internal/...`, publishes
+`coverage.out` as a build artifact and adds the per-package table to the job summary; the
+acceptance job adds the merged unit + acceptance table. Statement counts depend on the Go patch
+release that produced the profile, so compare numbers only within one toolchain.
 
 ## Code conventions
 

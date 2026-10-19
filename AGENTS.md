@@ -271,7 +271,16 @@ cannot prove. 615 `Test*` functions today, 66 of them `TestAcc*` and 26 `TestLiv
 
 #### Coverage
 
-Measured at revision `9dbf159`. Always use a distinct profile per run; `-coverpkg=./...`
+`make coverage` runs the unit suite alone (`TestAcc*` and `TestLiveAcc*` skip themselves, so the
+profile cannot depend on the environment), writes `coverage.out` and prints a per-package table,
+weakest first (`scripts/coverage-summary.sh`); `make coverage-html` opens the same profile as HTML.
+Because packages such as `internal/resources/*` assert most of their behaviour end-to-end, the
+acceptance container also writes `coverage-acceptance.out` (`-covermode=atomic
+-coverpkg=./internal/...`), and `make coverage-merge` merges both profiles into `coverage-union.out`
+and prints the same table. The `test` job publishes the unit table in its job summary, the
+`acceptance` job the merged one.
+
+Measured ad hoc at revision `9dbf159`. Always use a distinct profile per run; `-coverpkg=./...`
 merges coverage across packages, a bare `-coverprofile` reports the owning package only.
 
 | Command | Coverage |
@@ -281,9 +290,14 @@ merges coverage across packages, a bare `-coverprofile` reports the owning packa
 | `go test -coverprofile=c.out ./internal/...` | 59.8% (per package) |
 | `TF_ACC=1 go test -coverprofile=c.out ./internal/...` | 61.6% (per package, unit + acceptance) |
 
-Then `go tool cover -func=c.out | tail -1` for the total. CI uploads the per-package
-profile as `coverage.out`; merging unit and acceptance coverage is tracked in
-[#49](https://github.com/caberdo/terraform-provider-gravitino/issues/49).
+Then `go tool cover -func=c.out | tail -1` for the total.
+
+Statement counts come straight from the cover profile, so they depend on the Go patch release that
+produced it: for this tree `go 1.27.1` — the `go.mod` toolchain, which CI installs — sums
+`./internal/...` to 9766 statements and `go 1.27.2` to 7661 (identical block set, fewer statements
+per block). Compare numbers only within one toolchain; CI is authoritative, and on the committed
+tooling it reports 65.8% (6424/9766) for the unit profile and 82.1% (8021/9766) with the acceptance
+profile merged — measured without a live server, which the container also runs.
 
 ### Logging
 

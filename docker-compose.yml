@@ -27,7 +27,19 @@ services:
       - -c
       - |
         go mod download && go mod verify
-        go test -v -cover -timeout 30m ./internal/...
+        # Coverage is collected here because the unit suite alone under-reports
+        # packages whose behaviour is asserted end-to-end against a real server.
+        # The profile lands in the mounted worktree, where `make coverage-merge`
+        # and the acceptance job pick it up.
+        go test -v -timeout 30m \
+          -covermode=atomic -coverprofile=/app/coverage-acceptance.out -coverpkg=./internal/... \
+          ./internal/...
+        status=$$?
+        if [ -f coverage-acceptance.out ]; then
+          echo "Acceptance coverage (covered statements, ./internal/...):"
+          go tool cover -func=coverage-acceptance.out | tail -1
+        fi
+        exit $$status
     environment:
       TF_ACC: "1"
       GRAVITINO_URI: "http://gravitino:8090"

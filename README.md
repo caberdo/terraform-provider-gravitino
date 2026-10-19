@@ -471,14 +471,25 @@ make testacc-live-filter F=TestLiveAccRoleResource
 
 ### Coverage
 
-`-coverpkg=./...` merges coverage across packages; a bare `-coverprofile` reports the owning
-package only, which understates the numbers badly (the client reads 14% there because its callers
-live in other packages). Measured at revision `9dbf159`:
+`make coverage` runs the unit suite alone (`TestAcc*` and `TestLiveAcc*` skip themselves), writes
+`coverage.out` and prints a per-package table, weakest package first; `make coverage-html` opens
+the same profile as HTML. Because packages whose behaviour is asserted end-to-end read low on the
+unit suite alone, the acceptance container also writes `coverage-acceptance.out`
+(`-covermode=atomic -coverpkg=./internal/...`), and `make coverage-merge` merges both profiles into
+`coverage-union.out` and prints the same table.
 
-```bash
-go test -coverpkg=./... -coverprofile=c.out ./internal/... && go tool cover -func=c.out | tail -1
-TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...
+```sh
+make coverage             # unit profile + per-package table
+make coverage-html        # same run, then the HTML report
+make testacc-docker       # acceptance container, writes coverage-acceptance.out
+make coverage-merge       # merged profile + per-package table
 ```
+
+The `test` job publishes the unit table in its job summary and the `acceptance` job the merged one.
+
+`-coverpkg` merges coverage across packages; a bare `-coverprofile` reports the owning package only,
+which understates the numbers badly (the client reads 14% there because its callers live in other
+packages). Measured at revision `9dbf159`:
 
 | Command | Statement coverage |
 |---|---|
@@ -487,9 +498,10 @@ TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...
 | `go test -coverprofile=c.out ./internal/...` | 59.8% (per package) |
 | `TF_ACC=1 go test -coverprofile=c.out ./internal/...` | 61.6% (per package, unit + acceptance) |
 
-CI publishes the per-package profile as its `coverage.out` artifact today; merging the unit and
-acceptance profiles into one reported number is tracked in
-[#49](https://github.com/caberdo/terraform-provider-gravitino/issues/49).
+Statement counts come from the cover profile, so they depend on the Go patch release that produced
+it — `go 1.27.1` (the `go.mod` toolchain, which CI installs) sums `./internal/...` to 9766
+statements, `go 1.27.2` to 7661 for the same tree. On the committed tooling CI reports 65.8%
+(6424/9766) for the unit profile and 82.1% (8021/9766) with the acceptance profile merged.
 
 ## Development
 

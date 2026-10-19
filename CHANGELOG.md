@@ -1,5 +1,20 @@
 ## Unreleased
 
+ENHANCEMENTS:
+- **CI publishes coverage, unit and merged.** `make coverage`, `make coverage-html` and
+  `make coverage-merge` (`scripts/coverage-summary.sh`, `scripts/merge-coverage.sh`) render Go
+  cover profiles as per-package Markdown tables, weakest package first. The `test` job publishes
+  the unit profile in its job summary; the `acceptance` job merges it with the profile the
+  instrumented acceptance container writes (`-coverpkg=./internal/...`), so the reported number
+  includes the suite that asserts most behaviour end-to-end — 82.1% against 65.8% unit-only on the
+  `go.mod` toolchain.
+- **OpenSSF Scorecard.** The supply-chain assessment now runs weekly, on pushes to `main` and on
+  branch-protection changes, publishes its result for the README badge and uploads the SARIF to
+  code scanning.
+- **CI hygiene.** Every pinned action comment now names the release its SHA belongs to, and
+  Dependabot may only bump `golang` in the compose stack, so the Gravitino server image stays on
+  the version `.github/gravitino-versions.txt` drives.
+
 DOCUMENTATION:
 - **Documentation pack.** `ARCHITECTURE.md` describes the package layout, request flow,
   authentication and version-gating layers; `GOVERNANCE.md` records roles, decision making and

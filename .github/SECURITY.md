@@ -143,7 +143,7 @@ Secure-design principles mapped to the code that implements them:
 | Insecure deserialization | Responses are decoded into typed models of the Gravitino envelope; no arbitrary type resolution | `internal/models`, `internal/client` |
 | XXE / XML parsing | Not applicable: the provider has no XML parser | — |
 | Unbounded input | Requests time out after 30 s (`defaultTimeout` in `internal/client/client.go`); error bodies are truncated to 2 KiB | `internal/client/client.go` |
-| Dependency risk | Dependabot version updates cover gomod, docker-compose and github-actions (daily, 03:00 Europe/Amsterdam, labels `dependencies` and `deps`). Dependabot security-update alerts and secret scanning are currently disabled, and there is no `govulncheck` or Scorecard workflow yet | issue #49 |
+| Dependency risk | Dependabot version updates cover gomod, docker-compose and github-actions (daily, 03:00 Europe/Amsterdam, labels `dependencies` and `deps`; the compose stack may only bump `golang`, so the server image stays on the version matrix). OpenSSF Scorecard runs weekly, on `main` and on branch-protection changes, and uploads its SARIF to code scanning. Dependabot security-update alerts, secret scanning and `govulncheck` are still disabled | `.github/dependabot.yml`, `.github/workflows/scorecard.yml` |
 | Supply chain | Release tags are GPG-signed, release checksums are GPG-detach-signed with the release key (public half committed), SLSA v1.0 build provenance is attested over the checksum file and attached to the release, and an SPDX-JSON SBOM is attached to the GitHub release | `.github/workflows/release.yml`, `.github/release-signing-key.asc` |
 
 ## Hardening in place
@@ -193,18 +193,22 @@ Stated plainly, because each is a real property of the current release:
 
 No formal, dated security review of this provider has been performed. The
 controls in this document are those that are implemented in code and CI today.
-Publishing an OpenSSF Scorecard result, merging unit and acceptance coverage,
-and closing the dependency-scanning gaps are tracked in issue #49.
+OpenSSF Scorecard results are published and CI reports the merged unit +
+acceptance coverage; the dependency-scanning gaps listed below remain open.
 
 ## Dependency scanning
 
 - Dependabot version updates: enabled for gomod, docker-compose and
   github-actions, daily at 03:00 Europe/Amsterdam, labels `dependencies` and
-  `deps`.
+  `deps`. The compose stack may only bump `golang`, so the Gravitino server
+  image stays on the version `.github/gravitino-versions.txt` drives.
 - Dependabot security updates: disabled.
 - Secret scanning: disabled.
 - `govulncheck`: not configured.
-- OpenSSF Scorecard: not configured.
+- OpenSSF Scorecard: enabled, weekly (Mondays 04:23 UTC), on pushes to `main`
+  and whenever branch protection changes; the SARIF result is uploaded to code
+  scanning and published for the README badge
+  (`.github/workflows/scorecard.yml`).
 
 The dependency surface is direct dependencies on
 terraform-plugin-framework v1.19.0, terraform-plugin-framework-validators

@@ -190,18 +190,22 @@ Change `templates/` or `examples/`, never `docs/` directly.
 | Live acceptance (`TestLiveAcc*`) | 26 | `*_test.go` + `internal/acceptance` | yes — real Gravitino via podman | that real server behaviour matches the spec; `LivePreCheck` refuses to run against a mock (`contributing/live-acceptance-tests.md`) |
 | Version matrix | 2 server versions | `.github/gravitino-versions.txt` | yes — Docker | the same suite passes on 1.3.0 and 1.3.1 (`make testacc-matrix`) |
 
-Coverage, measured 2026-10-18 (55 of 56 packages under `./internal/...` have tests):
+Coverage, measured 2026-10-18 (55 of 56 packages under `./internal/...` have tests). `make coverage`
+writes the unit profile, `make coverage-merge` merges it with the profile the acceptance container
+writes (`-coverpkg=./internal/...`); both print a per-package table, which the `test` and
+`acceptance` jobs publish in their job summaries.
 
 | Command | Total |
 |---|---|
 | `go test -coverpkg=./... -coverprofile=cover.out ./internal/...` | 75.5% |
-| `go test -coverprofile=cover.out ./internal/...` (what CI's artifact holds) | 59.8% |
+| `go test -coverprofile=cover.out ./internal/...` | 59.8% |
 | `TF_ACC=1 go test -coverpkg=./... -coverprofile=cover.out ./internal/...` | 78.0% |
+| `make coverage` / `make coverage-merge` (what CI reports) | 65.8% / 82.1% |
 
-The merged profile (`-coverpkg=./...`) is the number to quote; a bare `-coverprofile` measures each
-package against its own statements only. Issue
-[#49](https://github.com/caberdo/terraform-provider-gravitino/issues/49) tracks publishing the
-merged number from CI.
+The merged profile is the number to quote; a bare `-coverprofile` measures each package against its
+own statements only. Statement counts depend on the Go patch release that produced the profile
+(`go 1.27.1` sums `./internal/...` to 9766 statements, `go 1.27.2` to 7661), so compare within one
+toolchain.
 
 ## Release pipeline
 
