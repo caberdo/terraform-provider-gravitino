@@ -15,24 +15,12 @@ updates:
       prefix: "chore(deps)"
       include: "scope"
 
-  - package-ecosystem: "docker-compose"
-    directory: "/"
-    schedule:
-      interval: "daily"
-      time: "03:00"
-      timezone: "Europe/Amsterdam"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "deps"
-    commit-message:
-      prefix: "chore(deps)"
-      include: "scope"
-
   # The stack mixes the test toolchain with the server under test. Only `golang`
   # may move: `apache/gravitino` stays on the tag the version matrix
   # (.github/gravitino-versions.txt) drives, and an update against it would
-  # silently change which server version the suite runs against.
+  # silently change which server version the suite runs against. There is one
+  # entry per ecosystem and directory - a second `docker-compose` block for "/"
+  # would invalidate the whole file - so the guard lives here.
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
