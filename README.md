@@ -37,6 +37,7 @@ Terraform state as the rest of your infrastructure.
 - [Testing](#testing)
 - [Development](#development)
 - [Troubleshooting and FAQ](#troubleshooting-and-faq)
+- [Project documents](#project-documents)
 - [Security, contributing and support](#security-contributing-and-support)
 - [License](#license)
 
@@ -447,27 +448,6 @@ registered to the releasing account.
 CI runs the unit suite with `-race` on every pull request, and the acceptance matrix on every push
 to `main`.
 
-### Coverage
-
-Coverage is reported per package, weakest first:
-
-```sh
-make coverage        # writes coverage.out and prints a per-package table
-make coverage-html   # same run, then the HTML report
-```
-
-The unit suite alone under-reports packages whose behaviour is asserted end-to-end against a
-real Gravitino server. The acceptance container therefore also writes
-`coverage-acceptance.out`, and the two profiles can be merged into one number:
-
-```sh
-make testacc-docker   # unit + acceptance container, writes coverage-acceptance.out
-make coverage-merge   # writes coverage-union.out and prints the merged table
-```
-
-Both CI jobs publish the same table in their job summary: the `test` job for the unit profile
-and the `acceptance` job for the merged one.
-
 The suite is 615 tests in total:
 
 | Group | Count | Needs |
@@ -488,6 +468,40 @@ make testacc-matrix                              # every supported version
 make testacc-live                                # live suite via podman
 make testacc-live-filter F=TestLiveAccRoleResource
 ```
+
+### Coverage
+
+`make coverage` runs the unit suite alone (`TestAcc*` and `TestLiveAcc*` skip themselves), writes
+`coverage.out` and prints a per-package table, weakest package first; `make coverage-html` opens
+the same profile as HTML. Because packages whose behaviour is asserted end-to-end read low on the
+unit suite alone, the acceptance container also writes `coverage-acceptance.out`
+(`-covermode=atomic -coverpkg=./internal/...`), and `make coverage-merge` merges both profiles into
+`coverage-union.out` and prints the same table.
+
+```sh
+make coverage             # unit profile + per-package table
+make coverage-html        # same run, then the HTML report
+make testacc-docker       # acceptance container, writes coverage-acceptance.out
+make coverage-merge       # merged profile + per-package table
+```
+
+The `test` job publishes the unit table in its job summary and the `acceptance` job the merged one.
+
+`-coverpkg` merges coverage across packages; a bare `-coverprofile` reports the owning package only,
+which understates the numbers badly (the client reads 14% there because its callers live in other
+packages). Measured at revision `9dbf159`:
+
+| Command | Statement coverage |
+|---|---|
+| `go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 75.5% (unit only) |
+| `TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 78.0% (unit + acceptance) |
+| `go test -coverprofile=c.out ./internal/...` | 59.8% (per package) |
+| `TF_ACC=1 go test -coverprofile=c.out ./internal/...` | 61.6% (per package, unit + acceptance) |
+
+Statement counts come from the cover profile, so they depend on the Go patch release that produced
+it — `go 1.27.1` (the `go.mod` toolchain, which CI installs) sums `./internal/...` to 9766
+statements, `go 1.27.2` to 7661 for the same tree. On the committed tooling CI reports 65.8%
+(6424/9766) for the unit profile and 82.1% (8021/9766) with the acceptance profile merged.
 
 ## Development
 
@@ -553,6 +567,17 @@ instead of erroring.
 **Which server version should I run?**
 CI exercises `1.3.0` and `1.3.1`; `.github/gravitino-versions.txt` is the single source of truth
 and is read by both the CI matrix and `make testacc-matrix`.
+
+## Project documents
+
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — package layout, request flow, authentication, the
+  Gravitino version gates, the test layers and the release pipeline.
+- [`GOVERNANCE.md`](./GOVERNANCE.md) — who maintains the provider, how decisions are made, what CI
+  enforces and how continuity is handled.
+- [`ROADMAP.md`](./ROADMAP.md) — what is planned next, and what is explicitly out of scope.
+- [`.github/OPENSSF-BEST-PRACTICES.md`](./.github/OPENSSF-BEST-PRACTICES.md) — the OpenSSF Best
+  Practices evidence pack, criterion by criterion, with the command behind every figure.
+- [`NOTICE`](./NOTICE) — the upstream works this provider derives from and their licences.
 
 ## Security, contributing and support
 

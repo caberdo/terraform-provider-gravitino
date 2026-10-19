@@ -4,6 +4,32 @@
 
 A Terraform provider for [Apache Gravitino](https://gravitino.apache.org/), built with the Plugin Framework (v1.19.0).
 
+## Documentation map
+
+Read these before changing behaviour; each states a constraint this file only summarises:
+
+| Document | Contents |
+|---|---|
+| `ARCHITECTURE.md` | Package layout, request flow, auth, version gating, test layers |
+| `GOVERNANCE.md` | Roles, review and merge requirements, release authority |
+| `ROADMAP.md` | Supported Gravitino versions, planned surface, open work |
+| `.github/OPENSSF-BEST-PRACTICES.md` | OpenSSF Best Practices criteria and the evidence for each |
+| `.github/CONTRIBUTING.md` | Development setup, conventions, pull request process |
+| `.github/SECURITY.md` | Supported versions, vulnerability reporting, security model |
+| `CHANGELOG.md` | Release history; add an entry under `## Unreleased` |
+| `NOTICE` | Upstream works and their licences |
+
+`docs/` is **generated** by tfplugindocs from `templates/` plus `examples/`
+(`make generate`, i.e. `go generate ./...`). Never hand-edit `docs/`; edit the template
+or the example and regenerate, or CI's docs-drift gate (`git diff --exit-code -- docs/`)
+fails. Resource and data source schema descriptions are the source of the reference docs.
+
+## Provider surface
+
+21 resources, 50 data sources, 12 schema attributes marked `Sensitive` (credentials,
+tokens and keytab material). Registration lives in `internal/provider/provider.go`;
+schemas are the source of `docs/`.
+
 ## Resources Implemented (all complete with CRUD + Import + tests)
 
 | Resource              | TF Name                   | Hierarchy                    |
@@ -27,17 +53,19 @@ A Terraform provider for [Apache Gravitino](https://gravitino.apache.org/), buil
 | Group                 | `gravitino_group`         | `metalake.group`               |
 | Role                  | `gravitino_role`          | `metalake.role`                |
 | Owner                 | `gravitino_owner`         | `metalake.{obj}`               |
+| IdP User              | `gravitino_idp_user`      | `metalake.idp_user`            |
+| IdP Group             | `gravitino_idp_group`     | `metalake.idp_group`           |
 
 All resources also have corresponding data sources (list + get) and documentation under `docs/`.
 
 ## Architecture
 
 ```
-main.go                        # Entry point
+main.go                        # Entry point; serves protocol 6
 internal/
-├── client/                    # HTTP client + per-resource REST methods
+├── client/                    # 35 files: HTTP client + per-resource REST methods
 │   ├── client.go              # Core client: doRequest, Get, Post, Put, Delete
-│   ├── auth/                  # Auth providers (AuthProvider interface)
+│   ├── auth/                  # 12 files: auth providers (AuthProvider interface)
 │   │   ├── provider.go        # AuthProvider + TransportProvider interfaces
 │   │   ├── simple.go          # Simple (OS user) auth
 │   │   ├── basic.go           # HTTP Basic auth
@@ -45,20 +73,29 @@ internal/
 │   │   ├── oauth_credentials.go # OAuth2 client credentials flow (auto-refresh)
 │   │   └── kerberos.go        # Kerberos SPNEGO auth
 │   ├── authentication.go      # Principal endpoint
+│   ├── server_version.go      # DetectServerVersion, ResolveServerVersion, AtLeast
+│   ├── version.go             # GetVersion + the fail-closed Check* version gates
 │   ├── metalake.go, catalog.go, schema.go, fileset.go, topic.go, ...
-├── models/                    # JSON-annotated structs (requests & responses)
+├── models/                    # 39 files: JSON-annotated structs (requests & responses)
 │   ├── common.go              # ErrorResponse, Audit, NameIdentifier
 │   ├── metalake.go, catalog.go, schema.go, fileset.go, topic.go, ...
 ├── provider/
 │   └── provider.go            # Provider schema + resource/data source registration
-├── resources/                 # Terraform Plugin Framework resources
+├── resources/                 # one package per resource + shared helpers
 │   ├── metalake/resource.go   # Schema + CRUD + Import
 │   ├── catalog/resource.go
 │   ├── schema/resource.go
+│   ├── resourceutil/          # Shared import-ID parsing helpers
+│   ├── resourcetest/          # Shared test harness for resource packages
 │   └── ...
-├── datasources/               # Data source implementations
+├── datasources/               # 27 dirs: data source implementations
 │   └── ...
+├── acceptance/                # Live pre-check + protocol v6 server factories
+├── tfutil/                    # Plan/state and types helpers shared by both layers
 ```
+
+Tests live beside the code: 272 Go files, 116 of them `*_test.go`; 56 packages under
+`./internal/...`, 55 with tests.
 
 ## API compatibility target
 
@@ -194,18 +231,19 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 - [ ] Unit tests: schema, create, update, delete, import (spec-faithful payloads)
 - [ ] Resource registered in `internal/provider/provider.go`
 - [ ] Enum fields have `stringvalidator.OneOf` with all possible values from API docs
-- [ ] Docs generated via `go generate ./...`
+- [ ] Docs generated via `make generate` (`go generate ./...`) from `templates/` + `examples/`; never edit `docs/` by hand
 
 ### Commands
-- **Build**: `go build ./...`
-- **Test (unit)**: `go test -v -cover ./internal/...`
-- **Coverage (unit)**: `make coverage` (per-package table) / `make coverage-html`
-- **Coverage (unit + acceptance)**: `make coverage-merge`, after `make testacc-docker` wrote `coverage-acceptance.out`
-- **Test (acceptance via Docker)**: `make testacc-docker`
+- **Build**: `make build` (`go build ./...` for a compile check)
+- **Test (unit)**: `make test` (`go test -v -cover ./internal/...`)
+- **Test (acceptance)**: `make testacc` (`TF_ACC=1`), `make testacc-docker` (Gravitino 1.3.0 in Docker; `GRAVITINO_VERSION=1.3.1` for the other), `make testacc-matrix` (every version in `.github/gravitino-versions.txt`)
 - **Live acceptance (real server via podman)**: `make testacc-live` / `make testacc-live-filter F=<TestLiveAcc...>`
+- **Coverage**: see [Coverage](#coverage)
 - **Lint**: `golangci-lint run --config .github/golangci.yml ./...`
 - **Lint fix**: `make lint-fix`
-- **Docs**: `go generate ./...` (uses `github.com/hashicorp/terraform-plugin-docs`)
+- **Vet / fmt**: `make vet`, `make fmt`
+- **Docs**: `make generate` (`go generate ./...`, uses `github.com/hashicorp/terraform-plugin-docs`) — never hand-edit `docs/`
+- **Examples**: `make validate-examples` (CI runs it with `REQUIRE_TERRAFORM=1`)
 
 ### Testing
 
@@ -214,19 +252,6 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 go test -v -cover ./internal/...
 ```
 Each resource package has `resource_test.go` with: schema, create, delete, import (valid + invalid).
-
-**Coverage.** `make coverage` writes `coverage.out` for the unit suite only (`TestAcc*` and
-`TestLiveAcc*` are skipped) and prints a per-package table, weakest first
-(`scripts/coverage-summary.sh`). Because packages such as `internal/resources/*` assert most of
-their behaviour end-to-end, the acceptance container also writes `coverage-acceptance.out`
-(`-coverpkg=./internal/...`); `make coverage-merge` merges both profiles into `coverage-union.out`
-and prints the same table. Both CI jobs publish it in their job summary.
-
-The statement counts come straight from the cover profile, so they depend on the Go patch
-release that produced it: `go 1.27.1` — the `go.mod` toolchain, which CI installs — counts 9766
-statements for `./internal/...`, where `go 1.27.2` counts 7661 for the same tree (the block set
-is identical, the statements per block are not). Compare coverage numbers only within one
-toolchain; CI is authoritative.
 
 **Acceptance tests** (real Gravitino via Docker):
 ```bash
@@ -239,6 +264,40 @@ TEST_PATTERN=TestAccCatalog docker compose run --rm -e TEST_PATTERN=TestAccCatal
 `internal/resources/*/live_test.go`, `internal/datasources/*/live_test.go`) only run against a
 real Gravitino via `make testacc-live` (podman) — the `acceptance.LivePreCheck` gate skips them
 unless `GRAVITINO_URI` answers `/api/version`. They never start their own HTTP mock.
+
+Write `Test*` for mocks, `TestAcc*` when the path must go through Terraform Core
+(`providerserver.NewProtocol6WithError`), and `TestLiveAcc*` only for behaviour that a mock
+cannot prove. 615 `Test*` functions today, 66 of them `TestAcc*` and 26 `TestLiveAcc*`.
+
+#### Coverage
+
+`make coverage` runs the unit suite alone (`TestAcc*` and `TestLiveAcc*` skip themselves, so the
+profile cannot depend on the environment), writes `coverage.out` and prints a per-package table,
+weakest first (`scripts/coverage-summary.sh`); `make coverage-html` opens the same profile as HTML.
+Because packages such as `internal/resources/*` assert most of their behaviour end-to-end, the
+acceptance container also writes `coverage-acceptance.out` (`-covermode=atomic
+-coverpkg=./internal/...`), and `make coverage-merge` merges both profiles into `coverage-union.out`
+and prints the same table. The `test` job publishes the unit table in its job summary, the
+`acceptance` job the merged one.
+
+Measured ad hoc at revision `9dbf159`. Always use a distinct profile per run; `-coverpkg=./...`
+merges coverage across packages, a bare `-coverprofile` reports the owning package only.
+
+| Command | Coverage |
+|---|---|
+| `go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 75.5% (unit only) |
+| `TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 78.0% (unit + acceptance) |
+| `go test -coverprofile=c.out ./internal/...` | 59.8% (per package) |
+| `TF_ACC=1 go test -coverprofile=c.out ./internal/...` | 61.6% (per package, unit + acceptance) |
+
+Then `go tool cover -func=c.out | tail -1` for the total.
+
+Statement counts come straight from the cover profile, so they depend on the Go patch release that
+produced it: for this tree `go 1.27.1` — the `go.mod` toolchain, which CI installs — sums
+`./internal/...` to 9766 statements and `go 1.27.2` to 7661 (identical block set, fewer statements
+per block). Compare numbers only within one toolchain; CI is authoritative, and on the committed
+tooling it reports 65.8% (6424/9766) for the unit profile and 82.1% (8021/9766) with the acceptance
+profile merged — measured without a live server, which the container also runs.
 
 ### Logging
 

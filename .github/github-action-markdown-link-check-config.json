@@ -5,6 +5,10 @@
     },
     {
       "pattern": "^https?://(api\\.securityscorecards\\.dev|scorecard\\.dev)"
+    },
+    {
+      "comment": "The badge URL in .github/OPENSSF-BEST-PRACTICES.md contains the PROJECT_ID placeholder: it cannot resolve until the project is registered at bestpractices.dev.",
+      "pattern": "^https?://(www\\.)?bestpractices\\.dev/projects"
     }
   ]
 }
