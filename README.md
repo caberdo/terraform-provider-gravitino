@@ -486,9 +486,10 @@ make coverage             # unit profile + per-package table
 make coverage-html        # same run, then the HTML report
 make testacc-docker       # acceptance container, writes coverage-acceptance.out
 make coverage-merge       # merged profile + per-package table
+make coverage-gate        # fail when a scope is below its floor
 ```
 
-The `test` job publishes the unit table in its job summary and the `acceptance` job the merged one.
+The `test` job publishes the unit table in its job summary, the `acceptance` job the merged one.
 
 <!-- coverage:start -->
 ```
@@ -509,6 +510,13 @@ The block above is generated from `.github/coverage-baseline.txt` by
 `scripts/coverage-readme.sh`: `make coverage-readme` rewrites it and
 `make coverage-readme-check` fails when it drifts from the baseline. The same file carries the
 enforced floor, so the badge, the block and the gate all publish one number.
+
+`make coverage-gate` (`scripts/coverage-gate.sh`) compares `coverage-union.out` against those
+floors and fails, naming every scope below its floor. The `Coverage` job runs it on every pull
+request, after the acceptance container has written its profile, so a change cannot make the
+project less tested than it was. The gate fails closed: an absent profile, a scope named in the
+baseline that the profile does not report, and a missing, misspelled or non-numeric floor are
+configuration errors (exit 2), never a pass.
 
 ## Development
 

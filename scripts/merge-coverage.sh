@@ -4,7 +4,11 @@
 #
 # All inputs must use the same cover mode (`-covermode=atomic`) and the same
 # source revision: blocks are identified by their position range, and the hit
-# counts are added.
+# counts are added. A block's statement count is taken from the last input that
+# mentions it, so profiles produced by different Go patch releases (which count
+# statements per block differently) resolve to the last one — pass the profile
+# whose toolchain the reported number should be quoted in last, and compare
+# numbers only within one toolchain.
 #
 # Usage: scripts/merge-coverage.sh <output.out> <input.out> [input.out ...]
 set -euo pipefail

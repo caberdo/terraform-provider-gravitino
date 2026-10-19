@@ -18,6 +18,7 @@
 - [ ] A regression test covers this change, if it is a bug fix
 - [ ] Mock payloads are copied from the OpenAPI `examples:` blocks, not written from the Go structs
 - [ ] `make testacc` passes, if CRUD behaviour through Terraform Core changed
+- [ ] `make coverage-merge && make coverage-gate` passes, and the floors in `.github/coverage-baseline.txt` are raised (with `make coverage-readme` re-run) if the change improved coverage
 
 <!-- If this change needs a Gravitino server newer than the default, say so: -->
 

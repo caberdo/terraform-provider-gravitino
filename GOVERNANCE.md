@@ -48,6 +48,7 @@ responsibilities and the workflows in `.github/workflows/` do the mechanical par
 | `Lint & Security` — golangci-lint (pinned v2.13.2) and gosec (SARIF → code scanning, job fails on findings) | `test.yml` | every pull request, every push to `main` | a red run is treated as blocking; see the note below |
 | `Test` — build, `go vet`, `go mod tidy`/`verify`, cross-platform build, `make validate-examples`, generated-docs drift, `go test -race` with coverage | `test.yml` | every pull request, every push to `main` | same |
 | `Dependency Review` | `test.yml` | pull requests | vulnerable dependency introduced by the pull request |
+| `Coverage` — the acceptance container's profile merged with the unit profile, checked against `.github/coverage-baseline.txt` by `scripts/coverage-gate.sh`, plus the README/baseline drift check (`scripts/coverage-readme.sh --check`) | `test.yml` | pull requests | a change that drops a scope below its coverage floor, or a README coverage block that no longer matches the enforced baseline (the gate exits 2, not 0, when the profile or a floor is missing) |
 | `Acceptance Tests (Gravitino 1.3.0 / 1.3.1)` | `test.yml` | push to `main` | a release from a `main` whose acceptance matrix is red |
 | `Generate Docs` (opens a PR when `docs/` drifts) / `Validate Markdown Files` | `docs.yml` | push to `main` / pull request | merged documentation that no longer matches the schema, and broken markdown links |
 | `Release` — GoReleaser from a GPG-signed tag, GPG-signed checksums, SLSA v1.0 build provenance, SPDX SBOM | `release.yml` | tag `v*`, `workflow_call`, or a manual dispatch with a tag to republish | a release whose artifacts are unsigned or un-attested |
@@ -58,8 +59,8 @@ checks**, and GitHub's classic branch protection is not enabled on top of it. CI
 on every change, but a merge is not mechanically blocked by a red run; that is the maintainer's
 commitment, not an enforced rule. Two related gaps are recorded here rather than papered over:
 
-* Required status checks should be added to the ruleset (`Lint & Security`, `Test`) so the gate is
-  enforced instead of trusted.
+* Required status checks should be added to the ruleset (`Lint & Security`, `Test`, `Coverage`) so
+  the gate is enforced instead of trusted.
 * `.github/CODEOWNERS` reads `* @caberdo` — the *organization*, while GitHub resolves code owners
   to users or teams with write access. The ruleset's `require_code_owner_review` therefore has no
   effective owner today. Naming the maintainer directly is not a free fix: GitHub does not let an

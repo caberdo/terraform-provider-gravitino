@@ -8,11 +8,21 @@ ENHANCEMENTS:
   table and its three ad-hoc figures are gone.
 - **CI publishes coverage, unit and merged.** `make coverage`, `make coverage-html` and
   `make coverage-merge` (`scripts/coverage-summary.sh`, `scripts/merge-coverage.sh`) render Go
-  cover profiles as per-package Markdown tables, weakest package first. The `test` job publishes
-  the unit profile in its job summary; the `acceptance` job merges it with the profile the
-  instrumented acceptance container writes (`-coverpkg=./internal/...`), so the reported number
-  includes the suite that asserts most behaviour end-to-end — 82.1% against 65.8% unit-only on the
-  `go.mod` toolchain.
+  cover profiles as per-package Markdown tables, weakest package first. `merge-coverage.sh` keys
+  blocks by position, so the merged profile has one line per block whatever the inputs, and
+  `coverage-summary.sh` rejects any other shape (exit 2) instead of printing a wrong number. The
+  `test` job publishes the unit profile in its job summary; the `Coverage` job (pull requests) and
+  the `acceptance` job (`main`) merge it with the profile the instrumented acceptance container
+  writes — 79.2% merged.
+- **A coverage floor fails a pull request that drops it.** `.github/coverage-baseline.txt` records
+  the merged coverage of `internal/client`, `internal/models`, `internal/provider` and the total
+  against a per-scope floor; `make coverage-gate` (`scripts/coverage-gate.sh`) prints a
+  coverage/floor/delta table, names every scope below its floor, and exits 2 — never 0 — when the
+  profile is absent, the baseline cannot be parsed, or a scope named in the baseline is missing
+  from the profile. The new `Coverage` job runs it (and `coverage-readme.sh --check`, so the
+  published README block cannot drift) on every pull request after the acceptance container, so
+  the floor is never compared against a unit-only number. Floors sit below the measurement (total
+  79.2% measured, 78.5 enforced) so environment jitter cannot fail a run on its own.
 - **OpenSSF Scorecard.** The supply-chain assessment now runs weekly, on pushes to `main` and on
   branch-protection changes, publishes its result for the README badge and uploads the SARIF to
   code scanning.
@@ -31,7 +41,7 @@ DOCUMENTATION:
   `.github/SECURITY.md` now cover development setup, review conventions and the provider's
   security model.
 - **`README.md` links the documentation set** from a new `Project documents` section and reports the
-  measured coverage commands and numbers.
+  coverage construction the floor enforces, per scope, with the measured numbers.
 
 ## 0.9.0 (2026-10-08)
 

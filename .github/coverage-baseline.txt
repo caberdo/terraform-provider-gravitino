@@ -12,6 +12,13 @@
 # `measured_commit` and `measured_date` describe the last measurement,
 # `target`/`gold` are the tracked milestones.
 #
+# The gate is `make coverage-gate` (`scripts/coverage-gate.sh`), which the
+# `Coverage` job runs on every pull request after the acceptance container has
+# written its profile. It parses this file with the same rules as
+# `coverage-readme.sh` and additionally requires every scope named here to appear
+# in the merged profile: a missing, misspelled or stray `floor_*`, or a scope
+# that drops out of the profile, is a configuration error (exit 2), never a pass.
+#
 # The measurement is the merged profile the committed tooling produces: the bare
 # unit profile (`make coverage`, `coverage.out`) merged with the instrumented
 # acceptance container's profile (`coverage-acceptance.out`,

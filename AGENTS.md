@@ -238,7 +238,7 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 - **Test (unit)**: `make test` (`go test -v -cover ./internal/...`)
 - **Test (acceptance)**: `make testacc` (`TF_ACC=1`), `make testacc-docker` (Gravitino 1.3.0 in Docker; `GRAVITINO_VERSION=1.3.1` for the other), `make testacc-matrix` (every version in `.github/gravitino-versions.txt`)
 - **Live acceptance (real server via podman)**: `make testacc-live` / `make testacc-live-filter F=<TestLiveAcc...>`
-- **Coverage**: see [Coverage](#coverage)
+- **Coverage**: `make coverage`, `make coverage-merge`, `make coverage-gate` (fails when the merged profile is below `.github/coverage-baseline.txt`); see [Coverage](#coverage)
 - **Lint**: `golangci-lint run --config .github/golangci.yml ./...`
 - **Lint fix**: `make lint-fix`
 - **Vet / fmt**: `make vet`, `make fmt`
@@ -277,27 +277,40 @@ weakest first (`scripts/coverage-summary.sh`); `make coverage-html` opens the sa
 Because packages such as `internal/resources/*` assert most of their behaviour end-to-end, the
 acceptance container also writes `coverage-acceptance.out` (`-covermode=atomic
 -coverpkg=./internal/...`), and `make coverage-merge` merges both profiles into `coverage-union.out`
-and prints the same table. The `test` job publishes the unit table in its job summary, the
-`acceptance` job the merged one.
+and prints the same table. `merge-coverage.sh` keys blocks by position, so the union has one line
+per block however the inputs were instrumented; `coverage-summary.sh` sums the statement column and
+therefore rejects a profile that repeats a block (a raw `-coverpkg` profile) with exit 2 instead of
+printing a wrong number.
 
-Measured ad hoc at revision `9dbf159`. Always use a distinct profile per run; `-coverpkg=./...`
-merges coverage across packages, a bare `-coverprofile` reports the owning package only.
+**The floor.** `make coverage-gate` (`scripts/coverage-gate.sh`) compares `coverage-union.out`
+against [`.github/coverage-baseline.txt`](.github/coverage-baseline.txt) — the same file
+`scripts/coverage-readme.sh` renders README.md's badge and block from — and exits non-zero for
+every scope below its `floor_*`. The `Coverage` job runs it on every pull request, after running
+the acceptance container, so the gate never sees a unit-only number, and it also runs
+`coverage-readme.sh --check` so the published block cannot drift. A scope named in the baseline
+that drops out of the profile, a missing, misspelled or stray `floor_*`, and an absent profile are
+configuration errors (exit 2), never a pass. Raise a floor in the same pull request that adds the
+tests and run `make coverage-readme`. The `test` job publishes the unit table in its job summary,
+the `acceptance` job the merged one.
+
+Measured on the committed tooling at revision `9c94a46` (merged profile: Gravitino 1.3.0,
+`go 1.27.2`, one line per block). Always use a distinct profile per run; `-coverpkg=./...`
+instruments every package, a bare `-coverprofile` reports the owning package only.
 
 | Command | Coverage |
 |---|---|
-| `go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 75.5% (unit only) |
-| `TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 78.0% (unit + acceptance) |
-| `go test -coverprofile=c.out ./internal/...` | 59.8% (per package) |
-| `TF_ACC=1 go test -coverprofile=c.out ./internal/...` | 61.6% (per package, unit + acceptance) |
+| `make coverage` (unit only, per package) | 59.8% (4584/7661) |
+| `make coverage-merge` (unit + acceptance, the profile `make coverage-gate` enforces) | 79.2% (6069/7661) |
 
-Then `go tool cover -func=c.out | tail -1` for the total.
+Scopes the gate enforces, with the floors currently committed: `internal/client` 77.2% (floor
+76.5), `internal/models` 84.7 (84.0), `internal/provider` 70.3 (69.5), `total` 79.2 (78.5).
 
 Statement counts come straight from the cover profile, so they depend on the Go patch release that
 produced it: for this tree `go 1.27.1` — the `go.mod` toolchain, which CI installs — sums
-`./internal/...` to 9766 statements and `go 1.27.2` to 7661 (identical block set, fewer statements
-per block). Compare numbers only within one toolchain; CI is authoritative, and on the committed
-tooling it reports 65.8% (6424/9766) for the unit profile and 82.1% (8021/9766) with the acceptance
-profile merged — measured without a live server, which the container also runs.
+`./internal/...` to 9766 statements and `go 1.27.2` to 7661 (identical block set, different
+statement counts per block). Compare numbers only within one toolchain, and note that a merged
+profile takes its statement counts from the profile `merge-coverage.sh` reads last (the acceptance
+container's, in CI).
 
 ### Logging
 
