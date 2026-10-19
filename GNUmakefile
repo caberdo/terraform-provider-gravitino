@@ -31,6 +31,15 @@ coverage-merge:
 	@echo
 	@./scripts/coverage-summary.sh coverage-union.out
 
+# Regenerate the coverage badge and block in README.md from
+# .github/coverage-baseline.txt; `make coverage-readme-check` is what CI runs to
+# fail when the committed README has drifted from the baseline.
+coverage-readme:
+	./scripts/coverage-readme.sh
+
+coverage-readme-check:
+	./scripts/coverage-readme.sh --check
+
 testacc:
 	TF_ACC=1 go test -v -cover ./internal/...
 
@@ -80,4 +89,4 @@ validate-examples:
 generate:
 	go generate ./...
 
-.PHONY: build test coverage coverage-html coverage-merge testacc lint lint-fix fmt vet install testacc-docker testacc-matrix testacc-live testacc-live-filter validate-examples generate
+.PHONY: build test coverage coverage-html coverage-merge coverage-readme coverage-readme-check testacc lint lint-fix fmt vet install testacc-docker testacc-matrix testacc-live testacc-live-filter validate-examples generate

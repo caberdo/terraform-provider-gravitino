@@ -1,6 +1,11 @@
 ## Unreleased
 
 ENHANCEMENTS:
+- **The README coverage badge and block are generated.** `scripts/coverage-readme.sh` renders the
+  badge and the per-scope block from `.github/coverage-baseline.txt` (`make coverage-readme`), so
+  the number the README publishes is the one the coverage gate enforces; `make coverage-readme-check`
+  exits non-zero when the committed README has drifted from the baseline. The hand-written coverage
+  table and its three ad-hoc figures are gone.
 - **CI publishes coverage, unit and merged.** `make coverage`, `make coverage-html` and
   `make coverage-merge` (`scripts/coverage-summary.sh`, `scripts/merge-coverage.sh`) render Go
   cover profiles as per-package Markdown tables, weakest package first. The `test` job publishes

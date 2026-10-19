@@ -1,6 +1,9 @@
 # Terraform Provider for Apache Gravitino
 
 [![CI](https://img.shields.io/github/actions/workflow/status/caberdo/terraform-provider-gravitino/test.yml?branch=main&label=CI)](https://github.com/caberdo/terraform-provider-gravitino/actions/workflows/test.yml)
+<!-- coverage-badge:start -->
+[![Coverage](https://img.shields.io/badge/coverage-79.2%25-yellow)](#coverage)
+<!-- coverage-badge:end -->
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/caberdo/terraform-provider-gravitino/badge)](https://scorecard.dev/viewer/?uri=github.com/caberdo/terraform-provider-gravitino)
 [![Release](https://img.shields.io/github/v/release/caberdo/terraform-provider-gravitino?label=release)](https://github.com/caberdo/terraform-provider-gravitino/releases)
 [![Terraform Registry](https://img.shields.io/badge/registry-caberdo%2Fgravitino-7b42bc)](https://registry.terraform.io/providers/caberdo/gravitino)
@@ -487,21 +490,25 @@ make coverage-merge       # merged profile + per-package table
 
 The `test` job publishes the unit table in its job summary and the `acceptance` job the merged one.
 
-`-coverpkg` merges coverage across packages; a bare `-coverprofile` reports the owning package only,
-which understates the numbers badly (the client reads 14% there because its callers live in other
-packages). Measured at revision `9dbf159`:
+<!-- coverage:start -->
+```
+internal/client    ███████████████░░░░░  77.2%   floor 76.5%
+internal/models    █████████████████░░░  84.7%   floor 84.0%
+internal/provider  ██████████████░░░░░░  70.3%   floor 69.5%
+total              ████████████████░░░░  79.2%   floor 78.5%   -> 80%, then 90%
+```
 
-| Command | Statement coverage |
-|---|---|
-| `go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 75.5% (unit only) |
-| `TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 78.0% (unit + acceptance) |
-| `go test -coverprofile=c.out ./internal/...` | 59.8% (per package) |
-| `TF_ACC=1 go test -coverprofile=c.out ./internal/...` | 61.6% (per package, unit + acceptance) |
+Merged statement coverage from `coverage.out` (unit) and `coverage-acceptance.out`
+(acceptance, `-covermode=atomic -coverpkg=./internal/...`) via `scripts/merge-coverage.sh`
+(`make coverage-merge`).
 
-Statement counts come from the cover profile, so they depend on the Go patch release that produced
-it — `go 1.27.1` (the `go.mod` toolchain, which CI installs) sums `./internal/...` to 9766
-statements, `go 1.27.2` to 7661 for the same tree. On the committed tooling CI reports 65.8%
-(6424/9766) for the unit profile and 82.1% (8021/9766) with the acceptance profile merged.
+Measured on `9c94a46` (unit + acceptance) on 2026-10-19.
+<!-- coverage:end -->
+
+The block above is generated from `.github/coverage-baseline.txt` by
+`scripts/coverage-readme.sh`: `make coverage-readme` rewrites it and
+`make coverage-readme-check` fails when it drifts from the baseline. The same file carries the
+enforced floor, so the badge, the block and the gate all publish one number.
 
 ## Development
 
