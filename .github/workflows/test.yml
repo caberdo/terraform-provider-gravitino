@@ -126,10 +126,10 @@ jobs:
           {
             echo "## Coverage"
             echo ""
-            echo "Unit tests only: \`TestAcc*\` needs \`TF_ACC\` and \`TestLiveAcc*\` needs a"
-            echo "reachable server, so packages whose behaviour is asserted end-to-end read"
-            echo "low. Run \`make coverage\` locally, or see the acceptance job for the"
-            echo "merged unit + acceptance number."
+            echo "Unit tests only: the per-package profile \`TestAcc*\` and \`TestLiveAcc*\` leave"
+            echo "out (\`TF_ACC\`, a real server). The \`Coverage\` job on a pull request, and the"
+            echo "\`acceptance\` job on \`main\`, report the merged unit + acceptance profile that"
+            echo "\`.github/coverage-baseline.txt\` measures and \`scripts/coverage-gate.sh\` enforces."
             echo ""
             ./scripts/coverage-summary.sh coverage.out
           } >> "$GITHUB_STEP_SUMMARY"
@@ -142,6 +142,55 @@ jobs:
           name: coverage
           path: coverage.out
           if-no-files-found: ignore
+
+  # A pull request cannot make the project less tested than it was: run the same
+  # acceptance container `main` runs, merge its profile with the unit profile and
+  # fail when a scope in .github/coverage-baseline.txt is below its floor. The
+  # floor is calibrated on the merged profile, so the gate is never handed a
+  # unit-only number, and it exits 2 (not 0) when the profile or a floor is
+  # missing. README.md's badge and block come from the same baseline, so they are
+  # checked for drift in the same job.
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: test
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      # README's badge and coverage block are generated from the same baseline the
+      # gate enforces, so a dropped floor or a stale README fails here.
+      - name: README in sync with the coverage baseline
+        run: ./scripts/coverage-readme.sh --check
+
+      - name: Unit-test coverage
+        run: go test -count=1 -skip '^(TestAcc|TestLiveAcc)' -covermode=atomic -coverprofile=coverage.out ./internal/...
+
+      # The container writes coverage-acceptance.out into the mounted worktree.
+      - name: Run acceptance tests
+        run: docker compose run --rm test
+
+      - name: Coverage gate (unit + acceptance)
+        run: |
+          ./scripts/merge-coverage.sh coverage-union.out coverage.out coverage-acceptance.out
+          ./scripts/coverage-gate.sh coverage-union.out
+          {
+            echo "## Coverage (unit + acceptance)"
+            echo ""
+            echo "\`coverage.out\` and \`coverage-acceptance.out\` merged by \`scripts/merge-coverage.sh\`"
+            echo "and checked against the floors in \`.github/coverage-baseline.txt\` by"
+            echo "\`scripts/coverage-gate.sh\`."
+            echo ""
+            ./scripts/coverage-summary.sh coverage-union.out
+          } >> "$GITHUB_STEP_SUMMARY"
 
   dependency-review:
     name: Dependency Review

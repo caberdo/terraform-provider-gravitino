@@ -190,22 +190,24 @@ Change `templates/` or `examples/`, never `docs/` directly.
 | Live acceptance (`TestLiveAcc*`) | 26 | `*_test.go` + `internal/acceptance` | yes — real Gravitino via podman | that real server behaviour matches the spec; `LivePreCheck` refuses to run against a mock (`contributing/live-acceptance-tests.md`) |
 | Version matrix | 2 server versions | `.github/gravitino-versions.txt` | yes — Docker | the same suite passes on 1.3.0 and 1.3.1 (`make testacc-matrix`) |
 
-Coverage, measured 2026-10-18 (55 of 56 packages under `./internal/...` have tests). `make coverage`
+Coverage, measured 2026-10-19 (55 of 56 packages under `./internal/...` have tests). `make coverage`
 writes the unit profile, `make coverage-merge` merges it with the profile the acceptance container
-writes (`-coverpkg=./internal/...`); both print a per-package table, which the `test` and
-`acceptance` jobs publish in their job summaries.
+writes (`-coverpkg=./internal/...`), and both print a per-package table that the `test`, `Coverage`
+and `acceptance` jobs publish in their job summaries. `make coverage-gate` fails when a scope of the
+merged profile is below a floor in `.github/coverage-baseline.txt`, the same file
+`make coverage-readme` renders README.md's badge and block from.
 
 | Command | Total |
 |---|---|
-| `go test -coverpkg=./... -coverprofile=cover.out ./internal/...` | 75.5% |
-| `go test -coverprofile=cover.out ./internal/...` | 59.8% |
-| `TF_ACC=1 go test -coverpkg=./... -coverprofile=cover.out ./internal/...` | 78.0% |
-| `make coverage` / `make coverage-merge` (what CI reports) | 65.8% / 82.1% |
+| `make coverage` (unit only, per package) | 59.8% |
+| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | 79.2% |
+| `make coverage-gate` floors | 78.5% total (`internal/client` 76.5, `internal/models` 84.0, `internal/provider` 69.5) |
 
-The merged profile is the number to quote; a bare `-coverprofile` measures each package against its
-own statements only. Statement counts depend on the Go patch release that produced the profile
-(`go 1.27.1` sums `./internal/...` to 9766 statements, `go 1.27.2` to 7661), so compare within one
-toolchain.
+The merged profile is the number to quote, and the gate is the number that blocks a pull request; a
+bare `-coverprofile` measures each package against its own statements only. Statement counts depend
+on the Go patch release that produced the profile (`go 1.27.1` sums `./internal/...` to 9766
+statements, `go 1.27.2` to 7661) and a merged profile takes them from the profile
+`merge-coverage.sh` reads last, so compare within one toolchain.
 
 ## Release pipeline
 

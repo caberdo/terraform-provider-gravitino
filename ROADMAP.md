@@ -53,14 +53,17 @@ organization also has 2FA enforcement and secret scanning turned off.
 ## Next — correctness, coverage and honest compatibility
 
 * **Raise the merged statement coverage above 85%.** `make coverage-merge` reports the number CI
-  publishes: **82.1%** (8021/9766) for the merged unit + acceptance profile, 65.8% for the unit
-  profile alone — above the 80% the OpenSSF Best Practices programme requires. The gap is
-  concentrated where the tests are acceptance-shaped rather than unit-shaped, so the work is unit
-  tests for the error and drift paths of `internal/datasources/schema`,
-  `internal/datasources/secrets`, `internal/provider`, `internal/client` and `internal/models`;
-  `make coverage` ranks the packages, weakest first. Per-package `go test -cover` numbers understate
-  this badly (the client reads 14.3% there because its callers live in other packages); always
-  quote the merged profile.
+  publishes: **79.2%** (6069/7661) for the merged unit + acceptance profile — the same covered
+  block set is 83.1% (8116/9766) of the statements the `go.mod` toolchain counts — and
+  `make coverage` reports 59.8% per package for the unit suite alone. `make coverage-gate`
+  enforces a floor per scope from `.github/coverage-baseline.txt` (total 78.5 today) and
+  `make coverage-readme` keeps the README block in step with it, so the number can only move up;
+  the 80% and 90% milestones tracked there are the targets. The gap is concentrated where the
+  tests are acceptance-shaped rather than unit-shaped, so the work is unit tests for the error and
+  drift paths of `internal/datasources/schema`, `internal/datasources/secrets`,
+  `internal/provider`, `internal/client` and `internal/models`; `make coverage` ranks the packages,
+  weakest first. Per-package `go test -cover` numbers understate this badly (the client reads 14.3%
+  there because its callers live in other packages); always quote the merged profile.
 * **Keep the version matrix honest.** `.github/gravitino-versions.txt` is the single source of truth
   for the acceptance matrix; a new Gravitino release is added there once its REST API is checked
   against the schema, and every version-restricted field keeps its union-schema-plus-runtime-gate

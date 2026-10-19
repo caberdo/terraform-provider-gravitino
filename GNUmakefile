@@ -40,6 +40,12 @@ coverage-readme:
 coverage-readme-check:
 	./scripts/coverage-readme.sh --check
 
+# Fail when coverage-union.out, the merged unit + acceptance profile, is below a
+# floor in .github/coverage-baseline.txt. CI runs the same script in the
+# `Coverage` job on every pull request, after the acceptance container.
+coverage-gate:
+	./scripts/coverage-gate.sh coverage-union.out
+
 testacc:
 	TF_ACC=1 go test -v -cover ./internal/...
 
@@ -89,4 +95,4 @@ validate-examples:
 generate:
 	go generate ./...
 
-.PHONY: build test coverage coverage-html coverage-merge coverage-readme coverage-readme-check testacc lint lint-fix fmt vet install testacc-docker testacc-matrix testacc-live testacc-live-filter validate-examples generate
+.PHONY: build test coverage coverage-html coverage-merge coverage-readme coverage-readme-check coverage-gate testacc lint lint-fix fmt vet install testacc-docker testacc-matrix testacc-live testacc-live-filter validate-examples generate

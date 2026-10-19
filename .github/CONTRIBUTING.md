@@ -57,6 +57,11 @@ Every command below is a target in [`GNUmakefile`](../GNUmakefile):
 | `make vet` | `go vet ./...` |
 | `make generate` | `go generate ./...` (regenerates `docs/`) |
 | `make validate-examples` | `./scripts/validate-examples.sh` |
+| `make coverage` | Unit profile (`coverage.out`) plus the per-package table |
+| `make coverage-html` | `make coverage`, then `go tool cover -html=coverage.out` |
+| `make coverage-merge` | Merges `coverage.out` and `coverage-acceptance.out` into `coverage-union.out` and prints the table |
+| `make coverage-gate` | Fails when a scope of `coverage-union.out` is below its floor in [`.github/coverage-baseline.txt`](./coverage-baseline.txt) |
+| `make coverage-readme` / `make coverage-readme-check` | Renders README.md's coverage badge and block from that baseline / fails when they have drifted from it |
 
 `GRAVITINO_VERSION` defaults to `1.3.0` and selects the `apache/gravitino` image tag; pass
 `GRAVITINO_VERSION=1.3.1` on the `make` command line to run against the other supported
@@ -98,26 +103,52 @@ The suite is deliberately layered; each layer catches what the previous one cann
 
 ## Coverage
 
-`make coverage` writes the unit profile (`coverage.out`) and prints a per-package table, weakest
-first; `make coverage-html` opens it as HTML. `make coverage-merge` merges it with the profile the
-acceptance container writes (`coverage-acceptance.out`, `-coverpkg=./internal/...`) into
-`coverage-union.out` and prints the same table. CI publishes both tables in its job summaries: the
-`test` job for the unit profile, the `acceptance` job for the merged one.
+`make coverage` writes the unit profile (`coverage.out`, `TestAcc*`/`TestLiveAcc*` skipped) and
+prints a per-package table, weakest first; `make coverage-html` opens it as HTML.
+`make coverage-merge` merges it with the profile the acceptance container writes
+(`coverage-acceptance.out`, `-coverpkg=./internal/...`) into `coverage-union.out` and prints the
+same table. `merge-coverage.sh` keys blocks by position, so the union has one line per block
+however the inputs were instrumented, and `coverage-summary.sh` refuses a profile that repeats a
+block (exit 2) rather than printing a wrong number. CI publishes both tables in its job summaries:
+the `test` job for the unit profile, the `Coverage` job on a pull request and the `acceptance` job
+on `main` for the merged one.
 
-Measured at revision `9dbf159`:
+Merged (unit + acceptance) statement coverage is enforced. `make coverage-gate`
+(`scripts/coverage-gate.sh`) compares `coverage-union.out` against
+[`.github/coverage-baseline.txt`](./coverage-baseline.txt) — the file `scripts/coverage-readme.sh`
+renders README.md's badge and block from — and fails, naming each scope below its `floor_*`. The
+`Coverage` job runs both scripts on every pull request, after running the acceptance container, so
+the floor is never compared against a unit-only number and the published block cannot drift. The
+gate fails closed: an absent profile, a scope named in the baseline that the profile does not
+report, and a missing, misspelled or stray `floor_*` are configuration errors (exit 2), never a
+pass.
+
+```bash
+make coverage            # unit profile + per-package table
+make testacc-docker      # writes coverage-acceptance.out
+make coverage-merge      # merge both into coverage-union.out
+make coverage-gate       # fail when below the floor
+```
+
+To raise a floor: update the `measured_*` and `floor_*` values in
+[`.github/coverage-baseline.txt`](./coverage-baseline.txt), run `make coverage-readme` to refresh
+the README block, and run `make coverage-gate` in the same pull request that adds the tests.
+
+Measured at revision `9c94a46` on the committed tooling (`go 1.27.2`, Gravitino 1.3.0):
 
 | Command | Statement coverage |
 |---|---|
-| `go test -coverpkg=./... -coverprofile=c.out ./internal/...` then `go tool cover -func=c.out \| tail -1` | 75.5% (unit only, merged across packages) |
-| `go test -coverprofile=c.out ./internal/...` | 59.8% (per package) |
-| `TF_ACC=1 go test -coverprofile=c.out ./internal/...` | 61.6% (per package, unit + acceptance) |
-| `TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 78.0% (unit + acceptance, merged) |
+| `make coverage` (unit only, per package — `make test`'s shape) | 59.8% (4584/7661) |
+| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | 79.2% (6069/7661) |
 
 `make test` produces the per-package number because it passes `-cover`, not `-coverpkg`. CI's test
 job runs `go test -v -race -covermode=atomic -coverprofile=coverage.out ./internal/...`, publishes
-`coverage.out` as a build artifact and adds the per-package table to the job summary; the
-acceptance job adds the merged unit + acceptance table. Statement counts depend on the Go patch
-release that produced the profile, so compare numbers only within one toolchain.
+`coverage.out` as a build artifact and in the job summary; the `Coverage` job (pull requests) and
+the acceptance job (main) merge it with the container's profile. Statement counts depend on the Go
+patch release that produced the profile (`go 1.27.1`, the `go.mod` toolchain, sums this tree to
+9766 statements against 7661 for `go 1.27.2`), so compare numbers only within one toolchain, and
+note that a merged profile takes its statement counts from the profile `merge-coverage.sh` reads
+last — the acceptance container's, in CI.
 
 ## Code conventions
 
@@ -173,17 +204,21 @@ chore(ci): bump golangci-lint
    formatting.
 4. Run `make generate` if a schema changed, and `make validate-examples` if an example
    changed; commit the regenerated files.
-5. Push and open a pull request against `main`, filling in
+5. Run `make coverage-merge && make coverage-gate`, and raise the floor in
+   [`.github/coverage-baseline.txt`](./coverage-baseline.txt) — followed by `make coverage-readme`
+   — in the same pull request if the change improved coverage.
+6. Push and open a pull request against `main`, filling in
    [PULL_REQUEST_TEMPLATE.md](./PULL_REQUEST_TEMPLATE.md).
-6. CI runs on every push and pull request: lint (golangci-lint and gosec), build and vet,
+7. CI runs on every push and pull request: lint (golangci-lint and gosec), build and vet,
    `go mod tidy` and `go mod verify`, cross-builds for windows/amd64 and darwin/arm64, the
-   example validator, the docs-drift check, and the unit tests with `-race`. The acceptance
-   job and the version matrix run only on pushes to `main`.
-7. The maintainer reviews the change; address the comments and push follow-ups to the
+   example validator, the docs-drift check, and the unit tests with `-race`. A pull request
+   also runs the acceptance container, the merged-coverage gate and the README/baseline drift
+   check (the `Coverage` check); the acceptance matrix runs only on pushes to `main`.
+8. The maintainer reviews the change; address the comments and push follow-ups to the
    same branch. `.github/CODEOWNERS` currently reads `* @caberdo`, naming the
    organization rather than a user or team, so GitHub's code-owner rule has no effective
    owner today — see [GOVERNANCE.md](../GOVERNANCE.md#continuous-integration-as-the-gate).
-8. Once CI is green and the threads are resolved, the pull request is merged (merge, squash
+9. Once CI is green and the threads are resolved, the pull request is merged (merge, squash
    or rebase — all three are allowed). Release tags are created separately by maintainers;
    see [GOVERNANCE.md](../GOVERNANCE.md).
 
