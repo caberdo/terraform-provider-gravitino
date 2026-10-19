@@ -1,3 +1,18 @@
+## Unreleased
+
+DOCUMENTATION:
+- **Documentation pack.** `ARCHITECTURE.md` describes the package layout, request flow,
+  authentication and version-gating layers; `GOVERNANCE.md` records roles, decision making and
+  release authority; `ROADMAP.md` states the supported Gravitino versions and planned surface;
+  `NOTICE` lists the upstream works this project derives from and their licences.
+- **OpenSSF evidence pack.** `.github/OPENSSF-BEST-PRACTICES.md` answers the OpenSSF Best
+  Practices criteria with references to the files and commands that satisfy them.
+- **Contribution and security guides expanded.** `.github/CONTRIBUTING.md` and
+  `.github/SECURITY.md` now cover development setup, review conventions and the provider's
+  security model.
+- **`README.md` links the documentation set** from a new `Project documents` section and reports the
+  measured coverage commands and numbers.
+
 ## 0.9.0 (2026-10-08)
 
 FEATURES:

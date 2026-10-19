@@ -2,6 +2,10 @@
   "ignorePatterns": [
     {
       "pattern": "^https?://(registry\\.terraform\\.io|opentofu\\.org|gravitino\\.apache\\.org|github\\.com|localhost)"
+    },
+    {
+      "comment": "The badge URL in .github/OPENSSF-BEST-PRACTICES.md contains the PROJECT_ID placeholder: it cannot resolve until the project is registered at bestpractices.dev.",
+      "pattern": "^https?://(www\\.)?bestpractices\\.dev/projects"
     }
   ]
 }

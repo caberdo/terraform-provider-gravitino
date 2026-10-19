@@ -37,6 +37,7 @@ Terraform state as the rest of your infrastructure.
 - [Testing](#testing)
 - [Development](#development)
 - [Troubleshooting and FAQ](#troubleshooting-and-faq)
+- [Project documents](#project-documents)
 - [Security, contributing and support](#security-contributing-and-support)
 - [License](#license)
 
@@ -468,6 +469,28 @@ make testacc-live                                # live suite via podman
 make testacc-live-filter F=TestLiveAccRoleResource
 ```
 
+### Coverage
+
+`-coverpkg=./...` merges coverage across packages; a bare `-coverprofile` reports the owning
+package only, which understates the numbers badly (the client reads 14% there because its callers
+live in other packages). Measured at revision `9dbf159`:
+
+```bash
+go test -coverpkg=./... -coverprofile=c.out ./internal/... && go tool cover -func=c.out | tail -1
+TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...
+```
+
+| Command | Statement coverage |
+|---|---|
+| `go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 75.5% (unit only) |
+| `TF_ACC=1 go test -coverpkg=./... -coverprofile=c.out ./internal/...` | 78.0% (unit + acceptance) |
+| `go test -coverprofile=c.out ./internal/...` | 59.8% (per package) |
+| `TF_ACC=1 go test -coverprofile=c.out ./internal/...` | 61.6% (per package, unit + acceptance) |
+
+CI publishes the per-package profile as its `coverage.out` artifact today; merging the unit and
+acceptance profiles into one reported number is tracked in
+[#49](https://github.com/caberdo/terraform-provider-gravitino/issues/49).
+
 ## Development
 
 ```bash
@@ -532,6 +555,17 @@ instead of erroring.
 **Which server version should I run?**
 CI exercises `1.3.0` and `1.3.1`; `.github/gravitino-versions.txt` is the single source of truth
 and is read by both the CI matrix and `make testacc-matrix`.
+
+## Project documents
+
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — package layout, request flow, authentication, the
+  Gravitino version gates, the test layers and the release pipeline.
+- [`GOVERNANCE.md`](./GOVERNANCE.md) — who maintains the provider, how decisions are made, what CI
+  enforces and how continuity is handled.
+- [`ROADMAP.md`](./ROADMAP.md) — what is planned next, and what is explicitly out of scope.
+- [`.github/OPENSSF-BEST-PRACTICES.md`](./.github/OPENSSF-BEST-PRACTICES.md) — the OpenSSF Best
+  Practices evidence pack, criterion by criterion, with the command behind every figure.
+- [`NOTICE`](./NOTICE) — the upstream works this provider derives from and their licences.
 
 ## Security, contributing and support
 
