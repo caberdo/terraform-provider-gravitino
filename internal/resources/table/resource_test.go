@@ -11,6 +11,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -1570,4 +1571,14 @@ func TestTableResource_CreateSendsExternalColumnTypeOn131Server(t *testing.T) {
 	if !reflect.DeepEqual(expected, column["type"]) {
 		t.Errorf("external column type = %#v, want %#v", column["type"], expected)
 	}
+}
+
+// TestTableResourceModelsMatchSchema keeps the slice model and the framework
+// boundary model in lockstep with the schema: an attribute added to one but not
+// the other is a silent plan/state miss.
+func TestTableResourceModelsMatchSchema(t *testing.T) {
+	schemaObj := tableSchema(t, NewTableResource())
+	names := append(modeltest.Keys(schemaObj.Attributes), modeltest.Keys(schemaObj.Blocks)...)
+	modeltest.AssertAttributesMatch(t, models.TableResourceModel{}, names)
+	modeltest.AssertAttributesMatch(t, models.TableResourceTFModel{}, names)
 }

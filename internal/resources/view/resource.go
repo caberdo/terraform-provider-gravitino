@@ -46,6 +46,40 @@ type ViewResourceModel struct {
 	Audit           types.Object                     `tfsdk:"audit"`
 }
 
+func viewResourceModelFromTF(ctx context.Context, in models.ViewResourceTFModel, diags *diag.Diagnostics) ViewResourceModel {
+	return ViewResourceModel{
+		ID:              in.ID,
+		Metalake:        in.Metalake,
+		Catalog:         in.Catalog,
+		Schema:          in.Schema,
+		Name:            in.Name,
+		Comment:         in.Comment,
+		Columns:         models.TableColumnsFromList(ctx, in.Columns, diags),
+		Representations: models.ViewRepresentationsFromList(ctx, in.Representations, diags),
+		DefaultCatalog:  in.DefaultCatalog,
+		DefaultSchema:   in.DefaultSchema,
+		Properties:      in.Properties,
+		Audit:           in.Audit,
+	}
+}
+
+func viewResourceModelToTF(ctx context.Context, in ViewResourceModel, diags *diag.Diagnostics) models.ViewResourceTFModel {
+	return models.ViewResourceTFModel{
+		ID:              in.ID,
+		Metalake:        in.Metalake,
+		Catalog:         in.Catalog,
+		Schema:          in.Schema,
+		Name:            in.Name,
+		Comment:         in.Comment,
+		Columns:         models.TableColumnsToList(ctx, in.Columns, diags),
+		Representations: models.ViewRepresentationsToList(ctx, in.Representations, diags),
+		DefaultCatalog:  in.DefaultCatalog,
+		DefaultSchema:   in.DefaultSchema,
+		Properties:      in.Properties,
+		Audit:           in.Audit,
+	}
+}
+
 func NewViewResource() resource.Resource {
 	return &ViewResource{}
 }
@@ -211,8 +245,12 @@ func (r *ViewResource) Configure(_ context.Context, req resource.ConfigureReques
 }
 
 func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan ViewResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	var tfPlan models.ViewResourceTFModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &tfPlan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan := viewResourceModelFromTF(ctx, tfPlan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -256,14 +294,22 @@ func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	tfPlan = viewResourceModelToTF(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &tfPlan)...)
 
 	tflog.Debug(ctx, "Created view", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
 }
 
 func (r *ViewResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state ViewResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	var tfState models.ViewResourceTFModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &tfState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state := viewResourceModelFromTF(ctx, tfState, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -285,15 +331,24 @@ func (r *ViewResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	tfState = viewResourceModelToTF(ctx, state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &tfState)...)
 
 	tflog.Debug(ctx, "Read view", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 }
 
 func (r *ViewResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state ViewResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	var tfPlan, tfState models.ViewResourceTFModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &tfPlan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &tfState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan := viewResourceModelFromTF(ctx, tfPlan, &resp.Diagnostics)
+	state := viewResourceModelFromTF(ctx, tfState, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -346,14 +401,22 @@ func (r *ViewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	tfPlan = viewResourceModelToTF(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &tfPlan)...)
 
 	tflog.Debug(ctx, "Updated view", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
 }
 
 func (r *ViewResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state ViewResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	var tfState models.ViewResourceTFModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &tfState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state := viewResourceModelFromTF(ctx, tfState, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

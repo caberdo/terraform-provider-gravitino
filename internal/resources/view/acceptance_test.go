@@ -215,3 +215,39 @@ func TestAccViewResource_Import(t *testing.T) {
 		},
 	})
 }
+
+// TestAccViewResource_PlansUnknownNestedAttributes asserts that a view whose
+// column or representation list is not known during planning still plans. The
+// framework list types, not a Go slice, hold those unknown values.
+func TestAccViewResource_PlansUnknownNestedAttributes(t *testing.T) {
+	t.Setenv("GRAVITINO_URI", "http://127.0.0.1:1")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: viewTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "terraform_data" "columns" {
+  input = [{ name = "id", type = "long" }]
+}
+
+resource "terraform_data" "representations" {
+  input = [{ type = "sql", dialect = "trino", sql = "SELECT id FROM t" }]
+}
+
+resource "gravitino_view" "v" {
+  metalake = "ml"
+  catalog  = "cat"
+  schema   = "sch"
+  name     = "v"
+
+  column         = terraform_data.columns.output
+  representation = terraform_data.representations.output
+}
+`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}

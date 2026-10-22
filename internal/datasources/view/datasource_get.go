@@ -33,6 +33,22 @@ type ViewDataSourceModel struct {
 	Audit           types.Object                     `tfsdk:"audit"`
 }
 
+func viewDataSourceModelToTF(ctx context.Context, in ViewDataSourceModel, diags *diag.Diagnostics) models.ViewDataSourceTFModel {
+	return models.ViewDataSourceTFModel{
+		Metalake:        in.Metalake,
+		Catalog:         in.Catalog,
+		Schema:          in.Schema,
+		Name:            in.Name,
+		Comment:         in.Comment,
+		Columns:         models.TableColumnsToList(ctx, in.Columns, diags),
+		Representations: models.ViewRepresentationsToList(ctx, in.Representations, diags),
+		DefaultCatalog:  in.DefaultCatalog,
+		DefaultSchema:   in.DefaultSchema,
+		Properties:      in.Properties,
+		Audit:           in.Audit,
+	}
+}
+
 func NewViewDataSource() datasource.DataSource {
 	return &ViewDataSource{}
 }
@@ -152,10 +168,17 @@ func (ds *ViewDataSource) Configure(_ context.Context, req datasource.ConfigureR
 }
 
 func (ds *ViewDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var config ViewDataSourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	var tfConfig models.ViewDataSourceTFModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &tfConfig)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	config := ViewDataSourceModel{
+		Metalake:   tfConfig.Metalake,
+		Catalog:    tfConfig.Catalog,
+		Schema:     tfConfig.Schema,
+		Name:       tfConfig.Name,
+		Properties: tfConfig.Properties,
 	}
 
 	viewResp, err := ds.client.GetView(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
@@ -191,5 +214,9 @@ func (ds *ViewDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
+	tfState := viewDataSourceModelToTF(ctx, config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &tfState)...)
 }

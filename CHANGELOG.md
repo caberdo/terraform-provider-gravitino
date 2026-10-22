@@ -49,6 +49,19 @@ ENHANCEMENTS:
   the version `.github/gravitino-versions.txt` drives. The gosec summary step no longer trips
   `actionlint` (shellcheck `SC2086`/`SC2129`), so the workflow passes the linter cleanly.
 
+BUG FIXES:
+- **`gravitino_table` plans with unknown nested blocks.** The resource and data source models now
+  represent `column`, `sort_order`, `distribution`, `partitioning` and `index` with the Plugin
+  Framework list/object types instead of Go slices, so a plan whose block value is not known yet
+  (for example a `dynamic` block over an apply-time value) no longer fails with
+  `Value Conversion Error ... Target Type: []models.ColumnTFSDK` (issue #66). A regression test
+  plans an unknown `column` block through Terraform Core, and a schema/model test keeps the slice
+  model and the framework boundary model in lockstep.
+- **`gravitino_view` plans with unknown columns and representations.** The resource and data source
+  models use the same framework list types, so an unknown `column` or `representation` list no
+  longer fails with the same conversion error; a regression test plans both through Terraform
+  Core.
+
 DOCUMENTATION:
 - **Documentation pack.** `ARCHITECTURE.md` describes the package layout, request flow,
   authentication and version-gating layers; `GOVERNANCE.md` records roles, decision making and

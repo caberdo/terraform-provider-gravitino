@@ -10,6 +10,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -443,4 +444,13 @@ func TestTablesDataSource_Read(t *testing.T) {
 	if elements[0].(types.String).ValueString() != "t1" {
 		t.Errorf("first table = %v", elements[0])
 	}
+}
+
+// TestTableDataSourceModelsMatchSchema keeps the slice model and the framework
+// boundary model in lockstep with the schema.
+func TestTableDataSourceModelsMatchSchema(t *testing.T) {
+	schemaObj := dataSourceSchema(t, NewTableDataSource()).Schema
+	names := append(modeltest.Keys(schemaObj.Attributes), modeltest.Keys(schemaObj.Blocks)...)
+	modeltest.AssertAttributesMatch(t, models.TableDataSourceModel{}, names)
+	modeltest.AssertAttributesMatch(t, models.TableDataSourceTFModel{}, names)
 }

@@ -160,10 +160,18 @@ func (d *tableDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 }
 
 func (d *tableDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var config models.TableDataSourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	var tfConfig models.TableDataSourceTFModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &tfConfig)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	config := models.TableDataSourceModel{
+		Metalake:   tfConfig.Metalake,
+		Catalog:    tfConfig.Catalog,
+		Schema:     tfConfig.Schema,
+		Name:       tfConfig.Name,
+		Properties: tfConfig.Properties,
+		Audit:      tfConfig.Audit,
 	}
 
 	tableResp, err := d.client.GetTable(ctx,
@@ -189,7 +197,11 @@ func (d *tableDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	tfState := models.TableDataSourceModelToTF(ctx, state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &tfState)...)
 }
 
 // mapTableToDataSourceState maps a table of tables.yaml into the data source

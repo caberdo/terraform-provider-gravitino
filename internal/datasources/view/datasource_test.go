@@ -11,6 +11,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	dsview "github.com/gravitino/terraform-provider-gravitino/internal/datasources/view"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -289,4 +290,30 @@ func TestViewsDataSourceReadSkipsDeletedViews(t *testing.T) {
 	if entry.Properties.IsNull() {
 		t.Error("properties must be populated")
 	}
+}
+
+// TestViewDataSourceModelsMatchSchema keeps the slice model and the framework
+// boundary model in lockstep with the schema.
+func TestViewDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	dsview.NewViewDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	names := modeltest.Keys(resp.Schema.Attributes)
+	modeltest.AssertAttributesMatch(t, dsview.ViewDataSourceModel{}, names)
+	modeltest.AssertAttributesMatch(t, models.ViewDataSourceTFModel{}, names)
+}
+
+// TestViewsDataSourceModelsMatchSchema keeps the nested list entry models in
+// lockstep with the gravitino_views schema.
+func TestViewsDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	dsview.NewViewsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertAttributesMatch(t, dsview.ViewsDataSourceModel{}, modeltest.Keys(resp.Schema.Attributes))
+
+	views, ok := resp.Schema.Attributes["views"].(dsschema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("views is %T, want a ListNestedAttribute", resp.Schema.Attributes["views"])
+	}
+	names := modeltest.Keys(views.NestedObject.Attributes)
+	modeltest.AssertAttributesMatch(t, dsview.ViewListEntryModel{}, names)
+	modeltest.AssertAttributesMatch(t, models.ViewListEntryTFModel{}, names)
 }
