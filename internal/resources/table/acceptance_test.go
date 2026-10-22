@@ -944,3 +944,41 @@ resource "gravitino_table" "this" {
 		},
 	})
 }
+
+// TestAccTableResource_PlansUnknownColumnBlock is the regression test for
+// https://github.com/caberdo/terraform-provider-gravitino/issues/66: a nested
+// block whose value is not known during planning must not fail the plan. A Go
+// slice cannot hold an unknown list, so the resource model uses types.List.
+func TestAccTableResource_PlansUnknownColumnBlock(t *testing.T) {
+	t.Setenv("GRAVITINO_URI", "http://127.0.0.1:1")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: tableTestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "terraform_data" "column_source" {
+  input = ["id"]
+}
+
+resource "gravitino_table" "tbl" {
+  metalake = "ml"
+  catalog  = "cat"
+  schema   = "sch"
+  name     = "tbl"
+
+  dynamic "column" {
+    for_each = terraform_data.column_source.output
+    content {
+      name = column.value
+      type = "long"
+    }
+  }
+}
+`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}

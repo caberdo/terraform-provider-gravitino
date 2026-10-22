@@ -13,6 +13,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	resourceview "github.com/gravitino/terraform-provider-gravitino/internal/resources/view"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -687,4 +688,14 @@ func assertJSONEqual(t *testing.T, want string, got []byte) {
 	if !reflect.DeepEqual(wantMap, gotMap) {
 		t.Errorf("request body mismatch\n got: %s\nwant: %s", string(got), want)
 	}
+}
+
+// TestViewResourceModelsMatchSchema keeps the slice model and the framework
+// boundary model in lockstep with the schema.
+func TestViewResourceModelsMatchSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	resourceview.NewViewResource().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	names := modeltest.Keys(resp.Schema.Attributes)
+	modeltest.AssertAttributesMatch(t, resourceview.ViewResourceModel{}, names)
+	modeltest.AssertAttributesMatch(t, models.ViewResourceTFModel{}, names)
 }

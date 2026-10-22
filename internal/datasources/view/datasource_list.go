@@ -6,6 +6,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -36,6 +37,41 @@ type ViewsDataSourceModel struct {
 	Catalog  types.String         `tfsdk:"catalog"`
 	Schema   types.String         `tfsdk:"schema"`
 	Views    []ViewListEntryModel `tfsdk:"views"`
+}
+
+func viewListEntryToTF(ctx context.Context, entry ViewListEntryModel, diags *diag.Diagnostics) attr.Value {
+	tfEntry := models.ViewListEntryTFModel{
+		Name:            entry.Name,
+		Comment:         entry.Comment,
+		Columns:         models.TableColumnsToList(ctx, entry.Columns, diags),
+		Representations: models.ViewRepresentationsToList(ctx, entry.Representations, diags),
+		DefaultCatalog:  entry.DefaultCatalog,
+		DefaultSchema:   entry.DefaultSchema,
+		Properties:      entry.Properties,
+		Audit:           entry.Audit,
+	}
+	object, objectDiags := types.ObjectValueFrom(ctx, models.ViewListEntryAttrTypes(), tfEntry)
+	diags.Append(objectDiags...)
+	return object
+}
+
+func viewsDataSourceModelToTF(ctx context.Context, in ViewsDataSourceModel, entries []ViewListEntryModel, diags *diag.Diagnostics) models.ViewsDataSourceTFModel {
+	elementType := types.ObjectType{AttrTypes: models.ViewListEntryAttrTypes()}
+	items := make([]attr.Value, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, viewListEntryToTF(ctx, entry, diags))
+		if diags.HasError() {
+			break
+		}
+	}
+	views, listDiags := types.ListValue(elementType, items)
+	diags.Append(listDiags...)
+	return models.ViewsDataSourceTFModel{
+		Metalake: in.Metalake,
+		Catalog:  in.Catalog,
+		Schema:   in.Schema,
+		Views:    views,
+	}
 }
 
 func NewViewsDataSource() datasource.DataSource {
@@ -165,10 +201,15 @@ func (ds *ViewsDataSource) Configure(_ context.Context, req datasource.Configure
 }
 
 func (ds *ViewsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var config ViewsDataSourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	var tfConfig models.ViewsDataSourceTFModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &tfConfig)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	config := ViewsDataSourceModel{
+		Metalake: tfConfig.Metalake,
+		Catalog:  tfConfig.Catalog,
+		Schema:   tfConfig.Schema,
 	}
 
 	views, err := ds.client.ListViewsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
@@ -188,7 +229,11 @@ func (ds *ViewsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	}
 	config.Views = entries
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
+	tfState := viewsDataSourceModelToTF(ctx, config, entries, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &tfState)...)
 }
 
 func viewListEntryToModel(ctx context.Context, view *models.View) (ViewListEntryModel, diag.Diagnostics) {

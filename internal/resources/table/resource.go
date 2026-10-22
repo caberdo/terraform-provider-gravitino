@@ -341,13 +341,18 @@ func (v distributionNumberValidator) MarkdownDescription(ctx context.Context) st
 }
 
 func (v distributionNumberValidator) ValidateResource(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var config models.TableResourceModel
+	var config models.TableResourceTFModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if config.Distribution == nil || config.Distribution.Number.IsUnknown() || !config.Distribution.Number.IsNull() {
+	distribution := models.TableDistributionFromObject(ctx, config.Distribution, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if distribution == nil || distribution.Number.IsUnknown() || !distribution.Number.IsNull() {
 		return
 	}
 
@@ -365,12 +370,18 @@ func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanR
 		return
 	}
 
-	var plan, state models.TableResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	var tfPlan, tfState models.TableResourceTFModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &tfPlan)...)
 	hasState := !req.State.Raw.IsNull()
 	if hasState {
-		resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+		resp.Diagnostics.Append(req.State.Get(ctx, &tfState)...)
 	}
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	plan := models.TableResourceModelFromTF(ctx, tfPlan, &resp.Diagnostics)
+	state := models.TableResourceModelFromTF(ctx, tfState, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -379,7 +390,13 @@ func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanR
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
+	tfPlan.Comment = plan.Comment
+	// Only write the columns back when they are known: an unknown list is
+	// decoded as empty above and must stay unknown in the plan.
+	if !tfPlan.Columns.IsNull() && !tfPlan.Columns.IsUnknown() {
+		tfPlan.Columns = models.TableColumnsToList(ctx, plan.Columns, &resp.Diagnostics)
+	}
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, &tfPlan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -388,16 +405,16 @@ func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanR
 		return
 	}
 
-	if sortOrdersChanged(plan.SortOrders, state.SortOrders) ||
-		distributionChanged(plan.Distribution, state.Distribution) ||
-		partitioningChanged(plan.Partitioning, state.Partitioning) ||
-		indexesChanged(plan.Indexes, state.Indexes) {
+	if (!tfPlan.SortOrders.IsUnknown() && sortOrdersChanged(plan.SortOrders, state.SortOrders)) ||
+		(!tfPlan.Distribution.IsUnknown() && distributionChanged(plan.Distribution, state.Distribution)) ||
+		(!tfPlan.Partitioning.IsUnknown() && partitioningChanged(plan.Partitioning, state.Partitioning)) ||
+		(!tfPlan.Indexes.IsUnknown() && indexesChanged(plan.Indexes, state.Indexes)) {
 		for _, name := range []string{"sort_order", "distribution", "partitioning", "index"} {
 			resp.RequiresReplace = append(resp.RequiresReplace, path.Root(name))
 		}
 	}
 
-	if columnsReplaceRequired(plan.Columns, state.Columns) {
+	if !tfPlan.Columns.IsUnknown() && columnsReplaceRequired(plan.Columns, state.Columns) {
 		resp.RequiresReplace = append(resp.RequiresReplace, path.Root("column"))
 	}
 }
@@ -439,8 +456,12 @@ func canonicalisePlan(ctx context.Context, plan *models.TableResourceModel, diag
 
 // Create creates the table.
 func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan models.TableResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	var tfPlan models.TableResourceTFModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &tfPlan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan := models.TableResourceModelFromTF(ctx, tfPlan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -493,7 +514,11 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &created)...)
+	tfCreated := models.TableResourceModelToTF(ctx, created, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &tfCreated)...)
 
 	tflog.Debug(ctx, "Created table", map[string]interface{}{
 		"metalake": plan.Metalake.ValueString(),
@@ -505,8 +530,12 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 // Read refreshes the table and drops it from state when it no longer exists.
 func (r *tableResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state models.TableResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	var tfState models.TableResourceTFModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &tfState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state := models.TableResourceModelFromTF(ctx, tfState, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -539,7 +568,11 @@ func (r *tableResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	tfState = models.TableResourceModelToTF(ctx, state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &tfState)...)
 
 	tflog.Debug(ctx, "Read table", map[string]interface{}{
 		"metalake": state.Metalake.ValueString(),
@@ -551,9 +584,14 @@ func (r *tableResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 // Update applies the table updates of tables.yaml.
 func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state models.TableResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	var tfPlan, tfState models.TableResourceTFModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &tfPlan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &tfState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan := models.TableResourceModelFromTF(ctx, tfPlan, &resp.Diagnostics)
+	state := models.TableResourceModelFromTF(ctx, tfState, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -654,7 +692,11 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &updated)...)
+	tfUpdated := models.TableResourceModelToTF(ctx, updated, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &tfUpdated)...)
 
 	tflog.Debug(ctx, "Updated table", map[string]interface{}{
 		"metalake": plan.Metalake.ValueString(),
@@ -666,8 +708,12 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 
 // Delete drops the table. A table that is already gone is treated as deleted.
 func (r *tableResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state models.TableResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	var tfState models.TableResourceTFModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &tfState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state := models.TableResourceModelFromTF(ctx, tfState, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
