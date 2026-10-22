@@ -1,6 +1,9 @@
 package models
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // Column mirrors tables.yaml#/Column.
 //
@@ -24,10 +27,29 @@ type SortOrder struct {
 }
 
 // Distribution mirrors tables.yaml#/Distribution.
+//
+// funcArgs must always be present in the request, even when it is empty:
+// Gravitino's JsonUtils.DistributionDeserializer calls
+// node.get("funcArgs").forEach(...) without a null check, so a distribution
+// that omits the member fails with "Malformed json request" and a
+// NullPointerException. MarshalJSON fills in the empty array for callers that
+// build the struct without initialising it.
 type Distribution struct {
 	Strategy string       `json:"strategy,omitempty"`
 	Number   int32        `json:"number"`
 	FuncArgs []Expression `json:"funcArgs"`
+}
+
+// MarshalJSON serialises funcArgs as the empty array the schema defaults to
+// instead of "null", and keeps the member present for callers that build a
+// Distribution directly. Dropping it again (for example by re-adding
+// omitempty) brings back the server-side NPE described on Distribution.
+func (d Distribution) MarshalJSON() ([]byte, error) {
+	type distribution Distribution
+	if d.FuncArgs == nil {
+		d.FuncArgs = []Expression{}
+	}
+	return json.Marshal(distribution(d))
 }
 
 // Partitioning mirrors partitioning.yaml#/PartitioningSpec. Every partition

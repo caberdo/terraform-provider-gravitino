@@ -59,3 +59,49 @@ func TestIndexPropertiesSerialization(t *testing.T) {
 		t.Errorf("properties must be omitted for an index without any: %s", encoded)
 	}
 }
+
+// TestDistributionSerialisesFuncArgs pins issue #64: Gravitino's
+// JsonUtils.DistributionDeserializer does node.get("funcArgs").forEach(...)
+// without a null check, so a create request whose distribution omits the
+// member fails with "Malformed json request" and a NullPointerException. Every
+// distribution the provider sends must carry funcArgs, including as [].
+func TestDistributionSerialisesFuncArgs(t *testing.T) {
+	tests := []struct {
+		name         string
+		distribution Distribution
+	}{
+		{
+			name:         "nil args",
+			distribution: Distribution{Strategy: "hash", Number: 1},
+		},
+		{
+			name:         "empty args",
+			distribution: Distribution{Strategy: "hash", Number: 1, FuncArgs: []Expression{}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encoded, err := json.Marshal(tt.distribution)
+			if err != nil {
+				t.Fatalf("marshalling the distribution: %v", err)
+			}
+
+			var decoded map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
+				t.Fatalf("unmarshalling the encoded distribution: %v", err)
+			}
+
+			args, ok := decoded["funcArgs"]
+			if !ok {
+				t.Fatalf("distribution is missing funcArgs: %s", encoded)
+			}
+			if string(args) != "[]" {
+				t.Errorf("funcArgs = %s, want []", args)
+			}
+			if _, ok := decoded["number"]; !ok {
+				t.Errorf("distribution is missing number: %s", encoded)
+			}
+		})
+	}
+}

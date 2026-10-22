@@ -353,6 +353,108 @@ func TestTableResource_CreateSendsSpecPayload(t *testing.T) {
 	}
 }
 
+// TestTableResource_CreateSendsEmptyDistributionFuncArgs covers issue #64: a
+// table declared as distribution { number = 1 } (the minimal Iceberg
+// lakehouse-iceberg configuration) must still send funcArgs as an empty array.
+// Gravitino's JsonUtils.DistributionDeserializer dereferences
+// node.get("funcArgs") unconditionally, so omitting the member makes the server
+// answer 400 "Malformed json request" with a NullPointerException.
+func TestTableResource_CreateSendsEmptyDistributionFuncArgs(t *testing.T) {
+	c, recorded := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool {
+		if req.Method != http.MethodPost || req.Path != testPath {
+			return false
+		}
+		writeJSON(t, w, map[string]interface{}{
+			"code": 0,
+			"table": map[string]interface{}{
+				"name":         testTable,
+				"columns":      req.Body["columns"],
+				"distribution": req.Body["distribution"],
+			},
+		})
+		return true
+	})
+
+	r := NewTableResource().(*tableResource)
+	r.client = c
+
+	schemaObj := tableSchema(t, r)
+	plan := hivePlan()
+	// distribution { number = 1 } is what the configuration reaches the
+	// resource as once the schema's strategy default ("hash") is applied.
+	plan.Distribution = &models.DistributionTFSDK{
+		Strategy: types.StringValue("hash"),
+		Number:   types.Int64Value(1),
+		FuncArgs: types.ListNull(types.StringType),
+	}
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(context.Background(), resource.CreateRequest{
+		Plan: planValue(t, schemaObj, plan),
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected create diagnostics: %v", resp.Diagnostics)
+	}
+	if len(*recorded) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(*recorded))
+	}
+
+	distribution, ok := (*recorded)[0].Body["distribution"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("create request has no distribution: %v", (*recorded)[0].Body)
+	}
+	args, ok := distribution["funcArgs"]
+	if !ok {
+		t.Fatalf("distribution is missing funcArgs: %v", distribution)
+	}
+	if empty, ok := args.([]interface{}); !ok || len(empty) != 0 {
+		t.Errorf("distribution funcArgs = %v, want []", args)
+	}
+	if got := distribution["number"]; got != float64(1) {
+		t.Errorf("distribution number = %v, want 1", got)
+	}
+}
+
+// TestTableResource_CreateOmitsUnsetDistribution pins the other half of issue
+// #64: a table without a distribution block must not send the field at all, so
+// Gravitino applies its own default (strategy "none", number 0).
+func TestTableResource_CreateOmitsUnsetDistribution(t *testing.T) {
+	c, recorded := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool {
+		if req.Method != http.MethodPost || req.Path != testPath {
+			return false
+		}
+		writeJSON(t, w, map[string]interface{}{
+			"code": 0,
+			"table": map[string]interface{}{
+				"name":    testTable,
+				"columns": req.Body["columns"],
+			},
+		})
+		return true
+	})
+
+	r := NewTableResource().(*tableResource)
+	r.client = c
+
+	schemaObj := tableSchema(t, r)
+	plan := hivePlan()
+	plan.Distribution = nil
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(context.Background(), resource.CreateRequest{
+		Plan: planValue(t, schemaObj, plan),
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected create diagnostics: %v", resp.Diagnostics)
+	}
+	if len(*recorded) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(*recorded))
+	}
+	if _, exists := (*recorded)[0].Body["distribution"]; exists {
+		t.Errorf("an unset distribution must be omitted from the request: %v", (*recorded)[0].Body)
+	}
+}
+
 // TestTableResource_DataSkippingIndexRoundTrip covers the Gravitino v1.3.1
 // IndexSpec additions: the data_skipping_* index types carry custom properties,
 // for example the granularity of a ClickHouse data-skipping index. The

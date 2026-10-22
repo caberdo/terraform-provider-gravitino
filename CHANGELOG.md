@@ -71,6 +71,13 @@ FEATURES:
   resource (`gravitino_policies` lists them); docs and an example are generated.
 
 BUG FIXES:
+- **`gravitino_table` always sends `distribution.funcArgs`.** Gravitino's
+  `JsonUtils.DistributionDeserializer` dereferences `node.get("funcArgs")` without a null
+  check, so a create request that omitted the member failed with `400 Malformed json
+  request` and a `NullPointerException`, as reported for a `lakehouse-iceberg` (REST)
+  catalog in issue #64. `models.Distribution` now marshals a nil argument list as the
+  schema default `[]`, and regression tests pin both that payload (a distribution with
+  only `number`) and the server-default path where the block is omitted.
 - **`gravitino_table` no longer drops properties on an unrelated update.** `properties`
   now carries `UseStateForUnknown` and the update path skips property reconciliation when
   the planned map is unknown, so changing another attribute with `properties` left
