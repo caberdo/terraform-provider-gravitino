@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/policy"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -305,5 +307,42 @@ func TestPoliciesDataSource_ReadPolicyWithoutContent(t *testing.T) {
 	}
 	if !attrs["custom_rules"].(types.Map).IsNull() {
 		t.Errorf("custom_rules = %v, want null", attrs["custom_rules"])
+	}
+}
+
+// TestPolicyDataSourceModelsMatchSchema keeps the models in lockstep with the
+// gravitino_policy, gravitino_policies, gravitino_object_policies and
+// gravitino_policy_objects schemas.
+func TestPolicyDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.PolicyDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	resp = &datasource.SchemaResponse{}
+	ds.NewListDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.PoliciesDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	policies, ok := resp.Schema.Attributes["policies"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("policies is %T, want a ListNestedAttribute", resp.Schema.Attributes["policies"])
+	}
+	if got, want := modeltest.Keys(policies.NestedObject.Attributes), modeltest.Keys(ds.PolicyItemAttrTypes); !slices.Equal(got, want) {
+		t.Errorf("policies entry attributes = %v, PolicyItemAttrTypes = %v", got, want)
+	}
+
+	resp = &datasource.SchemaResponse{}
+	ds.NewObjectPoliciesDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.ObjectPoliciesDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	resp = &datasource.SchemaResponse{}
+	ds.NewPolicyObjectsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.PolicyObjectsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	objects, ok := resp.Schema.Attributes["objects"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("objects is %T, want a ListNestedAttribute", resp.Schema.Attributes["objects"])
+	}
+	if got, want := modeltest.Keys(objects.NestedObject.Attributes), modeltest.Keys(ds.PolicyObjectItemAttrTypes); !slices.Equal(got, want) {
+		t.Errorf("objects entry attributes = %v, PolicyObjectItemAttrTypes = %v", got, want)
 	}
 }

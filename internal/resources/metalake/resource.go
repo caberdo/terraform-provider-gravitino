@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -26,9 +27,10 @@ import (
 
 var _ resource.Resource = (*MetalakeResource)(nil)
 var _ resource.ResourceWithImportState = (*MetalakeResource)(nil)
+var _ resource.ResourceWithConfigure = (*MetalakeResource)(nil)
 
 type MetalakeResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 type MetalakeResourceModel struct {
@@ -61,10 +63,6 @@ func filterReservedProperties(props map[string]string) map[string]string {
 
 func NewMetalakeResource() resource.Resource {
 	return &MetalakeResource{}
-}
-
-func (r *MetalakeResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 func (r *MetalakeResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -141,14 +139,6 @@ func (r *MetalakeResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 	}
 }
 
-func (r *MetalakeResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
-
 func (r *MetalakeResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan MetalakeResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -170,7 +160,7 @@ func (r *MetalakeResource) Create(ctx context.Context, req resource.CreateReques
 		Properties: props,
 	}
 
-	result, err := r.client.CreateMetalake(ctx, createReq)
+	result, err := r.Client.CreateMetalake(ctx, createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating metalake", plan.Name.ValueString(), err)...)
 		return
@@ -189,7 +179,7 @@ func (r *MetalakeResource) Create(ctx context.Context, req resource.CreateReques
 	// second call; this is the only supported way to disable it without
 	// dropping its metadata.
 	if !plan.InUse.ValueBool() {
-		if _, err := r.client.SetMetalakeInUse(ctx, plan.Name.ValueString(), false); err != nil {
+		if _, err := r.Client.SetMetalakeInUse(ctx, plan.Name.ValueString(), false); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("disabling metalake", plan.Name.ValueString(), err)...)
 			return
 		}
@@ -214,7 +204,7 @@ func (r *MetalakeResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	tflog.Debug(ctx, "Reading metalake", map[string]interface{}{"name": state.Name.ValueString()})
 
-	result, err := r.client.GetMetalake(ctx, state.Name.ValueString())
+	result, err := r.Client.GetMetalake(ctx, state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -268,7 +258,7 @@ func (r *MetalakeResource) Update(ctx context.Context, req resource.UpdateReques
 	// Enable before the metadata updates and disable after them: Gravitino
 	// refuses to operate on a disabled metalake.
 	if inUseChanged && plan.InUse.ValueBool() {
-		if _, err := r.client.SetMetalakeInUse(ctx, name, true); err != nil {
+		if _, err := r.Client.SetMetalakeInUse(ctx, name, true); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("enabling metalake", name, err)...)
 			return
 		}
@@ -300,7 +290,7 @@ func (r *MetalakeResource) Update(ctx context.Context, req resource.UpdateReques
 	// restore the disabled state afterwards when the plan keeps it disabled.
 	temporarilyEnabled := !inUseChanged && !plan.InUse.ValueBool() && len(updates) > 0
 	if temporarilyEnabled {
-		if _, err := r.client.SetMetalakeInUse(ctx, name, true); err != nil {
+		if _, err := r.Client.SetMetalakeInUse(ctx, name, true); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("enabling metalake", name, err)...)
 			return
 		}
@@ -309,10 +299,10 @@ func (r *MetalakeResource) Update(ctx context.Context, req resource.UpdateReques
 	// Never send an empty update list: it is not a valid payload and would
 	// replace the planned values with an empty response.
 	if len(updates) > 0 {
-		result, err := r.client.UpdateMetalake(ctx, name, updates)
+		result, err := r.Client.UpdateMetalake(ctx, name, updates)
 		if err != nil {
 			if temporarilyEnabled {
-				if _, restoreErr := r.client.SetMetalakeInUse(ctx, name, false); restoreErr != nil {
+				if _, restoreErr := r.Client.SetMetalakeInUse(ctx, name, false); restoreErr != nil {
 					tflog.Warn(ctx, "Failed to re-disable metalake after a failed update", map[string]interface{}{
 						"name":  name,
 						"error": restoreErr.Error(),
@@ -336,7 +326,7 @@ func (r *MetalakeResource) Update(ctx context.Context, req resource.UpdateReques
 
 	if (inUseChanged && !plan.InUse.ValueBool()) || temporarilyEnabled {
 		finalName := plan.Name.ValueString()
-		if _, err := r.client.SetMetalakeInUse(ctx, finalName, false); err != nil {
+		if _, err := r.Client.SetMetalakeInUse(ctx, finalName, false); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("disabling metalake", finalName, err)...)
 			return
 		}
@@ -366,7 +356,7 @@ func (r *MetalakeResource) Delete(ctx context.Context, req resource.DeleteReques
 	// asks for; force_destroy=false still refuses a metalake with catalogs.
 	disabled := false
 	if !forceDestroy {
-		if _, err := r.client.SetMetalakeInUse(ctx, name, false); err != nil {
+		if _, err := r.Client.SetMetalakeInUse(ctx, name, false); err != nil {
 			if client.IsNotFoundError(err) {
 				tflog.Debug(ctx, "Metalake already deleted", map[string]interface{}{"name": name})
 				return
@@ -377,7 +367,7 @@ func (r *MetalakeResource) Delete(ctx context.Context, req resource.DeleteReques
 		disabled = true
 	}
 
-	_, err := r.client.DropMetalake(ctx, name, forceDestroy)
+	_, err := r.Client.DropMetalake(ctx, name, forceDestroy)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deleting twice is not an error.
@@ -387,7 +377,7 @@ func (r *MetalakeResource) Delete(ctx context.Context, req resource.DeleteReques
 		// A refused destroy must not leave a live metalake out of service:
 		// restore the state it had before this attempt.
 		if disabled && state.InUse.ValueBool() {
-			if _, restoreErr := r.client.SetMetalakeInUse(ctx, name, true); restoreErr != nil {
+			if _, restoreErr := r.Client.SetMetalakeInUse(ctx, name, true); restoreErr != nil {
 				tflog.Warn(ctx, "Failed to re-enable metalake after a failed drop", map[string]interface{}{
 					"name":  name,
 					"error": restoreErr.Error(),

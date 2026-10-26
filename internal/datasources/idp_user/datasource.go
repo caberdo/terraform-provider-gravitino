@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -28,28 +29,16 @@ const IdpUserDataSourceDescription = "Gets a built-in IDP user; the built-in IDP
 	"otherwise the endpoint answers HTTP 404."
 
 type IdpUserDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewDataSource() datasource.DataSource {
 	return &IdpUserDataSource{}
 }
 
-func (d *IdpUserDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
-
 type IdpUserDataSourceModel struct {
 	Name   types.String `tfsdk:"name"`
 	Groups types.Set    `tfsdk:"groups"`
-}
-
-func (d *IdpUserDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *IdpUserDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -80,7 +69,7 @@ func (d *IdpUserDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	result, err := d.client.GetIdpUser(ctx, config.Name.ValueString())
+	result, err := d.Client.GetIdpUser(ctx, config.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading IDP user", config.Name.ValueString(), err)...)
 		return

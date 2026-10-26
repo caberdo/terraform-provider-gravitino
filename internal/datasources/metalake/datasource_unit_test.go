@@ -10,11 +10,13 @@ import (
 
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/metalake"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -255,4 +257,22 @@ func TestMetalakesDataSource_ReadServerError(t *testing.T) {
 	if got := resp.Diagnostics.Errors()[0].Summary(); got != `Failed listing metalakes "metalakes"` {
 		t.Fatalf("unexpected summary: %s", got)
 	}
+}
+
+func TestMetalakeDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewMetalakeDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.MetalakeDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+func TestMetalakesDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewMetalakesDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.MetalakesDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	metalakes, ok := resp.Schema.Blocks["metalakes"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("metalakes block = %T, want schema.ListNestedBlock", resp.Schema.Blocks["metalakes"])
+	}
+	modeltest.AssertAttributesMatch(t, ds.MetalakeItemModel{}, modeltest.Keys(metalakes.NestedObject.Attributes))
 }

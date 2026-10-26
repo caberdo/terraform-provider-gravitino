@@ -9,6 +9,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/model"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -272,4 +273,16 @@ func TestModelsDataSource_Read_Empty(t *testing.T) {
 	if got.Models.IsNull() || got.Models.IsUnknown() || len(got.Models.Elements()) != 0 {
 		t.Fatalf("expected a known empty list, got %v", got.Models)
 	}
+}
+
+func TestModelDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewModelDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.ModelDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+func TestModelsDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewModelsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.ModelsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -13,9 +14,10 @@ import (
 )
 
 var _ datasource.DataSource = (*MetalakeDataSource)(nil)
+var _ datasource.DataSourceWithConfigure = (*MetalakeDataSource)(nil)
 
 type MetalakeDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 type MetalakeDataSourceModel struct {
@@ -54,14 +56,6 @@ func (d *MetalakeDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 	}
 }
 
-func (d *MetalakeDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
-
 func (d *MetalakeDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var state MetalakeDataSourceModel
 
@@ -70,7 +64,7 @@ func (d *MetalakeDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.GetMetalake(ctx, state.Name.ValueString())
+	result, err := d.Client.GetMetalake(ctx, state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

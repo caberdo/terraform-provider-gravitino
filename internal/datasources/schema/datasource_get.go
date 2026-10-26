@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -19,7 +20,7 @@ var _ datasource.DataSourceWithConfigure = &SchemaDataSource{}
 var dsAuditAttrTypes = models.AuditAttrTypes
 
 type SchemaDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 type SchemaDataSourceModel struct {
@@ -73,14 +74,6 @@ func (d *SchemaDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 	}
 }
 
-func (ds *SchemaDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		ds.client = c
-	}
-}
-
 func (ds *SchemaDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config SchemaDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -88,7 +81,7 @@ func (ds *SchemaDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	schemaResp, err := ds.client.GetSchema(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Name.ValueString())
+	schemaResp, err := ds.Client.GetSchema(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -21,15 +22,11 @@ var _ datasource.DataSourceWithConfigure = &CatalogConnectionTestDataSource{}
 var _ datasource.DataSourceWithConfigValidators = &CatalogConnectionTestDataSource{}
 
 type CatalogConnectionTestDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewConnectionTestDataSource() datasource.DataSource {
 	return &CatalogConnectionTestDataSource{}
-}
-
-func (d *CatalogConnectionTestDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type CatalogConnectionTestDataSourceModel struct {
@@ -43,14 +40,6 @@ type CatalogConnectionTestDataSourceModel struct {
 
 	Success types.Bool   `tfsdk:"success"`
 	Message types.String `tfsdk:"message"`
-}
-
-func (d *CatalogConnectionTestDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *CatalogConnectionTestDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -151,7 +140,7 @@ func (d *CatalogConnectionTestDataSource) Read(ctx context.Context, req datasour
 			"metalake": metalake,
 			"catalog":  catalogName,
 		})
-		result, err = d.client.TestCatalogConnection(ctx, metalake, catalogName, nil)
+		result, err = d.Client.TestCatalogConnection(ctx, metalake, catalogName, nil)
 	} else {
 		target = config.Name.ValueString()
 
@@ -168,7 +157,7 @@ func (d *CatalogConnectionTestDataSource) Read(ctx context.Context, req datasour
 			"name":     target,
 			"type":     config.Type.ValueString(),
 		})
-		result, err = d.client.TestCatalogConfig(ctx, metalake, &models.CatalogCreateRequest{
+		result, err = d.Client.TestCatalogConfig(ctx, metalake, &models.CatalogCreateRequest{
 			Name:       target,
 			Type:       config.Type.ValueString(),
 			Provider:   config.Provider.ValueString(),
@@ -203,7 +192,7 @@ func (d *CatalogConnectionTestDataSource) Read(ctx context.Context, req datasour
 // to use an API that only exists from 1.3.1 on, so an unknown server version
 // must not be assumed to support it.
 func (d *CatalogConnectionTestDataSource) existingCatalogSupported(ctx context.Context, resp *datasource.ReadResponse) bool {
-	reported, err := d.client.ResolveServerVersion(ctx)
+	reported, err := d.Client.ResolveServerVersion(ctx)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading the Gravitino server version", "catalog connection test", err)...)
 		return false

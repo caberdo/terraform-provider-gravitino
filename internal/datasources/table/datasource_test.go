@@ -203,7 +203,7 @@ func TestTableDataSource_ReadUsesTheSpecExample(t *testing.T) {
 	})
 
 	d := NewTableDataSource().(*tableDataSource)
-	d.client = c
+	d.Client = c
 
 	schemaObj := dataSourceSchema(t, d).Schema
 	config := models.TableDataSourceModel{
@@ -308,7 +308,7 @@ func TestTableDataSource_NormalisesServerValues(t *testing.T) {
 	})
 
 	d := NewTableDataSource().(*tableDataSource)
-	d.client = c
+	d.Client = c
 
 	schemaObj := dataSourceSchema(t, d).Schema
 	config := models.TableDataSourceModel{
@@ -357,7 +357,7 @@ func TestTableDataSource_ReadNotFoundIsAnError(t *testing.T) {
 	})
 
 	d := NewTableDataSource().(*tableDataSource)
-	d.client = c
+	d.Client = c
 
 	schemaObj := dataSourceSchema(t, d).Schema
 	config := models.TableDataSourceModel{
@@ -410,7 +410,7 @@ func TestTablesDataSource_Read(t *testing.T) {
 	})
 
 	d := NewTablesDataSource().(*tablesDataSource)
-	d.client = c
+	d.Client = c
 
 	schemaObj := dataSourceSchema(t, d).Schema
 	config := tablesDataSourceModel{
@@ -446,11 +446,49 @@ func TestTablesDataSource_Read(t *testing.T) {
 	}
 }
 
-// TestTableDataSourceModelsMatchSchema keeps the slice model and the framework
-// boundary model in lockstep with the schema.
+// TestTableDataSourceModelsMatchSchema keeps the slice model, the framework
+// boundary model and the nested element models in lockstep with the schema.
 func TestTableDataSourceModelsMatchSchema(t *testing.T) {
-	schemaObj := dataSourceSchema(t, NewTableDataSource()).Schema
-	names := append(modeltest.Keys(schemaObj.Attributes), modeltest.Keys(schemaObj.Blocks)...)
-	modeltest.AssertAttributesMatch(t, models.TableDataSourceModel{}, names)
-	modeltest.AssertAttributesMatch(t, models.TableDataSourceTFModel{}, names)
+	resp := &datasource.SchemaResponse{}
+	NewTableDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, models.TableDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+	modeltest.AssertSchemaMatches(t, models.TableDataSourceTFModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	columns, ok := resp.Schema.Blocks["column"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("column is %T, want a ListNestedBlock", resp.Schema.Blocks["column"])
+	}
+	modeltest.AssertAttributesMatch(t, models.ColumnTFSDK{}, modeltest.Keys(columns.NestedObject.Attributes))
+
+	sortOrders, ok := resp.Schema.Blocks["sort_order"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("sort_order is %T, want a ListNestedBlock", resp.Schema.Blocks["sort_order"])
+	}
+	modeltest.AssertAttributesMatch(t, models.SortOrderTFSDK{}, modeltest.Keys(sortOrders.NestedObject.Attributes))
+
+	distribution, ok := resp.Schema.Blocks["distribution"].(schema.SingleNestedBlock)
+	if !ok {
+		t.Fatalf("distribution is %T, want a SingleNestedBlock", resp.Schema.Blocks["distribution"])
+	}
+	modeltest.AssertAttributesMatch(t, models.DistributionTFSDK{}, modeltest.Keys(distribution.Attributes))
+
+	partitioning, ok := resp.Schema.Blocks["partitioning"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("partitioning is %T, want a ListNestedBlock", resp.Schema.Blocks["partitioning"])
+	}
+	modeltest.AssertAttributesMatch(t, models.PartitioningTFSDK{}, modeltest.Keys(partitioning.NestedObject.Attributes))
+
+	indexes, ok := resp.Schema.Blocks["index"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("index is %T, want a ListNestedBlock", resp.Schema.Blocks["index"])
+	}
+	modeltest.AssertAttributesMatch(t, models.IndexTFSDK{}, modeltest.Keys(indexes.NestedObject.Attributes))
+}
+
+// TestTablesDataSourceModelsMatchSchema keeps the model of the gravitino_tables
+// data source in lockstep with its schema.
+func TestTablesDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	NewTablesDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, tablesDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

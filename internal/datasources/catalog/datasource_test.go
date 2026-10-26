@@ -10,6 +10,7 @@ import (
 
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/catalog"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 
@@ -311,4 +312,16 @@ func TestCatalogsDataSource_ReadServerErrorUsesGravitinoError(t *testing.T) {
 	if got := resp.Diagnostics.Errors()[0].Summary(); got != `Failed listing catalogs "my_test_metalake"` {
 		t.Fatalf("unexpected summary: %s", got)
 	}
+}
+
+func TestCatalogDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewGetDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.CatalogDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+func TestCatalogsDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewListDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.CatalogsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

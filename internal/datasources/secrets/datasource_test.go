@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
+
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 )
 
@@ -25,4 +27,12 @@ func TestSecretsDataSource_Schema(t *testing.T) {
 			t.Fatalf("missing attribute %s", name)
 		}
 	}
+}
+
+// TestSecretsDataSourceModelsMatchSchema keeps the model in lockstep with the
+// gravitino_secrets schema.
+func TestSecretsDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	New().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, SecretsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

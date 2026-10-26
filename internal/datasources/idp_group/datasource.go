@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -28,28 +29,16 @@ const IdpGroupDataSourceDescription = "Gets a built-in IDP group; the built-in I
 	"otherwise the endpoint answers HTTP 404."
 
 type IdpGroupDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewDataSource() datasource.DataSource {
 	return &IdpGroupDataSource{}
 }
 
-func (d *IdpGroupDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
-
 type IdpGroupDataSourceModel struct {
 	Name  types.String `tfsdk:"name"`
 	Users types.Set    `tfsdk:"users"`
-}
-
-func (d *IdpGroupDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *IdpGroupDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -80,7 +69,7 @@ func (d *IdpGroupDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.GetIdpGroup(ctx, config.Name.ValueString())
+	result, err := d.Client.GetIdpGroup(ctx, config.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading IDP group", config.Name.ValueString(), err)...)
 		return

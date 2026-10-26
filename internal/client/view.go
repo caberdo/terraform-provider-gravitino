@@ -6,16 +6,9 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
-func (c *Client) ListViews(ctx context.Context, metalake, catalog, schema string) (*models.IdentifiersResponse, error) {
-	var result models.IdentifiersResponse
-	path := catalogCollectionPath(metalake, catalog, schema, "views")
-	err := c.Get(ctx, path, &result)
-	return &result, err
-}
-
 func (c *Client) ListViewsDetails(ctx context.Context, metalake, catalog, schema string) ([]models.View, error) {
-	identifiers, err := c.ListViews(ctx, metalake, catalog, schema)
-	if err != nil {
+	var identifiers models.IdentifiersResponse
+	if err := c.Get(ctx, catalogCollectionPath(metalake, catalog, schema, "views"), &identifiers); err != nil {
 		return nil, err
 	}
 	views := make([]models.View, 0, len(identifiers.Identifiers))

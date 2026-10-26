@@ -8,6 +8,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
@@ -30,15 +31,11 @@ var _ resource.ResourceWithConfigure = &ModelVersionResource{}
 var AuditAttrTypes = models.AuditAttrTypes
 
 type ModelVersionResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func NewModelVersionResource() resource.Resource {
 	return &ModelVersionResource{}
-}
-
-func (r *ModelVersionResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type ModelVersionResourceModel struct {
@@ -143,14 +140,6 @@ func (r *ModelVersionResource) Schema(_ context.Context, _ resource.SchemaReques
 	}
 }
 
-func (r *ModelVersionResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
-
 func (r *ModelVersionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan ModelVersionResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -161,7 +150,7 @@ func (r *ModelVersionResource) Create(ctx context.Context, req resource.CreateRe
 	tflog.Debug(ctx, "Creating model version", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "model": plan.Model.ValueString()})
 
 	uri := plan.URI.ValueString()
-	uris := propertiesFromTF(ctx, plan.URIs, &resp.Diagnostics)
+	uris := tfutil.StringMap(ctx, plan.URIs, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -176,7 +165,7 @@ func (r *ModelVersionResource) Create(ctx context.Context, req resource.CreateRe
 	createReq := &models.ModelVersionLinkRequest{
 		Aliases:    stringSetFromTF(ctx, plan.Aliases, &resp.Diagnostics),
 		Comment:    plan.Comment.ValueString(),
-		Properties: propertiesFromTF(ctx, plan.Properties, &resp.Diagnostics),
+		Properties: tfutil.StringMap(ctx, plan.Properties, &resp.Diagnostics),
 	}
 	if resp.Diagnostics.HasError() {
 		return
@@ -189,7 +178,7 @@ func (r *ModelVersionResource) Create(ctx context.Context, req resource.CreateRe
 		createReq.URI = uri
 	}
 
-	if _, err := r.client.LinkModelVersion(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), plan.Model.ValueString(), createReq); err != nil {
+	if _, err := r.Client.LinkModelVersion(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), plan.Model.ValueString(), createReq); err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating model version", plan.Model.ValueString(), err)...)
 		return
 	}
@@ -222,7 +211,7 @@ func (r *ModelVersionResource) Read(ctx context.Context, req resource.ReadReques
 
 	tflog.Debug(ctx, "Reading model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
 
-	result, err := r.client.GetModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()))
+	result, err := r.Client.GetModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()))
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -292,7 +281,7 @@ func (r *ModelVersionResource) Update(ctx context.Context, req resource.UpdateRe
 
 	var result *models.ModelVersionResponse
 	if len(updates) > 0 {
-		updated, err := r.client.UpdateModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()), updates)
+		updated, err := r.Client.UpdateModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()), updates)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating model version", fmt.Sprintf("%s version %d", state.Model.ValueString(), state.Version.ValueInt64()), err)...)
 			return
@@ -301,7 +290,7 @@ func (r *ModelVersionResource) Update(ctx context.Context, req resource.UpdateRe
 	} else {
 		// Nothing to send, but the computed attributes still need their real
 		// values in state.
-		current, err := r.client.GetModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()))
+		current, err := r.Client.GetModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()))
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("reading model version after update", fmt.Sprintf("%s version %d", state.Model.ValueString(), state.Version.ValueInt64()), err)...)
 			return
@@ -328,7 +317,7 @@ func (r *ModelVersionResource) Delete(ctx context.Context, req resource.DeleteRe
 
 	tflog.Debug(ctx, "Deleting model version", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
 
-	_, err := r.client.DeleteModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()))
+	_, err := r.Client.DeleteModelVersion(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Model.ValueString(), int32(state.Version.ValueInt64()))
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			tflog.Debug(ctx, "Model version already deleted", map[string]interface{}{"model": state.Model.ValueString(), "version": state.Version.ValueInt64()})
@@ -365,7 +354,7 @@ func (r *ModelVersionResource) ImportState(ctx context.Context, req resource.Imp
 // Gravitino assigns an increasing number to every linked version, so the newest
 // version is the one that was just linked.
 func (r *ModelVersionResource) newestModelVersion(ctx context.Context, metalake, catalog, schemaName, model string) (models.ModelVersion, error) {
-	list, err := r.client.ListModelVersions(ctx, metalake, catalog, schemaName, model, true)
+	list, err := r.Client.ListModelVersions(ctx, metalake, catalog, schemaName, model, true)
 	if err != nil {
 		return models.ModelVersion{}, err
 	}
@@ -388,7 +377,7 @@ func (r *ModelVersionResource) newestModelVersion(ctx context.Context, metalake,
 				version = candidate
 			}
 		}
-		result, err := r.client.GetModelVersion(ctx, metalake, catalog, schemaName, model, version)
+		result, err := r.Client.GetModelVersion(ctx, metalake, catalog, schemaName, model, version)
 		if err != nil {
 			return models.ModelVersion{}, err
 		}
@@ -472,10 +461,6 @@ func setValueFrom(ctx context.Context, values []string, current types.Set, diags
 	return types.SetNull(types.StringType)
 }
 
-func propertiesFromTF(ctx context.Context, value types.Map, diags *diag.Diagnostics) map[string]string {
-	return tfutil.StringMap(ctx, value, diags)
-}
-
 func stringSetFromTF(ctx context.Context, value types.Set, diags *diag.Diagnostics) []string {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
@@ -486,8 +471,8 @@ func stringSetFromTF(ctx context.Context, value types.Set, diags *diag.Diagnosti
 }
 
 func modelVersionPropertyUpdates(ctx context.Context, oldValue, newValue types.Map, diags *diag.Diagnostics) []interface{} {
-	oldProps := propertiesFromTF(ctx, oldValue, diags)
-	newProps := propertiesFromTF(ctx, newValue, diags)
+	oldProps := tfutil.StringMap(ctx, oldValue, diags)
+	newProps := tfutil.StringMap(ctx, newValue, diags)
 	if diags.HasError() {
 		return nil
 	}
@@ -507,8 +492,8 @@ func modelVersionPropertyUpdates(ctx context.Context, oldValue, newValue types.M
 }
 
 func uriUpdates(ctx context.Context, oldValue, newValue types.Map, diags *diag.Diagnostics) []interface{} {
-	oldURIs := propertiesFromTF(ctx, oldValue, diags)
-	newURIs := propertiesFromTF(ctx, newValue, diags)
+	oldURIs := tfutil.StringMap(ctx, oldValue, diags)
+	newURIs := tfutil.StringMap(ctx, newValue, diags)
 	if diags.HasError() {
 		return nil
 	}

@@ -10,6 +10,7 @@ import (
 
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/owner"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 
@@ -220,4 +221,12 @@ func TestOwnerDataSource_ReadServerErrorUsesGravitinoError(t *testing.T) {
 	if got := resp.Diagnostics.Errors()[0].Summary(); got != `Failed reading owner "c1"` {
 		t.Fatalf("unexpected summary: %s", got)
 	}
+}
+
+// TestOwnerDataSourceModelsMatchSchema keeps the model in lockstep with the
+// gravitino_owner schema.
+func TestOwnerDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewOwnerDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.OwnerDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

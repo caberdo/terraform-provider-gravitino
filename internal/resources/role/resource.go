@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -27,15 +28,11 @@ var _ resource.ResourceWithImportState = &RoleResource{}
 var _ resource.ResourceWithConfigure = &RoleResource{}
 
 type RoleResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func NewRoleResource() resource.Resource {
 	return &RoleResource{}
-}
-
-func (r *RoleResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type RoleResourceModel struct {
@@ -70,14 +67,6 @@ var SecurableObjectAttrTypes = map[string]attr.Type{
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (r *RoleResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *RoleResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_role"
@@ -202,7 +191,7 @@ func (r *RoleResource) Create(ctx context.Context, req resource.CreateRequest, r
 		SecurableObjects: securableObjectsFromTF(ctx, plan.SecurableObjects),
 	}
 
-	result, err := r.client.CreateRole(ctx, metalake, createReq)
+	result, err := r.Client.CreateRole(ctx, metalake, createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating role", name, err)...)
 		return
@@ -230,7 +219,7 @@ func (r *RoleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	tflog.Debug(ctx, "Reading role", map[string]interface{}{"metalake": metalake, "name": name})
 
-	result, err := r.client.GetRole(ctx, metalake, name)
+	result, err := r.Client.GetRole(ctx, metalake, name)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			tflog.Debug(ctx, "Role does not exist anymore, removing it from state", map[string]interface{}{"metalake": metalake, "name": name})
@@ -272,7 +261,7 @@ func (r *RoleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 		tflog.Debug(ctx, "Overriding role privileges", map[string]interface{}{"metalake": metalake, "name": roleName, "securable_objects": len(overrides)})
 
-		if _, err := r.client.OverrideRolePrivileges(ctx, metalake, roleName, overrides); err != nil {
+		if _, err := r.Client.OverrideRolePrivileges(ctx, metalake, roleName, overrides); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating role privileges", roleName, err)...)
 			return
 		}
@@ -280,7 +269,7 @@ func (r *RoleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 	// Read back so that every computed attribute (audit included) holds a value that
 	// is known to Terraform.
-	result, err := r.client.GetRole(ctx, metalake, roleName)
+	result, err := r.Client.GetRole(ctx, metalake, roleName)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			tflog.Debug(ctx, "Role does not exist anymore, removing it from state", map[string]interface{}{"metalake": metalake, "name": roleName})
@@ -313,7 +302,7 @@ func (r *RoleResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 	tflog.Debug(ctx, "Deleting role", map[string]interface{}{"metalake": metalake, "name": name})
 
-	_, err := r.client.DeleteRole(ctx, metalake, name)
+	_, err := r.Client.DeleteRole(ctx, metalake, name)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deleting is idempotent.

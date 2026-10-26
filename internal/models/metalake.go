@@ -25,12 +25,6 @@ type MetalakeCreateRequest struct {
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
-// MetalakeSetRequest mirrors `MetalakeSetRequest`, used by
-// PATCH /metalakes/{metalake} to mark a metalake in-use (or not).
-type MetalakeSetRequest struct {
-	InUse bool `json:"inUse"`
-}
-
 // MetalakeUpdateRequest mirrors `MetalakeUpdatesRequest`.
 type MetalakeUpdateRequest struct {
 	Updates []interface{} `json:"updates"`
@@ -75,4 +69,10 @@ func NewSetMetalakePropertyRequest(property, value string) SetMetalakePropertyRe
 
 func NewRemoveMetalakePropertyRequest(property string) RemoveMetalakePropertyRequest {
 	return RemoveMetalakePropertyRequest{Type: "removeProperty", Property: property}
+}
+
+// MetalakeSetRequest mirrors `MetalakeSetRequest`, used by
+// PATCH /metalakes/{metalake} to mark a metalake in-use (or not).
+type MetalakeSetRequest struct {
+	InUse bool `json:"inUse"`
 }

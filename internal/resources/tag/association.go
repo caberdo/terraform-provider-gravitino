@@ -8,6 +8,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
@@ -32,15 +33,11 @@ var _ resource.ResourceWithConfigure = &TagAssociationResource{}
 // go through associateTags (POST with tagsToAdd / tagsToRemove), so destroy
 // sends one POST that removes every tag recorded in state.
 type TagAssociationResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func NewAssociation() resource.Resource {
 	return &TagAssociationResource{}
-}
-
-func (r *TagAssociationResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type TagAssociationResourceModel struct {
@@ -49,14 +46,6 @@ type TagAssociationResourceModel struct {
 	ObjectType     types.String `tfsdk:"object_type"`
 	ObjectFullName types.String `tfsdk:"object_full_name"`
 	Tags           types.Set    `tfsdk:"tags"`
-}
-
-func (r *TagAssociationResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
 }
 
 func (r *TagAssociationResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -134,7 +123,7 @@ func (r *TagAssociationResource) Create(ctx context.Context, req resource.Create
 
 	names := tfutil.SetToStrings(plan.Tags)
 	if len(names) > 0 {
-		if _, err := r.client.AssociateTags(ctx, metalake, objectType, objectFullName, &models.TagsAssociateRequest{TagsToAdd: names}); err != nil {
+		if _, err := r.Client.AssociateTags(ctx, metalake, objectType, objectFullName, &models.TagsAssociateRequest{TagsToAdd: names}); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("associating tags with", objectFullName, err)...)
 			return
 		}
@@ -171,7 +160,7 @@ func (r *TagAssociationResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	result, err := r.client.ListTagsForObject(ctx, metalake, objectType, objectFullName)
+	result, err := r.Client.ListTagsForObject(ctx, metalake, objectType, objectFullName)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -230,7 +219,7 @@ func (r *TagAssociationResource) Update(ctx context.Context, req resource.Update
 
 	if len(toAdd) > 0 || len(toRemove) > 0 {
 		assocReq := &models.TagsAssociateRequest{TagsToAdd: toAdd, TagsToRemove: toRemove}
-		if _, err := r.client.AssociateTags(ctx, metalake, objectType, objectFullName, assocReq); err != nil {
+		if _, err := r.Client.AssociateTags(ctx, metalake, objectType, objectFullName, assocReq); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating tags of", objectFullName, err)...)
 			return
 		}
@@ -271,7 +260,7 @@ func (r *TagAssociationResource) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 
-	if _, err := r.client.AssociateTags(ctx, metalake, objectType, objectFullName, &models.TagsAssociateRequest{TagsToRemove: names}); err != nil {
+	if _, err := r.Client.AssociateTags(ctx, metalake, objectType, objectFullName, &models.TagsAssociateRequest{TagsToRemove: names}); err != nil {
 		if client.IsNotFoundError(err) {
 			// The object (or one of its tags) is already gone, so the
 			// association is gone with it.
@@ -315,7 +304,7 @@ func (r *TagAssociationResource) ImportState(ctx context.Context, req resource.I
 // before any request is sent, so a 1.3.0 server answers with an explicit
 // "requires Gravitino >= 1.3.1" diagnostic instead of an opaque 400.
 func (r *TagAssociationResource) checkObjectTypeSupported(ctx context.Context, objectType string, diags *diag.Diagnostics) bool {
-	if err := r.client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
+	if err := r.Client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
 		diags.AddAttributeError(path.Root("object_type"), "Unsupported object_type value", err.Error())
 		return false
 	}

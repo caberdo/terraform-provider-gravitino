@@ -6,7 +6,9 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
+	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -28,7 +30,7 @@ var _ resource.ResourceWithImportState = &ViewResource{}
 var _ resource.ResourceWithConfigure = &ViewResource{}
 
 type ViewResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 type ViewResourceModel struct {
@@ -82,10 +84,6 @@ func viewResourceModelToTF(ctx context.Context, in ViewResourceModel, diags *dia
 
 func NewViewResource() resource.Resource {
 	return &ViewResource{}
-}
-
-func (r *ViewResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 func (r *ViewResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -236,14 +234,6 @@ func (r *ViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 	}
 }
 
-func (r *ViewResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
-
 func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var tfPlan models.ViewResourceTFModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &tfPlan)...)
@@ -257,7 +247,7 @@ func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	tflog.Debug(ctx, "Creating view", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
 
-	r.client.CheckExternalTypesSupported(plan.Columns, &resp.Diagnostics)
+	r.Client.CheckExternalTypesSupported(plan.Columns, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -277,13 +267,13 @@ func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, r
 		Representations: models.ViewRepresentationsToAPI(plan.Representations),
 		DefaultCatalog:  plan.DefaultCatalog.ValueString(),
 		DefaultSchema:   plan.DefaultSchema.ValueString(),
-		Properties:      propertiesFromPlan(ctx, plan.Properties, &resp.Diagnostics),
+		Properties:      tfutil.StringMap(ctx, plan.Properties, &resp.Diagnostics),
 	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	viewResp, err := r.client.CreateView(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
+	viewResp, err := r.Client.CreateView(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating view", plan.Name.ValueString(), err)...)
 		return
@@ -316,7 +306,7 @@ func (r *ViewResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	tflog.Debug(ctx, "Reading view", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	viewResp, err := r.client.GetView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	viewResp, err := r.Client.GetView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -364,8 +354,8 @@ func (r *ViewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// A not yet known property map is resolved by Terraform before the next
 	// apply; diffing it now would send bogus removeProperty updates.
 	if !plan.Properties.IsUnknown() && !state.Properties.IsUnknown() && !plan.Properties.Equal(state.Properties) {
-		oldProps := mapFromState(ctx, state.Properties, &resp.Diagnostics)
-		newProps := mapFromState(ctx, plan.Properties, &resp.Diagnostics)
+		oldProps := tfutil.StringMap(ctx, state.Properties, &resp.Diagnostics)
+		newProps := tfutil.StringMap(ctx, plan.Properties, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -383,14 +373,14 @@ func (r *ViewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 
 	if len(updates) > 0 {
-		viewResp, err := r.client.UpdateView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
+		viewResp, err := r.Client.UpdateView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating view", state.Name.ValueString(), err)...)
 			return
 		}
 		r.readViewToState(ctx, viewResp, &plan, false, &resp.Diagnostics)
 	} else {
-		viewResp, err := r.client.GetView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+		viewResp, err := r.Client.GetView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("reading view after update", state.Name.ValueString(), err)...)
 			return
@@ -423,7 +413,7 @@ func (r *ViewResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 	tflog.Debug(ctx, "Deleting view", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.DropView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	_, err := r.Client.DropView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			tflog.Debug(ctx, "View already deleted", map[string]interface{}{"name": state.Name.ValueString()})
@@ -502,28 +492,6 @@ func mapFromResponse(ctx context.Context, props map[string]string, planned types
 		return v
 	}
 	return types.MapNull(types.StringType)
-}
-
-// propertiesFromPlan converts the planned properties into the map sent to the
-// API. Unknown (not yet computed) values are omitted.
-func propertiesFromPlan(ctx context.Context, planned types.Map, diags *diag.Diagnostics) map[string]string {
-	props := make(map[string]string)
-	if planned.IsNull() || planned.IsUnknown() {
-		return props
-	}
-	diags.Append(planned.ElementsAs(ctx, &props, false)...)
-	return props
-}
-
-// mapFromState converts a framework map into a plain Go map, tolerating null
-// and unknown values.
-func mapFromState(ctx context.Context, value types.Map, diags *diag.Diagnostics) map[string]string {
-	props := make(map[string]string)
-	if value.IsNull() || value.IsUnknown() {
-		return props
-	}
-	diags.Append(value.ElementsAs(ctx, &props, false)...)
-	return props
 }
 
 // columnTypeValidator validates the Terraform representation of a column type

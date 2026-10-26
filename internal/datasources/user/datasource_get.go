@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -17,15 +18,11 @@ var _ datasource.DataSource = &UserDataSource{}
 var _ datasource.DataSourceWithConfigure = &UserDataSource{}
 
 type UserDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewGetDataSource() datasource.DataSource {
 	return &UserDataSource{}
-}
-
-func (d *UserDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type UserDataSourceModel struct {
@@ -36,14 +33,6 @@ type UserDataSourceModel struct {
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (d *UserDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
 
 func (d *UserDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = "gravitino_user"
@@ -81,7 +70,7 @@ func (d *UserDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	result, err := d.client.GetUser(ctx, config.Metalake.ValueString(), config.Name.ValueString())
+	result, err := d.Client.GetUser(ctx, config.Metalake.ValueString(), config.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

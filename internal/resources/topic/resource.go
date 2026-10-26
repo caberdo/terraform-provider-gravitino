@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -26,7 +27,7 @@ var _ resource.ResourceWithConfigure = &TopicResource{}
 var AuditAttrTypes = models.AuditAttrTypes
 
 type TopicResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 type TopicResourceModel struct {
@@ -42,10 +43,6 @@ type TopicResourceModel struct {
 
 func NewTopicResource() resource.Resource {
 	return &TopicResource{}
-}
-
-func (r *TopicResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 func (r *TopicResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -113,14 +110,6 @@ func (r *TopicResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 	}
 }
 
-func (r *TopicResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
-
 func (r *TopicResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan TopicResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -144,7 +133,7 @@ func (r *TopicResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Properties: properties,
 	}
 
-	topicResp, err := r.client.CreateTopic(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
+	topicResp, err := r.Client.CreateTopic(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating topic", plan.Name.ValueString(), err)...)
 		return
@@ -169,7 +158,7 @@ func (r *TopicResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 	tflog.Debug(ctx, "Reading topic", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	topicResp, err := r.client.GetTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	topicResp, err := r.Client.GetTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -230,14 +219,14 @@ func (r *TopicResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 
 	if len(updates) > 0 {
-		topicResp, err := r.client.UpdateTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
+		topicResp, err := r.Client.UpdateTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating topic", state.Name.ValueString(), err)...)
 			return
 		}
 		r.readTopicToState(ctx, topicResp, &plan, &resp.Diagnostics)
 	} else {
-		topicResp, err := r.client.GetTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+		topicResp, err := r.Client.GetTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("reading topic after update", state.Name.ValueString(), err)...)
 			return
@@ -259,7 +248,7 @@ func (r *TopicResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 	tflog.Debug(ctx, "Deleting topic", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.DropTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	_, err := r.Client.DropTopic(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			tflog.Debug(ctx, "Topic already deleted", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})

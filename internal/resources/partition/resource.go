@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -30,7 +31,7 @@ var _ resource.ResourceWithModifyPlan = (*PartitionResource)(nil)
 
 // PartitionResource manages a single partition of a Gravitino table.
 type PartitionResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 // PartitionResourceModel is the Terraform model of a partition.
@@ -53,11 +54,6 @@ type PartitionResourceModel struct {
 // NewPartitionResource returns the gravitino_partition resource.
 func NewPartitionResource() resource.Resource {
 	return &PartitionResource{}
-}
-
-// SetClient sets the API client of the resource.
-func (r *PartitionResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 // Metadata sets the Terraform type name of the resource.
@@ -189,15 +185,6 @@ func (r *PartitionResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	}
 }
 
-// Configure sets the API client from the provider data.
-func (r *PartitionResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
-
 // ModifyPlan marks the name of an identity partition as unknown, because the
 // catalog derives it from the field names and values.
 func (r *PartitionResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
@@ -248,7 +235,7 @@ func (r *PartitionResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	result, err := r.client.AddPartitions(
+	result, err := r.Client.AddPartitions(
 		ctx,
 		plan.Metalake.ValueString(),
 		plan.Catalog.ValueString(),
@@ -300,7 +287,7 @@ func (r *PartitionResource) Read(ctx context.Context, req resource.ReadRequest, 
 		"name":     state.Name.ValueString(),
 	})
 
-	partitionResp, err := r.client.GetPartition(
+	partitionResp, err := r.Client.GetPartition(
 		ctx,
 		state.Metalake.ValueString(),
 		state.Catalog.ValueString(),
@@ -362,7 +349,7 @@ func (r *PartitionResource) Delete(ctx context.Context, req resource.DeleteReque
 		"name":     state.Name.ValueString(),
 	})
 
-	_, err := r.client.DropPartition(
+	_, err := r.Client.DropPartition(
 		ctx,
 		state.Metalake.ValueString(),
 		state.Catalog.ValueString(),

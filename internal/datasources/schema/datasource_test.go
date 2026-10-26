@@ -11,6 +11,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	datasourceschema "github.com/gravitino/terraform-provider-gravitino/internal/datasources/schema"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -448,4 +449,20 @@ func TestSchemasDataSource_ReadServerError(t *testing.T) {
 	if !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), `Failed listing schemas "my_hive_catalog"`) {
 		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
 	}
+}
+
+// TestSchemaDataSourceModelsMatchSchema keeps the model in lockstep with the
+// gravitino_schema schema.
+func TestSchemaDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	datasourceschema.NewSchemaDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, datasourceschema.SchemaDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+// TestSchemasDataSourceModelsMatchSchema keeps the model in lockstep with the
+// gravitino_schemas schema.
+func TestSchemasDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	datasourceschema.NewSchemasDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, datasourceschema.SchemasDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

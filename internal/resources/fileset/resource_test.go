@@ -13,6 +13,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/fileset"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -239,6 +240,23 @@ func unitRawString(value string, unknown bool) tftypes.Value {
 		return tftypes.NewValue(tftypes.String, tftypes.UnknownValue)
 	}
 	return tftypes.NewValue(tftypes.String, value)
+}
+
+// TestFilesetResourceModelMatchesSchema keeps the Terraform model and the
+// nested audit object in lockstep with the schema.
+func TestFilesetResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	res.New().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.FilesetResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	audit, ok := resp.Schema.Attributes["audit"].(resourceSchema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want resourceSchema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
 }
 
 func TestFilesetResourceMetadata(t *testing.T) {

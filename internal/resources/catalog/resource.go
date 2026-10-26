@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -29,15 +30,11 @@ var _ resource.ResourceWithImportState = &CatalogResource{}
 var _ resource.ResourceWithConfigure = &CatalogResource{}
 
 type CatalogResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &CatalogResource{}
-}
-
-func (r *CatalogResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type CatalogResourceModel struct {
@@ -54,14 +51,6 @@ type CatalogResourceModel struct {
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (r *CatalogResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *CatalogResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_catalog"
@@ -188,7 +177,7 @@ func (r *CatalogResource) Create(ctx context.Context, req resource.CreateRequest
 		Properties: mapFromTF(plan.Properties),
 	}
 
-	result, err := r.client.CreateCatalog(ctx, plan.Metalake.ValueString(), createReq)
+	result, err := r.Client.CreateCatalog(ctx, plan.Metalake.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating catalog", plan.Name.ValueString(), err)...)
 		return
@@ -206,7 +195,7 @@ func (r *CatalogResource) Create(ctx context.Context, req resource.CreateRequest
 	// second call; this is the only supported way to disable it without
 	// dropping its metadata.
 	if !plan.InUse.ValueBool() {
-		if _, err := r.client.SetCatalogInUse(ctx, plan.Metalake.ValueString(), plan.Name.ValueString(), false); err != nil {
+		if _, err := r.Client.SetCatalogInUse(ctx, plan.Metalake.ValueString(), plan.Name.ValueString(), false); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("disabling catalog", plan.Name.ValueString(), err)...)
 			return
 		}
@@ -231,7 +220,7 @@ func (r *CatalogResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	tflog.Debug(ctx, "Reading catalog", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	result, err := r.client.GetCatalog(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	result, err := r.Client.GetCatalog(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -282,7 +271,7 @@ func (r *CatalogResource) Update(ctx context.Context, req resource.UpdateRequest
 	// Enable before the metadata updates and disable after them: Gravitino
 	// refuses to operate on a disabled catalog.
 	if inUseChanged && plan.InUse.ValueBool() {
-		if _, err := r.client.SetCatalogInUse(ctx, metalake, currentName, true); err != nil {
+		if _, err := r.Client.SetCatalogInUse(ctx, metalake, currentName, true); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("enabling catalog", currentName, err)...)
 			return
 		}
@@ -321,17 +310,17 @@ func (r *CatalogResource) Update(ctx context.Context, req resource.UpdateRequest
 	// disabled state afterwards when the plan keeps it disabled.
 	temporarilyEnabled := !inUseChanged && !plan.InUse.ValueBool() && len(updates) > 0
 	if temporarilyEnabled {
-		if _, err := r.client.SetCatalogInUse(ctx, metalake, currentName, true); err != nil {
+		if _, err := r.Client.SetCatalogInUse(ctx, metalake, currentName, true); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("enabling catalog", currentName, err)...)
 			return
 		}
 	}
 
 	if len(updates) > 0 {
-		result, err := r.client.UpdateCatalog(ctx, metalake, currentName, updates)
+		result, err := r.Client.UpdateCatalog(ctx, metalake, currentName, updates)
 		if err != nil {
 			if temporarilyEnabled {
-				if _, restoreErr := r.client.SetCatalogInUse(ctx, metalake, currentName, false); restoreErr != nil {
+				if _, restoreErr := r.Client.SetCatalogInUse(ctx, metalake, currentName, false); restoreErr != nil {
 					tflog.Warn(ctx, "Failed to re-disable catalog after a failed update", map[string]interface{}{
 						"metalake": metalake,
 						"name":     currentName,
@@ -357,7 +346,7 @@ func (r *CatalogResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	if (inUseChanged && !plan.InUse.ValueBool()) || temporarilyEnabled {
 		finalName := plan.Name.ValueString()
-		if _, err := r.client.SetCatalogInUse(ctx, metalake, finalName, false); err != nil {
+		if _, err := r.Client.SetCatalogInUse(ctx, metalake, finalName, false); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("disabling catalog", finalName, err)...)
 			return
 		}
@@ -386,7 +375,7 @@ func (r *CatalogResource) Delete(ctx context.Context, req resource.DeleteRequest
 	// asks for; force_destroy=false still refuses a catalog with schemas.
 	disabled := false
 	if !forceDestroy {
-		if _, err := r.client.SetCatalogInUse(ctx, metalake, name, false); err != nil {
+		if _, err := r.Client.SetCatalogInUse(ctx, metalake, name, false); err != nil {
 			if client.IsNotFoundError(err) {
 				tflog.Debug(ctx, "Catalog already deleted", map[string]interface{}{"metalake": metalake, "name": name})
 				return
@@ -397,7 +386,7 @@ func (r *CatalogResource) Delete(ctx context.Context, req resource.DeleteRequest
 		disabled = true
 	}
 
-	_, err := r.client.DropCatalog(ctx, metalake, name, forceDestroy)
+	_, err := r.Client.DropCatalog(ctx, metalake, name, forceDestroy)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deleting twice is not an error.
@@ -407,7 +396,7 @@ func (r *CatalogResource) Delete(ctx context.Context, req resource.DeleteRequest
 		// A refused destroy must not leave a live catalog out of service:
 		// restore the state it had before this attempt.
 		if disabled && state.InUse.ValueBool() {
-			if _, restoreErr := r.client.SetCatalogInUse(ctx, metalake, name, true); restoreErr != nil {
+			if _, restoreErr := r.Client.SetCatalogInUse(ctx, metalake, name, true); restoreErr != nil {
 				tflog.Warn(ctx, "Failed to re-enable catalog after a failed drop", map[string]interface{}{
 					"metalake": metalake,
 					"name":     name,

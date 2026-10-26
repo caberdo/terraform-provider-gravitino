@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -20,7 +21,7 @@ var _ datasource.DataSourceWithConfigure = &FunctionDataSource{}
 var dsAuditAttrTypes = models.AuditAttrTypes
 
 type FunctionDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 type FunctionDataSourceModel struct {
@@ -40,9 +41,6 @@ func NewFunctionDataSource() datasource.DataSource {
 }
 
 // SetClient injects the API client; used by tests.
-func (d *FunctionDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
 
 func (d *FunctionDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = "gravitino_function"
@@ -93,14 +91,6 @@ func (d *FunctionDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 	}
 }
 
-func (d *FunctionDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
-
 func (d *FunctionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config FunctionDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -108,7 +98,7 @@ func (d *FunctionDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	functionResponse, err := d.client.GetFunction(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
+	functionResponse, err := d.Client.GetFunction(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading function", config.Name.ValueString(), err)...)
 		return

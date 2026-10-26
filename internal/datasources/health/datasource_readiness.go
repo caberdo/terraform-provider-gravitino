@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -14,28 +15,16 @@ var _ datasource.DataSource = (*ReadinessDataSource)(nil)
 var _ datasource.DataSourceWithConfigure = &ReadinessDataSource{}
 
 type ReadinessDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewReadinessDataSource() datasource.DataSource {
 	return &ReadinessDataSource{}
 }
 
-func (d *ReadinessDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
-
 type ReadinessDataSourceModel struct {
 	Status types.String       `tfsdk:"status"`
 	Checks []HealthCheckModel `tfsdk:"checks"`
-}
-
-func (d *ReadinessDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *ReadinessDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -82,7 +71,7 @@ func (d *ReadinessDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	result, err := d.client.GetReadiness(ctx)
+	result, err := d.Client.GetReadiness(ctx)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading readiness", "readiness", err)...)
 		return

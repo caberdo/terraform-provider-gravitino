@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -19,15 +20,11 @@ var _ datasource.DataSource = &StatisticsDataSource{}
 var _ datasource.DataSourceWithConfigure = &StatisticsDataSource{}
 
 type StatisticsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func New() datasource.DataSource {
 	return &StatisticsDataSource{}
-}
-
-func (d *StatisticsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type StatisticsDataSourceModel struct {
@@ -51,14 +48,6 @@ var StatisticItemAttrTypes = map[string]attr.Type{
 	"reserved":   types.BoolType,
 	"modifiable": types.BoolType,
 	"audit":      types.ObjectType{AttrTypes: models.AuditAttrTypes},
-}
-
-func (d *StatisticsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *StatisticsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -145,12 +134,12 @@ func (d *StatisticsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	resourceType := config.ResourceType.ValueString()
 	resource := config.Resource.ValueString()
 
-	if err := d.client.CheckMetadataObjectTypeSupported(ctx, resourceType); err != nil {
+	if err := d.Client.CheckMetadataObjectTypeSupported(ctx, resourceType); err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading statistics", resource, err)...)
 		return
 	}
 
-	result, err := d.client.ListStatistics(ctx,
+	result, err := d.Client.ListStatistics(ctx,
 		config.Metalake.ValueString(),
 		resourceType,
 		resource,

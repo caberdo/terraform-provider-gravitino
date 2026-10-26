@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
@@ -24,15 +25,11 @@ var _ resource.ResourceWithImportState = &UserResource{}
 var _ resource.ResourceWithConfigure = &UserResource{}
 
 type UserResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &UserResource{}
-}
-
-func (r *UserResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type UserResourceModel struct {
@@ -44,14 +41,6 @@ type UserResourceModel struct {
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (r *UserResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *UserResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_user"
@@ -112,7 +101,7 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	metalake := plan.Metalake.ValueString()
 
-	result, err := r.client.AddUser(ctx, metalake, plan.Name.ValueString())
+	result, err := r.Client.AddUser(ctx, metalake, plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating user", plan.Name.ValueString(), err)...)
 		return
@@ -120,7 +109,7 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	plannedRoles := listFromTF(plan.Roles)
 	if len(plannedRoles) > 0 {
-		grantResult, err := r.client.GrantRolesToUser(ctx, metalake, plan.Name.ValueString(), plannedRoles)
+		grantResult, err := r.Client.GrantRolesToUser(ctx, metalake, plan.Name.ValueString(), plannedRoles)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("granting roles to user", plan.Name.ValueString(), err)...)
 			return
@@ -148,7 +137,7 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	tflog.Debug(ctx, "Reading user", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	result, err := r.client.GetUser(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	result, err := r.Client.GetUser(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -192,7 +181,7 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	var updatedUser *models.User
 
 	if len(rolesToGrant) > 0 {
-		grantResult, err := r.client.GrantRolesToUser(ctx, metalake, name, rolesToGrant)
+		grantResult, err := r.Client.GrantRolesToUser(ctx, metalake, name, rolesToGrant)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("granting roles to user", name, err)...)
 			return
@@ -201,7 +190,7 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 
 	if len(rolesToRevoke) > 0 {
-		revokeResult, err := r.client.RevokeRolesFromUser(ctx, metalake, name, rolesToRevoke)
+		revokeResult, err := r.Client.RevokeRolesFromUser(ctx, metalake, name, rolesToRevoke)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("revoking roles from user", name, err)...)
 			return
@@ -235,7 +224,7 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 	tflog.Debug(ctx, "Deleting user", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.RemoveUser(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	_, err := r.Client.RemoveUser(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deletion is idempotent.

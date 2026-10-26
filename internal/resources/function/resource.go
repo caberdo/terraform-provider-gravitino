@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
@@ -36,7 +37,7 @@ const dataTypeDescription = "The Gravitino data type. Primitive types use the na
 	"jsonencode({type = \"struct\", fields = [{name = \"id\", type = \"integer\"}]})."
 
 type FunctionResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 type FunctionResourceModel struct {
@@ -54,11 +55,6 @@ type FunctionResourceModel struct {
 
 func New() resource.Resource {
 	return &FunctionResource{}
-}
-
-// SetClient injects the API client; used by tests.
-func (r *FunctionResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 func (r *FunctionResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -280,14 +276,6 @@ func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 	}
 }
 
-func (r *FunctionResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
-
 func (r *FunctionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan FunctionResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -308,7 +296,7 @@ func (r *FunctionResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	r.client.CheckFunctionExternalTypesSupported(definitions, &resp.Diagnostics)
+	r.Client.CheckFunctionExternalTypesSupported(definitions, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -323,7 +311,7 @@ func (r *FunctionResource) Create(ctx context.Context, req resource.CreateReques
 		Definitions:   definitions,
 	}
 
-	functionResponse, err := r.client.RegisterFunction(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), registerRequest)
+	functionResponse, err := r.Client.RegisterFunction(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), registerRequest)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("registering function", plan.Name.ValueString(), err)...)
 		return
@@ -358,7 +346,7 @@ func (r *FunctionResource) Read(ctx context.Context, req resource.ReadRequest, r
 		"name":     state.Name.ValueString(),
 	})
 
-	functionResponse, err := r.client.GetFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	functionResponse, err := r.Client.GetFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			tflog.Debug(ctx, "Function no longer exists, removing from state", map[string]interface{}{
@@ -414,7 +402,7 @@ func (r *FunctionResource) Update(ctx context.Context, req resource.UpdateReques
 		"name":     state.Name.ValueString(),
 	})
 
-	updates, d := buildFunctionUpdates(ctx, r.client, plan, state)
+	updates, d := buildFunctionUpdates(ctx, r.Client, plan, state)
 	resp.Diagnostics.Append(d...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -422,7 +410,7 @@ func (r *FunctionResource) Update(ctx context.Context, req resource.UpdateReques
 
 	var function *models.Function
 	if len(updates) > 0 {
-		functionResponse, err := r.client.UpdateFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
+		functionResponse, err := r.Client.UpdateFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
 		if err != nil {
 			if client.IsNotFoundError(err) {
 				tflog.Debug(ctx, "Function no longer exists, removing from state", map[string]interface{}{"name": state.Name.ValueString()})
@@ -434,7 +422,7 @@ func (r *FunctionResource) Update(ctx context.Context, req resource.UpdateReques
 		}
 		function = &functionResponse.Function
 	} else {
-		functionResponse, err := r.client.GetFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+		functionResponse, err := r.Client.GetFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 		if err != nil {
 			if client.IsNotFoundError(err) {
 				tflog.Debug(ctx, "Function no longer exists, removing from state", map[string]interface{}{"name": state.Name.ValueString()})
@@ -483,7 +471,7 @@ func (r *FunctionResource) Delete(ctx context.Context, req resource.DeleteReques
 		"name":     state.Name.ValueString(),
 	})
 
-	if _, err := r.client.DropFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString()); err != nil {
+	if _, err := r.Client.DropFunction(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString()); err != nil {
 		if client.IsNotFoundError(err) {
 			tflog.Debug(ctx, "Function already dropped", map[string]interface{}{"name": state.Name.ValueString()})
 			return

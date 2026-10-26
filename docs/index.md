@@ -2,7 +2,7 @@
 page_title: "Gravitino Provider"
 subcategory: ""
 description: |-
-  Terraform provider for Apache Gravitino, the unified metadata lakehouse: metalakes, catalogs, schemas, tables, views, filesets, topics, functions, models, tags, policies, roles, users, groups, ownership and jobs - 23 resources and 54 data sources.
+  Terraform provider for Apache Gravitino, the unified metadata lakehouse: metalakes, catalogs, schemas, tables, views, filesets, topics, functions, models, tags, policies, roles, users, groups, ownership and jobs - 25 resources and 55 data sources.
 ---
 
 # Gravitino Provider
@@ -11,7 +11,7 @@ Terraform provider for [Apache Gravitino](https://gravitino.apache.org/), the un
 lakehouse. It speaks the Gravitino REST API directly, so metadata and access control live in the
 same Terraform state as the rest of your infrastructure.
 
-**23 resources and 54 data sources**, covering:
+**25 resources and 55 data sources**, covering:
 
 - **Metadata** - metalakes, catalogs (relational, fileset, messaging, model), schemas, tables with
   columns, partitioning and indexes, partitions, views, filesets, topics and functions

@@ -11,6 +11,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -103,6 +104,17 @@ func assertJSONEquals(t *testing.T, got, want string) {
 	if !reflect.DeepEqual(gotVal, wantVal) {
 		t.Errorf("unexpected JSON\n got: %s\nwant: %s", got, want)
 	}
+}
+
+// TestIdpUserResourceModelMatchesSchema keeps the Terraform model in lockstep
+// with the schema.
+func TestIdpUserResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	New().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, IdpUserResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }
 
 func TestIdpUserResource_Metadata(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	resourceschema "github.com/gravitino/terraform-provider-gravitino/internal/resources/schema"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -266,6 +267,23 @@ func unitStringRequiresReplace(t *testing.T, attr resourceSchema.StringAttribute
 		m.PlanModifyString(ctx, req, resp)
 	}
 	return resp.RequiresReplace
+}
+
+// TestSchemaResourceModelMatchesSchema keeps the Terraform model and the nested
+// audit object in lockstep with the schema.
+func TestSchemaResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	resourceschema.NewSchemaResource().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, resourceschema.SchemaResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	audit, ok := resp.Schema.Attributes["audit"].(resourceSchema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want resourceSchema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
 }
 
 func TestSchemaResourceMetadata(t *testing.T) {

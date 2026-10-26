@@ -6,13 +6,6 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
-func (c *Client) ListSchemas(ctx context.Context, metalake, catalog string) (*models.IdentifiersResponse, error) {
-	var result models.IdentifiersResponse
-	path := catalogPath(metalake, catalog) + "/schemas"
-	err := c.Get(ctx, path, &result)
-	return &result, err
-}
-
 func (c *Client) GetSchema(ctx context.Context, metalake, catalog, schema string) (*models.SchemaResponse, error) {
 	var result models.SchemaResponse
 	path := schemaPath(metalake, catalog, schema)
@@ -50,8 +43,8 @@ func (c *Client) DropSchema(ctx context.Context, metalake, catalog, schema strin
 // been deleted in the meantime (404) are skipped rather than failing the whole
 // listing.
 func (c *Client) ListSchemasDetails(ctx context.Context, metalake, catalog string) ([]models.Schema, error) {
-	identifiers, err := c.ListSchemas(ctx, metalake, catalog)
-	if err != nil {
+	var identifiers models.IdentifiersResponse
+	if err := c.Get(ctx, catalogPath(metalake, catalog)+"/schemas", &identifiers); err != nil {
 		return nil, err
 	}
 	schemas := make([]models.Schema, 0, len(identifiers.Identifiers))

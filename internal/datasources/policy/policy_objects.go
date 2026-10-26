@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -20,15 +21,11 @@ var _ datasource.DataSourceWithConfigure = &PolicyObjectsDataSource{}
 // attached to. Inherited reach is not included: the API lists direct
 // attachments only.
 type PolicyObjectsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewPolicyObjectsDataSource() datasource.DataSource {
 	return &PolicyObjectsDataSource{}
-}
-
-func (d *PolicyObjectsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type PolicyObjectsDataSourceModel struct {
@@ -45,14 +42,6 @@ type policyObjectItemModel struct {
 var PolicyObjectItemAttrTypes = map[string]attr.Type{
 	"type":      types.StringType,
 	"full_name": types.StringType,
-}
-
-func (d *PolicyObjectsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *PolicyObjectsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -100,7 +89,7 @@ func (d *PolicyObjectsDataSource) Read(ctx context.Context, req datasource.ReadR
 	metalake := config.Metalake.ValueString()
 	policy := config.Policy.ValueString()
 
-	result, err := d.client.ListObjectsForPolicy(ctx, metalake, policy)
+	result, err := d.Client.ListObjectsForPolicy(ctx, metalake, policy)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

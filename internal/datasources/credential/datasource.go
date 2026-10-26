@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -20,15 +21,11 @@ var _ datasource.DataSource = &CredentialsDataSource{}
 var _ datasource.DataSourceWithConfigure = &CredentialsDataSource{}
 
 type CredentialsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func New() datasource.DataSource {
 	return &CredentialsDataSource{}
-}
-
-func (d *CredentialsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type CredentialsDataSourceModel struct {
@@ -51,14 +48,6 @@ var CredentialItemAttrTypes = map[string]attr.Type{
 	"credential_type":   types.StringType,
 	"expire_time_in_ms": types.Int64Type,
 	"credential_info":   types.MapType{ElemType: types.StringType},
-}
-
-func (d *CredentialsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *CredentialsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -127,12 +116,12 @@ func (d *CredentialsDataSource) Read(ctx context.Context, req datasource.ReadReq
 		"resource":      resource,
 	})
 
-	if err := d.client.CheckMetadataObjectTypeSupported(ctx, resourceType); err != nil {
+	if err := d.Client.CheckMetadataObjectTypeSupported(ctx, resourceType); err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading credentials", resource, err)...)
 		return
 	}
 
-	result, err := d.client.GetCredentials(ctx, metalake, resourceType, resource)
+	result, err := d.Client.GetCredentials(ctx, metalake, resourceType, resource)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading credentials", resource, err)...)
 		return

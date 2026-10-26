@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -17,15 +18,11 @@ var _ datasource.DataSource = &RoleDataSource{}
 var _ datasource.DataSourceWithConfigure = &RoleDataSource{}
 
 type RoleDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewRoleDataSource() datasource.DataSource {
 	return &RoleDataSource{}
-}
-
-func (d *RoleDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type RoleDataSourceModel struct {
@@ -48,14 +45,6 @@ var RoleSecurableObjectAttrTypes = map[string]attr.Type{
 }
 
 var RoleAuditAttrTypes = models.AuditAttrTypes
-
-func (d *RoleDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
 
 func (d *RoleDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = "gravitino_role"
@@ -126,7 +115,7 @@ func (d *RoleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	result, err := d.client.GetRole(ctx, config.Metalake.ValueString(), config.Name.ValueString())
+	result, err := d.Client.GetRole(ctx, config.Metalake.ValueString(), config.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading role", config.Name.ValueString(), err)...)
 		return

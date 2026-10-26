@@ -30,12 +30,6 @@ type CatalogCreateRequest struct {
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
-// CatalogSetRequest mirrors `CatalogSetRequest`, used by
-// PATCH /metalakes/{metalake}/catalogs/{catalog} to mark a catalog in-use (or not).
-type CatalogSetRequest struct {
-	InUse bool `json:"inUse"`
-}
-
 // CatalogUpdateRequest mirrors `CatalogUpdatesRequest`. It is the update list
 // wrapper used by PUT /metalakes/{metalake}/catalogs/{catalog} and, since
 // Gravitino 1.3.1, the optional body of
@@ -98,4 +92,10 @@ func NewSetCatalogPropertyRequest(property, value string) SetCatalogPropertyRequ
 
 func NewRemoveCatalogPropertyRequest(property string) RemoveCatalogPropertyRequest {
 	return RemoveCatalogPropertyRequest{Type: "removeProperty", Property: property}
+}
+
+// CatalogSetRequest mirrors `CatalogSetRequest`, used by
+// PATCH /metalakes/{metalake}/catalogs/{catalog} to mark a catalog in-use (or not).
+type CatalogSetRequest struct {
+	InUse bool `json:"inUse"`
 }

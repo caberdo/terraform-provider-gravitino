@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -24,15 +25,11 @@ var _ resource.ResourceWithImportState = &TagResource{}
 var _ resource.ResourceWithConfigure = &TagResource{}
 
 type TagResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &TagResource{}
-}
-
-func (r *TagResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type TagResourceModel struct {
@@ -46,14 +43,6 @@ type TagResourceModel struct {
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (r *TagResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *TagResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_tag"
@@ -130,7 +119,7 @@ func (r *TagResource) Create(ctx context.Context, req resource.CreateRequest, re
 		Properties: mapFromTF(plan.Properties),
 	}
 
-	result, err := r.client.CreateTag(ctx, plan.Metalake.ValueString(), createReq)
+	result, err := r.Client.CreateTag(ctx, plan.Metalake.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating tag", plan.Name.ValueString(), err)...)
 		return
@@ -155,7 +144,7 @@ func (r *TagResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 	tflog.Debug(ctx, "Reading tag", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	result, err := r.client.GetTag(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	result, err := r.Client.GetTag(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -213,7 +202,7 @@ func (r *TagResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	if len(updates) > 0 {
-		result, err := r.client.UpdateTag(ctx, state.Metalake.ValueString(), oldName, updates)
+		result, err := r.Client.UpdateTag(ctx, state.Metalake.ValueString(), oldName, updates)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating tag", oldName, err)...)
 			return
@@ -222,7 +211,7 @@ func (r *TagResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	} else {
 		// Nothing to update: refresh from the server so every computed attribute
 		// keeps a known, real value.
-		result, err := r.client.GetTag(ctx, state.Metalake.ValueString(), oldName)
+		result, err := r.Client.GetTag(ctx, state.Metalake.ValueString(), oldName)
 		if err != nil {
 			if client.IsNotFoundError(err) {
 				resp.State.RemoveResource(ctx)
@@ -252,7 +241,7 @@ func (r *TagResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 
 	tflog.Debug(ctx, "Deleting tag", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.DeleteTag(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	_, err := r.Client.DeleteTag(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			tflog.Debug(ctx, "Tag already deleted", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})

@@ -9,11 +9,13 @@ import (
 
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/health"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -24,6 +26,38 @@ func healthCheckAttrTypes() map[string]attr.Type {
 		"status":  types.StringType,
 		"details": types.MapType{ElemType: types.StringType},
 	}
+}
+
+func TestHealthDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewHealthDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.HealthDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+	assertHealthCheckModelMatchesSchema(t, resp.Schema)
+}
+
+func TestLivenessDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewLivenessDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.LivenessDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+	assertHealthCheckModelMatchesSchema(t, resp.Schema)
+}
+
+func TestReadinessDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewReadinessDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.ReadinessDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+	assertHealthCheckModelMatchesSchema(t, resp.Schema)
+}
+
+// assertHealthCheckModelMatchesSchema guards the checks block entry model shared
+// by the health, liveness and readiness data sources.
+func assertHealthCheckModelMatchesSchema(t *testing.T, s schema.Schema) {
+	t.Helper()
+	checks, ok := s.Blocks["checks"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("checks block = %T, want schema.ListNestedBlock", s.Blocks["checks"])
+	}
+	modeltest.AssertAttributesMatch(t, ds.HealthCheckModel{}, modeltest.Keys(checks.NestedObject.Attributes))
 }
 
 func setupHealthServer(t *testing.T, expectedPath string, status string, checks []models.HealthCheck) *httptest.Server {

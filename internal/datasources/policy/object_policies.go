@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -24,15 +25,11 @@ var _ datasource.DataSourceWithConfigure = &ObjectPoliciesDataSource{}
 // The listing includes policies inherited from parent objects; the
 // gravitino_policy_association resource manages direct associations only.
 type ObjectPoliciesDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewObjectPoliciesDataSource() datasource.DataSource {
 	return &ObjectPoliciesDataSource{}
-}
-
-func (d *ObjectPoliciesDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type ObjectPoliciesDataSourceModel struct {
@@ -40,14 +37,6 @@ type ObjectPoliciesDataSourceModel struct {
 	ObjectType     types.String `tfsdk:"object_type"`
 	ObjectFullName types.String `tfsdk:"object_full_name"`
 	Policies       types.List   `tfsdk:"policies"`
-}
-
-func (d *ObjectPoliciesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *ObjectPoliciesDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -95,12 +84,12 @@ func (d *ObjectPoliciesDataSource) Read(ctx context.Context, req datasource.Read
 	objectType := config.ObjectType.ValueString()
 	objectFullName := config.ObjectFullName.ValueString()
 
-	if err := d.client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
+	if err := d.Client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
 		resp.Diagnostics.AddAttributeError(path.Root("object_type"), "Unsupported object_type value", err.Error())
 		return
 	}
 
-	result, err := d.client.ListPoliciesForObject(ctx, metalake, objectType, objectFullName)
+	result, err := d.Client.ListPoliciesForObject(ctx, metalake, objectType, objectFullName)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

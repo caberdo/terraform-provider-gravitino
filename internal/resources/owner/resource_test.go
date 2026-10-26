@@ -13,6 +13,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -80,6 +81,17 @@ func stringPlan(ctx context.Context, attr schema.StringAttribute, state, plan ty
 		m.PlanModifyString(ctx, req, resp)
 	}
 	return resp.PlanValue, resp.RequiresReplace
+}
+
+// TestOwnerResourceModelMatchesSchema keeps the Terraform model in lockstep
+// with the schema.
+func TestOwnerResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	res.NewOwnerResource().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.OwnerResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }
 
 func TestOwnerResource_MetadataAndSchema(t *testing.T) {

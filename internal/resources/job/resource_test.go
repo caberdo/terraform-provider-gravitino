@@ -10,6 +10,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/job"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 
@@ -143,6 +144,23 @@ func jobResponseWithStatus(status string) string {
 
 func assertJSONEqual(t *testing.T, want string, got []byte) {
 	resourcetest.AssertJSONEqualUnordered(t, want, got)
+}
+
+// TestJobResourceModelMatchesSchema keeps the Terraform model and the nested
+// audit object in lockstep with the schema.
+func TestJobResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	res.New().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.JobResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	audit, ok := resp.Schema.Attributes["audit"].(schema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want schema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
 }
 
 func TestJobResource_Schema(t *testing.T) {

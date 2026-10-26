@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -339,5 +342,29 @@ func TestPartitionDataSource_ReadNotFoundIsAnError(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("the Gravitino error type must be reported, got %v", resp.Diagnostics.Errors())
+	}
+}
+
+// TestPartitionDataSourceModelsMatchSchema keeps the model in lockstep with the
+// gravitino_partition schema.
+func TestPartitionDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	NewPartitionDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, PartitionDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+// TestPartitionsDataSourceModelsMatchSchema keeps the model and the partition
+// spec attribute types in lockstep with the gravitino_partitions schema.
+func TestPartitionsDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	NewPartitionsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, PartitionsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	partitions, ok := resp.Schema.Attributes["partitions"].(dsschema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("partitions is %T, want a ListNestedAttribute", resp.Schema.Attributes["partitions"])
+	}
+	if got, want := modeltest.Keys(partitions.NestedObject.Attributes), modeltest.Keys(models.PartitionSpecAttrTypes); !slices.Equal(got, want) {
+		t.Errorf("partitions entry attributes = %v, PartitionSpecAttrTypes = %v", got, want)
 	}
 }

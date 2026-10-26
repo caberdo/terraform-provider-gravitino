@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -17,7 +18,7 @@ var _ datasource.DataSource = &ViewsDataSource{}
 var _ datasource.DataSourceWithConfigure = &ViewsDataSource{}
 
 type ViewsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 // ViewListEntryModel is one element of the gravitino_views data source.
@@ -76,10 +77,6 @@ func viewsDataSourceModelToTF(ctx context.Context, in ViewsDataSourceModel, entr
 
 func NewViewsDataSource() datasource.DataSource {
 	return &ViewsDataSource{}
-}
-
-func (d *ViewsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 func (d *ViewsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -192,14 +189,6 @@ func (d *ViewsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 	}
 }
 
-func (ds *ViewsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		ds.client = c
-	}
-}
-
 func (ds *ViewsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var tfConfig models.ViewsDataSourceTFModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &tfConfig)...)
@@ -212,7 +201,7 @@ func (ds *ViewsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		Schema:   tfConfig.Schema,
 	}
 
-	views, err := ds.client.ListViewsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
+	views, err := ds.Client.ListViewsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("listing views", config.Schema.ValueString(), err)...)
 		return

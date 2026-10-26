@@ -375,6 +375,7 @@ func (p *GravitinoProvider) DataSources(_ context.Context) []func() datasource.D
 		dssecrets.New,
 		dsrole.New,
 		dsrole.NewRoleDataSource,
+		dsrole.NewMetalakeRolesDataSource,
 		dsrole.NewRolesListDataSource,
 		dsstatistics.New,
 		dsstatistics.NewPartition,

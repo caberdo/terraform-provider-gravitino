@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -19,15 +20,11 @@ var _ datasource.DataSourceWithConfigure = &ModelVersionDataSource{}
 var AuditAttrTypes = models.AuditAttrTypes
 
 type ModelVersionDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewModelVersionDataSource() datasource.DataSource {
 	return &ModelVersionDataSource{}
-}
-
-func (d *ModelVersionDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type ModelVersionDataSourceModel struct {
@@ -110,14 +107,6 @@ func (d *ModelVersionDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 	}
 }
 
-func (d *ModelVersionDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
-
 func (d *ModelVersionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config ModelVersionDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -147,10 +136,10 @@ func (d *ModelVersionDataSource) Read(ctx context.Context, req datasource.ReadRe
 	)
 	if hasAlias {
 		resource = fmt.Sprintf("%s alias %q", model, config.Alias.ValueString())
-		result, err = d.client.GetModelVersionByAlias(ctx, metalake, catalog, schemaName, model, config.Alias.ValueString())
+		result, err = d.Client.GetModelVersionByAlias(ctx, metalake, catalog, schemaName, model, config.Alias.ValueString())
 	} else {
 		resource = fmt.Sprintf("%s version %d", model, config.Version.ValueInt64())
-		result, err = d.client.GetModelVersion(ctx, metalake, catalog, schemaName, model, int32(config.Version.ValueInt64()))
+		result, err = d.Client.GetModelVersion(ctx, metalake, catalog, schemaName, model, int32(config.Version.ValueInt64()))
 	}
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading model version", resource, err)...)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -18,15 +19,11 @@ var _ datasource.DataSource = &PartitionStatisticsDataSource{}
 var _ datasource.DataSourceWithConfigure = &PartitionStatisticsDataSource{}
 
 type PartitionStatisticsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewPartition() datasource.DataSource {
 	return &PartitionStatisticsDataSource{}
-}
-
-func (d *PartitionStatisticsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type PartitionStatisticsDataSourceModel struct {
@@ -45,14 +42,6 @@ type partitionStatisticItemModel struct {
 var PartitionStatisticItemAttrTypes = map[string]attr.Type{
 	"partition_name": types.StringType,
 	"statistics":     types.ListType{ElemType: types.ObjectType{AttrTypes: StatisticItemAttrTypes}},
-}
-
-func (d *PartitionStatisticsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *PartitionStatisticsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -149,7 +138,7 @@ func (d *PartitionStatisticsDataSource) Read(ctx context.Context, req datasource
 		return
 	}
 
-	result, err := d.client.ListPartitionStatistics(ctx,
+	result, err := d.Client.ListPartitionStatistics(ctx,
 		config.Metalake.ValueString(),
 		"TABLE",
 		fmt.Sprintf("%s.%s.%s", config.Catalog.ValueString(), config.Schema.ValueString(), config.Table.ValueString()),

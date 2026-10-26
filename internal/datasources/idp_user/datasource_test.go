@@ -10,6 +10,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -208,4 +209,10 @@ func TestIdpUserDataSourceDTOMatchesSpec(t *testing.T) {
 	if len(result.User.Groups) != 1 || result.User.Groups[0] != "engineers" {
 		t.Errorf("groups = %v, want [engineers]", result.User.Groups)
 	}
+}
+
+func TestIdpUserDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	NewDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, IdpUserDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

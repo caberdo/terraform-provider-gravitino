@@ -292,14 +292,25 @@ func TestViewsDataSourceReadSkipsDeletedViews(t *testing.T) {
 	}
 }
 
-// TestViewDataSourceModelsMatchSchema keeps the slice model and the framework
-// boundary model in lockstep with the schema.
+// TestViewDataSourceModelsMatchSchema keeps the slice model, the framework
+// boundary model and the nested element models in lockstep with the schema.
 func TestViewDataSourceModelsMatchSchema(t *testing.T) {
 	resp := &datasource.SchemaResponse{}
 	dsview.NewViewDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
-	names := modeltest.Keys(resp.Schema.Attributes)
-	modeltest.AssertAttributesMatch(t, dsview.ViewDataSourceModel{}, names)
-	modeltest.AssertAttributesMatch(t, models.ViewDataSourceTFModel{}, names)
+	modeltest.AssertSchemaMatches(t, dsview.ViewDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+	modeltest.AssertSchemaMatches(t, models.ViewDataSourceTFModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	columns, ok := resp.Schema.Attributes["column"].(dsschema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("column is %T, want a ListNestedAttribute", resp.Schema.Attributes["column"])
+	}
+	modeltest.AssertAttributesMatch(t, models.ColumnTFSDK{}, modeltest.Keys(columns.NestedObject.Attributes))
+
+	representations, ok := resp.Schema.Attributes["representation"].(dsschema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("representation is %T, want a ListNestedAttribute", resp.Schema.Attributes["representation"])
+	}
+	modeltest.AssertAttributesMatch(t, models.ViewRepresentationTFSDK{}, modeltest.Keys(representations.NestedObject.Attributes))
 }
 
 // TestViewsDataSourceModelsMatchSchema keeps the nested list entry models in
@@ -307,7 +318,8 @@ func TestViewDataSourceModelsMatchSchema(t *testing.T) {
 func TestViewsDataSourceModelsMatchSchema(t *testing.T) {
 	resp := &datasource.SchemaResponse{}
 	dsview.NewViewsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
-	modeltest.AssertAttributesMatch(t, dsview.ViewsDataSourceModel{}, modeltest.Keys(resp.Schema.Attributes))
+	modeltest.AssertSchemaMatches(t, dsview.ViewsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+	modeltest.AssertSchemaMatches(t, models.ViewsDataSourceTFModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 
 	views, ok := resp.Schema.Attributes["views"].(dsschema.ListNestedAttribute)
 	if !ok {
@@ -316,4 +328,16 @@ func TestViewsDataSourceModelsMatchSchema(t *testing.T) {
 	names := modeltest.Keys(views.NestedObject.Attributes)
 	modeltest.AssertAttributesMatch(t, dsview.ViewListEntryModel{}, names)
 	modeltest.AssertAttributesMatch(t, models.ViewListEntryTFModel{}, names)
+
+	columns, ok := views.NestedObject.Attributes["column"].(dsschema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("views column is %T, want a ListNestedAttribute", views.NestedObject.Attributes["column"])
+	}
+	modeltest.AssertAttributesMatch(t, models.ColumnTFSDK{}, modeltest.Keys(columns.NestedObject.Attributes))
+
+	representations, ok := views.NestedObject.Attributes["representation"].(dsschema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("views representation is %T, want a ListNestedAttribute", views.NestedObject.Attributes["representation"])
+	}
+	modeltest.AssertAttributesMatch(t, models.ViewRepresentationTFSDK{}, modeltest.Keys(representations.NestedObject.Attributes))
 }

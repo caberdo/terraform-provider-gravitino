@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
@@ -33,15 +34,11 @@ var _ resource.ResourceWithImportState = &PolicyResource{}
 var _ resource.ResourceWithConfigure = &PolicyResource{}
 
 type PolicyResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &PolicyResource{}
-}
-
-func (r *PolicyResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type PolicyResourceModel struct {
@@ -58,14 +55,6 @@ type PolicyResourceModel struct {
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (r *PolicyResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *PolicyResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_policy"
@@ -177,7 +166,7 @@ func (r *PolicyResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	createReq := buildPolicyCreateRequest(plan)
 
-	result, err := r.client.CreatePolicy(ctx, plan.Metalake.ValueString(), createReq)
+	result, err := r.Client.CreatePolicy(ctx, plan.Metalake.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating policy", plan.Name.ValueString(), err)...)
 		return
@@ -202,7 +191,7 @@ func (r *PolicyResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	tflog.Debug(ctx, "Reading policy", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	result, err := r.client.GetPolicy(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	result, err := r.Client.GetPolicy(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -260,7 +249,7 @@ func (r *PolicyResource) Update(ctx context.Context, req resource.UpdateRequest,
 			updates = append(updates, models.NewUpdatePolicyContentRequest(plan.PolicyType.ValueString(), policyContentFromTF(plan)))
 		}
 
-		result, err := r.client.UpdatePolicy(ctx, metalake, currentName, updates)
+		result, err := r.Client.UpdatePolicy(ctx, metalake, currentName, updates)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating policy", currentName, err)...)
 			return
@@ -273,7 +262,7 @@ func (r *PolicyResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	if enabledChanged {
-		if _, err := r.client.SetPolicyEnabled(ctx, metalake, currentName, plan.Enabled.ValueBool()); err != nil {
+		if _, err := r.Client.SetPolicyEnabled(ctx, metalake, currentName, plan.Enabled.ValueBool()); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating policy enabled state", currentName, err)...)
 			return
 		}
@@ -311,7 +300,7 @@ func (r *PolicyResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 	tflog.Debug(ctx, "Deleting policy", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.DeletePolicy(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	_, err := r.Client.DeletePolicy(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deletion is idempotent.
@@ -362,7 +351,7 @@ func policyContentFromTF(model PolicyResourceModel) *models.PolicyContent {
 // version (GET /api/version) only when a version-restricted value is present.
 // Reports whether the values may be sent.
 func (r *PolicyResource) checkObjectTypesSupported(ctx context.Context, objectTypes []string, diags *diag.Diagnostics) bool {
-	if err := r.client.CheckPolicyObjectTypesSupported(ctx, objectTypes); err != nil {
+	if err := r.Client.CheckPolicyObjectTypesSupported(ctx, objectTypes); err != nil {
 		diags.AddAttributeError(
 			path.Root("supported_object_types"),
 			"Unsupported supported_object_types value",

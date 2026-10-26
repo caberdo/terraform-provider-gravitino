@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -24,15 +25,11 @@ var _ datasource.DataSourceWithConfigure = &ObjectTagsDataSource{}
 // listing includes tags inherited from parent objects; the
 // gravitino_tag_association resource manages direct associations only.
 type ObjectTagsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewObjectTagsDataSource() datasource.DataSource {
 	return &ObjectTagsDataSource{}
-}
-
-func (d *ObjectTagsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type ObjectTagsDataSourceModel struct {
@@ -40,14 +37,6 @@ type ObjectTagsDataSourceModel struct {
 	ObjectType     types.String `tfsdk:"object_type"`
 	ObjectFullName types.String `tfsdk:"object_full_name"`
 	Tags           types.List   `tfsdk:"tags"`
-}
-
-func (d *ObjectTagsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *ObjectTagsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -95,12 +84,12 @@ func (d *ObjectTagsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	objectType := config.ObjectType.ValueString()
 	objectFullName := config.ObjectFullName.ValueString()
 
-	if err := d.client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
+	if err := d.Client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
 		resp.Diagnostics.AddAttributeError(path.Root("object_type"), "Unsupported object_type value", err.Error())
 		return
 	}
 
-	result, err := d.client.ListTagsForObject(ctx, metalake, objectType, objectFullName)
+	result, err := d.Client.ListTagsForObject(ctx, metalake, objectType, objectFullName)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

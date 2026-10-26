@@ -43,11 +43,6 @@ type ModelVersionListResponse struct {
 	Infos    []ModelVersion `json:"infos,omitempty"`
 }
 
-type ModelVersionURIResponse struct {
-	Code int32  `json:"code"`
-	URI  string `json:"uri"`
-}
-
 // ModelVersionUpdatesRequest mirrors the spec's `ModelVersionUpdatesRequest`
 // schema. Gravitino only accepts the update types updateComment, setProperty,
 // removeProperty, updateUri, addUri, removeUri and updateAliases.

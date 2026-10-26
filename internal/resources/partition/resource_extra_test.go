@@ -35,7 +35,7 @@ func TestPartitionResource_Configure(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("a *client.Client must configure: %v", resp.Diagnostics)
 	}
-	if r.client != c {
+	if r.Client != c {
 		t.Fatal("Configure did not store the client")
 	}
 }
@@ -251,7 +251,7 @@ func TestPartitionResource_ValidatePartitionSpecRejectsMismatchedFields(t *testi
 		t.Run(name, func(t *testing.T) {
 			c, recorded := newMockServer(t, func(req recordedRequest, w http.ResponseWriter) bool { return true })
 			r := NewPartitionResource().(*PartitionResource)
-			r.client = c
+			r.Client = c
 
 			plan := identityCreatePlan(t)
 			if strings.HasPrefix(name, "range") {

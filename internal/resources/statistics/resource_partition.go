@@ -8,6 +8,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -36,7 +37,7 @@ var _ resource.ResourceWithConfigure = (*PartitionStatisticsResource)(nil)
 // differ as one update request and the entries that disappeared as one drop
 // request.
 type PartitionStatisticsResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 // PartitionStatisticsResourceModel is the Terraform model of
@@ -53,19 +54,6 @@ type PartitionStatisticsResourceModel struct {
 // NewPartition returns the gravitino_partition_statistics resource.
 func NewPartition() resource.Resource {
 	return &PartitionStatisticsResource{}
-}
-
-// SetClient sets the API client of the resource.
-func (r *PartitionStatisticsResource) SetClient(c *client.Client) {
-	r.client = c
-}
-
-func (r *PartitionStatisticsResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
 }
 
 func (r *PartitionStatisticsResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -235,7 +223,7 @@ func (r *PartitionStatisticsResource) Delete(ctx context.Context, req resource.D
 
 	drops := partitionDrops(managed, nil)
 	if len(drops) > 0 {
-		if _, err := r.client.DeletePartitionStatistics(ctx, state.Metalake.ValueString(), "TABLE", tableFullName(&state),
+		if _, err := r.Client.DeletePartitionStatistics(ctx, state.Metalake.ValueString(), "TABLE", tableFullName(&state),
 			&models.PartitionStatisticsDropRequest{Drops: drops}); err != nil {
 			if client.IsNotFoundError(err) {
 				// The table is gone, so its partition statistics are gone with it.
@@ -301,7 +289,7 @@ func (r *PartitionStatisticsResource) apply(ctx context.Context, model *Partitio
 		tflog.Debug(ctx, "Updating partition statistic values", map[string]interface{}{
 			"object_full_name": fullName, "partitions": len(updates),
 		})
-		if _, err := r.client.UpdatePartitionStatistics(ctx, metalake, "TABLE", fullName,
+		if _, err := r.Client.UpdatePartitionStatistics(ctx, metalake, "TABLE", fullName,
 			&models.PartitionStatisticsUpdateRequest{Updates: updates}); err != nil {
 			return err
 		}
@@ -311,7 +299,7 @@ func (r *PartitionStatisticsResource) apply(ctx context.Context, model *Partitio
 		tflog.Debug(ctx, "Dropping partition statistics", map[string]interface{}{
 			"object_full_name": fullName, "partitions": len(drops),
 		})
-		if _, err := r.client.DeletePartitionStatistics(ctx, metalake, "TABLE", fullName,
+		if _, err := r.Client.DeletePartitionStatistics(ctx, metalake, "TABLE", fullName,
 			&models.PartitionStatisticsDropRequest{Drops: drops}); err != nil {
 			return err
 		}
@@ -351,7 +339,7 @@ func partitionDrops(current, desired map[string]map[string]string) []models.Part
 // currentPartitions returns the modifiable statistics the server reports per
 // partition, rendered as strings.
 func (r *PartitionStatisticsResource) currentPartitions(ctx context.Context, model *PartitionStatisticsResourceModel) (map[string]map[string]string, error) {
-	result, err := r.client.ListPartitionStatistics(ctx, model.Metalake.ValueString(), "TABLE", tableFullName(model))
+	result, err := r.Client.ListPartitionStatistics(ctx, model.Metalake.ValueString(), "TABLE", tableFullName(model))
 	if err != nil {
 		return nil, err
 	}

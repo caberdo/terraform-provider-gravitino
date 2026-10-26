@@ -13,6 +13,13 @@ BREAKING CHANGES:
   Existing state stays valid — the attribute defaults to `false` — and imported resources adopt the
   same safe default.
 
+DEPRECATIONS:
+- **`gravitino_roles_list` is deprecated in favour of `gravitino_metalake_roles` (issue #80).**
+  `gravitino_metalake_roles` lists every role in one metalake with the same `metalake` and `names`
+  arguments, and follows the `gravitino_<scope>_<plural>` shape the rest of the surface uses.
+  `gravitino_roles_list` keeps its current behaviour and will be removed in the next major release;
+  migrate by renaming the data source type in the configuration.
+
 FEATURES:
 - **`in_use` on `gravitino_metalake` and `gravitino_catalog` (issue #71, epic #84).** Both resources
   expose the Gravitino in-use flag as an Optional+Computed boolean that is written through the

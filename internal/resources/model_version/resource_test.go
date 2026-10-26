@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/model_version"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -160,6 +162,23 @@ func newModelVersionResource(server *httptest.Server) (resource.Resource, *res.M
 	concrete := r.(*res.ModelVersionResource)
 	concrete.SetClient(c)
 	return r, concrete
+}
+
+// TestModelVersionResourceModelMatchesSchema keeps the Terraform model and the
+// nested audit object in lockstep with the schema.
+func TestModelVersionResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	res.NewModelVersionResource().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.ModelVersionResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	audit, ok := resp.Schema.Attributes["audit"].(schema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want schema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
 }
 
 func TestModelVersionResource_Schema(t *testing.T) {

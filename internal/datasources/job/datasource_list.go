@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -20,15 +21,11 @@ var _ datasource.DataSource = &JobsDataSource{}
 var _ datasource.DataSourceWithConfigure = &JobsDataSource{}
 
 type JobsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewListDataSource() datasource.DataSource {
 	return &JobsDataSource{}
-}
-
-func (d *JobsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type JobsDataSourceModel struct {
@@ -45,14 +42,6 @@ var JobItemAttrTypes = map[string]attr.Type{
 	"started_at":   types.StringType,
 	"finished_at":  types.StringType,
 	"audit":        types.ObjectType{AttrTypes: AuditAttrTypes},
-}
-
-func (d *JobsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *JobsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -120,7 +109,7 @@ func (d *JobsDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 
 	metalake := config.Metalake.ValueString()
 
-	result, err := d.client.ListJobs(ctx, metalake)
+	result, err := d.Client.ListJobs(ctx, metalake)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("listing jobs", metalake, err)...)
 		return
