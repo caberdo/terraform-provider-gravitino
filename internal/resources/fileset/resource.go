@@ -264,10 +264,16 @@ func (r *FilesetResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	if len(updates) == 0 {
-		// Nothing to send: every value that must be written to state is already
-		// known, so the plan (with the unknowns filled from the prior state) is the
-		// new state.
-		resolveUnknowns(ctx, &plan, &state)
+		// Nothing to send. A provider-produced state must not contain unknown
+		// values, so every unresolved field of the plan is written from the prior
+		// state (or null when the prior value is not usable).
+		plan.ID = tfutil.StringOrPrevious(plan.ID, state.ID)
+		plan.Name = tfutil.StringOrPrevious(plan.Name, state.Name)
+		plan.Comment = tfutil.StringOrPrevious(plan.Comment, state.Comment)
+		plan.Type = tfutil.StringOrPrevious(plan.Type, state.Type)
+		plan.StorageLocation = tfutil.StringOrPrevious(plan.StorageLocation, state.StorageLocation)
+		plan.Properties = tfutil.MapOrPrevious(ctx, plan.Properties, state.Properties)
+		plan.Audit = tfutil.ObjectOrPrevious(ctx, plan.Audit, state.Audit)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 		tflog.Debug(ctx, "Updated fileset", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
 		return
@@ -435,20 +441,6 @@ func projectProperties(ctx context.Context, current types.Map, server map[string
 	value, d := types.MapValueFrom(ctx, types.StringType, out)
 	diags.Append(d...)
 	return value
-}
-
-// resolveUnknowns replaces every unknown value in the new state with the prior
-// state's value (or null when the prior value is not usable). Terraform rejects a
-// state that still contains unknown values after apply; the tfutil helpers are
-// the shared half of that rule.
-func resolveUnknowns(ctx context.Context, model, prior *FilesetResourceModel) {
-	model.ID = tfutil.StringOrPrevious(model.ID, prior.ID)
-	model.Name = tfutil.StringOrPrevious(model.Name, prior.Name)
-	model.Comment = tfutil.StringOrPrevious(model.Comment, prior.Comment)
-	model.Type = tfutil.StringOrPrevious(model.Type, prior.Type)
-	model.StorageLocation = tfutil.StringOrPrevious(model.StorageLocation, prior.StorageLocation)
-	model.Properties = tfutil.MapOrPrevious(ctx, model.Properties, prior.Properties)
-	model.Audit = tfutil.ObjectOrPrevious(ctx, model.Audit, prior.Audit)
 }
 
 func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {

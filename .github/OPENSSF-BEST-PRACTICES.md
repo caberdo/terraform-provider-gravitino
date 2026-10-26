@@ -98,13 +98,13 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `sites_https` | Met | Every project site is HTTPS: GitHub, the Terraform Registry, `gravitino.apache.org` and the links from the README. | `https://github.com/caberdo/terraform-provider-gravitino` |
 | `discussion` | Met | GitHub issues and pull-request threads are searchable, URL-addressable, open to any GitHub account and need no proprietary client. GitHub Discussions is disabled on this repository, so issues are the discussion mechanism. | `https://github.com/caberdo/terraform-provider-gravitino/issues` |
 | `english` | Met | All documentation, comments and commit messages are in English. | `blob/README.md`, `blob/.github/CONTRIBUTING.md` |
-| `maintained` | Met | Maintained: 24 tags with `v0.9.0` released 2026-10-08, commits on `main` today, Dependabot version updates daily, CI on every pull request and push. | `https://github.com/caberdo/terraform-provider-gravitino/releases` |
+| `maintained` | Met | Maintained: 27 tags with `v0.12.0` released 2026-10-22, commits on `main` today, Dependabot version updates daily, CI on every pull request and push. | `https://github.com/caberdo/terraform-provider-gravitino/releases` |
 | `repo_public` | Met | Public Git repository. | `https://github.com/caberdo/terraform-provider-gravitino` |
 | `repo_track` | Met | Git records every change with author and timestamp; releases are annotated tags. | `blob/CHANGELOG.md` |
 | `repo_interim` | Met | Every change lands as a pull request before release, and `CHANGELOG.md` now carries an `Unreleased` section for work merged but not yet released. | `https://github.com/caberdo/terraform-provider-gravitino/pulls?q=is%3Apr+is%3Aclosed`, `blob/CHANGELOG.md` |
 | `repo_distributed` | Met | Git, with the full history published. | `https://github.com/caberdo/terraform-provider-gravitino` |
-| `version_unique` | Met | Every release has a unique version: tags `v0.1.0` … `v0.9.0`, the version embedded in the binary by `-X main.version`, and the registry manifest name. | `https://github.com/caberdo/terraform-provider-gravitino/tags` |
-| `version_semver` | Met | Releases follow semantic versioning (`v0.9.0`), with breaking changes called out in `CHANGELOG.md`. | `blob/CHANGELOG.md` |
+| `version_unique` | Met | Every release has a unique version: tags `v0.1.0` … `v0.12.0`, the version embedded in the binary by `-X main.version`, and the registry manifest name. | `https://github.com/caberdo/terraform-provider-gravitino/tags` |
+| `version_semver` | Met | Releases follow semantic versioning (`v0.12.0`), with breaking changes called out in `CHANGELOG.md`. | `blob/CHANGELOG.md` |
 | `version_tags` | Met | Each release is tagged; the tag drives `release.yml`. | `https://github.com/caberdo/terraform-provider-gravitino/releases` |
 | `release_notes` | Met | `CHANGELOG.md` groups each release into features, bug fixes, enhancements and internal/tooling (not a raw commit log), and the GitHub release page links the merged pull requests. | `blob/CHANGELOG.md` |
 | `release_notes_vulns` | N/A | No release has ever fixed a publicly known run-time vulnerability with a CVE or equivalent, so there is nothing to list. | — |
@@ -119,7 +119,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `build` | Met | Anyone can rebuild the provider from source: `go build ./...` or `make build`, with the Go version pinned in `go.mod`. | `blob/GNUmakefile` |
 | `build_common_tools` | Met | The build uses the standard Go toolchain; no custom build language. | `blob/GNUmakefile` |
 | `build_floss_tools` | Met | `go`, `make`, GoReleaser, `terraform-plugin-docs` and the Terraform CLI are all FLOSS. | `blob/.github/goreleaser.yml` |
-| `test` | Met | An automated test suite ships with the project under the same licence: roughly 870 `Test*` functions across 59 of the 60 packages under `internal/`, run by `make test` / `make testacc`; `README.md` and `CONTRIBUTING.md` document how to run it. | `blob/GNUmakefile`, `blob/README.md` |
+| `test` | Met | An automated test suite ships with the project under the same licence: over 900 `Test*` functions across 59 of the 60 packages under `internal/`, run by `make test` / `make testacc`; `README.md` and `CONTRIBUTING.md` document how to run it. | `blob/GNUmakefile`, `blob/README.md` |
 | `test_invocation` | Met | The suite is invoked the standard way for Go: `go test ./internal/...`, or `make test`. | `blob/GNUmakefile` |
 | `test_most` | Met | Most tests need no server; the acceptance suite needs the shipped Docker/Podman environment (`make testacc-docker`, `make testacc-live`). | `blob/README.md#testing` |
 | `test_continuous_integration` | Met | `test.yml` runs build, vet, dependency verification, example validation, the docs-drift gate and `go test -race` on every pull request and push to `main`, and the acceptance matrix on `main`; each job's result is visible on the pull request. | `blob/.github/workflows/test.yml` |
@@ -141,7 +141,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `crypto_password_storage` | N/A | The provider authenticates *to* Gravitino with credentials the user supplies; it stores no password for authenticating external users. Password storage for users of Gravitino is the server's job, and passwords the user puts in a provider block are marked `Sensitive` and never logged. | `blob/internal/provider/provider.go` |
 | `crypto_random` | N/A | The provider generates no cryptographic keys and no nonces; it signs nothing and encrypts nothing itself. The one random value it produces is a test-name suffix in `internal/acceptance`. | `blob/internal/acceptance/live.go` |
 | `delivery_mitm` | Met | Releases are delivered over HTTPS/SSH from GitHub and the Terraform Registry; Terraform records the release checksums in `.terraform.lock.hcl`. | `blob/.github/workflows/release.yml` |
-| `delivery_unsigned` | Met | Nothing is verified by an unsigned hash: the release's `SHA256SUMS` file is GPG-signed (`…_SHA256SUMS.sig`) and published next to the artifacts, the build carries SLSA v1.0 provenance verifiable with `gh attestation verify`, and Terraform itself re-checks the recorded checksums in `.terraform.lock.hcl`. | `blob/README.md#verifying-a-release`, `https://github.com/caberdo/terraform-provider-gravitino/releases/tag/v0.9.0` |
+| `delivery_unsigned` | Met | Nothing is verified by an unsigned hash: the release's `SHA256SUMS` file is GPG-signed (`…_SHA256SUMS.sig`) and published next to the artifacts, the build carries SLSA v1.0 provenance verifiable with `gh attestation verify`, and Terraform itself re-checks the recorded checksums in `.terraform.lock.hcl`. | `blob/README.md#verifying-a-release`, `https://github.com/caberdo/terraform-provider-gravitino/releases/tag/v0.12.0` |
 | `vulnerabilities_fixed_60_days` | Met | `govulncheck ./...` reports no vulnerability reachable from the provider binary. `go.mod` requires Go 1.27.3 (the stdlib `crypto/x509` fix, GO-2026-6809) and `golang.org/x/net` v0.60.0 (five HTTP/2 fixes: GO-2026-6603, GO-2026-6610, GO-2026-6611, GO-2026-6612, GO-2026-6617), and the `Vulnerability Scan` job reruns the scan on every pull request and blocks `Test`, so either pin cannot regress unnoticed. The only advisory left in the module graph is `golang.org/x/crypto/openpgp` (no fix published), which the provider does not import; `go-git`, `go-billy` and `goldmark` are docs/registry tooling outside the released binary. | `blob/go.mod`, `blob/.github/workflows/test.yml` |
 | `vulnerabilities_critical_fixed` | Met | No open critical vulnerability; `govulncheck ./...` reports none reachable, and the `Vulnerability Scan` job runs the same scan on every pull request. | `blob/.github/workflows/test.yml` |
 | `no_leaked_credentials` | Met | No valid private credential is in the repository or its history: the credentials in `examples/` and the test fixtures are `admin`/`admin` against a local container, `.gitignore` excludes key material, provider credentials come from the block or `GRAVITINO_*` at runtime, and the four credential-bearing attributes are `Sensitive`. | `blob/.gitignore`, `blob/internal/provider/provider.go` |
@@ -188,7 +188,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `documentation_current` | Met | `docs/` is regenerated by `make generate` and CI fails on drift; examples are validated against the built provider; `ARCHITECTURE.md`, `GOVERNANCE.md`, `ROADMAP.md` and `AGENTS.md` were corrected in this change. | `blob/.github/workflows/test.yml`, `blob/.github/workflows/docs.yml` |
 | `documentation_achievements` | Met once §3 lands | The badge is linked from the README as soon as it exists; the front page also links the Terraform Registry. | `blob/README.md` |
 | `sites_password_security` | N/A | No project site stores passwords for authenticating users: GitHub, the Terraform Registry and the repository itself. | — |
-| `maintenance_or_update` | Met | Users follow the Registry's latest version and `terraform init -upgrade`; `CHANGELOG.md` documents every release including breaking changes; attributes that cannot change in place carry `RequiresReplace()` (71 uses) instead of silently doing nothing. | `blob/CHANGELOG.md`, `blob/README.md` |
+| `maintenance_or_update` | Met | Users follow the Registry's latest version and `terraform init -upgrade`; `CHANGELOG.md` documents every release including breaking changes; attributes that cannot change in place carry `RequiresReplace()` (over 80 uses) instead of silently doing nothing. | `blob/CHANGELOG.md`, `blob/README.md` |
 | `report_tracker` | Met | GitHub Issues. | `https://github.com/caberdo/terraform-provider-gravitino/issues` |
 | `vulnerability_report_credit` | N/A | No vulnerability report has been resolved in the last 12 months; `SECURITY.md` states the credit policy for when one is. | `blob/.github/SECURITY.md` |
 | `vulnerability_response_process` | Met | `SECURITY.md` documents the process and timelines: acknowledge within 48 hours, assess within 7 days, fix within 14 days. | `blob/.github/SECURITY.md` |
@@ -320,15 +320,15 @@ Commands behind every figure in this pack (run from the repository root; counts 
 | Figure | Command |
 |---|---|
 | 25 resources, 55 data sources | `ls docs/resources \| wc -l`, `ls docs/data-sources \| wc -l` |
-| 869 `Test*`, 72 `TestAcc*`, 26 `TestLiveAcc*` | `grep -rh '^func Test' --include='*_test.go' . \| wc -l`, same with `TestAcc`/`TestLiveAcc` |
+| 908 `Test*`, 74 `TestAcc*`, 26 `TestLiveAcc*` | `grep -rh '^func Test' --include='*_test.go' . \| wc -l`, same with `TestAcc`/`TestLiveAcc` |
 | 60 packages, 59 with tests | `go list ./internal/... \| wc -l`, `find internal -name '*_test.go' -exec dirname {} + \| sort -u \| wc -l` |
-| 312 Go files, 139 test files, 28,312 non-test / 42,254 test lines | `find . -name '*.go' \| wc -l`, `cat` the sets into `wc -l` |
-| 12 `Sensitive` attributes, 35 `OneOf`, 84 `RequiresReplace`, 41 `UseStateForUnknown` | `grep -r 'Sensitive: *true' internal/ \| wc -l`, same for the other patterns |
+| 317 Go files, 144 test files, 28,916 non-test / 44,078 test lines | `find . -name '*.go' \| wc -l`, `cat` the sets into `wc -l` |
+| 12 `Sensitive` attributes, 35 `OneOf`, 84 `RequiresReplace`, 43 `UseStateForUnknown` | `grep -r 'Sensitive: *true' internal/ \| wc -l`, same for the other patterns |
 | Merged coverage (the gated number) and its floors | `make coverage`, `make testacc-docker`, `make coverage-merge`, `make coverage-gate`, `make coverage-readme-check` (`scripts/coverage-summary.sh`, `scripts/merge-coverage.sh`, `scripts/coverage-gate.sh`, `scripts/coverage-readme.sh`, `.github/coverage-baseline.txt`) |
 | Unit coverage per package | `make coverage`, or `go test -coverprofile=c.out ./internal/...` then `go tool cover -func=c.out \| tail -1` |
 | 7 direct dependencies, 155 modules | `awk` over `go.mod`, `go list -m all \| wc -l` |
 | OSV advisories per module | `go list -m all` → `POST https://api.osv.dev/v1/querybatch` |
-| Ruleset, 2FA, secret scanning, contributors, 24 tags | `gh api repos/caberdo/terraform-provider-gravitino/…` |
+| Ruleset, 2FA, secret scanning, contributors, 27 tags | `gh api repos/caberdo/terraform-provider-gravitino/…` |
 | Site hardening headers | `curl -sI https://github.com/caberdo/terraform-provider-gravitino` |
 
 When a criterion's answer changes, update this table, the answer row, and the corresponding open

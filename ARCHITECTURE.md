@@ -125,15 +125,16 @@ resource.tf ─► Terraform core ─► framework request (Config/Plan/State)
 
 Conventions that make the CRUD paths uniform (counted in the working tree):
 
-* Every API failure goes through `client.NewResourceError` (153 call sites) and every 404 through
-  `client.IsNotFoundError` (69 call sites) followed by `resp.State.RemoveResource(ctx)`.
-* `tflog.Debug` at every CRUD boundary (192 call sites).
+* Every API failure goes through `client.NewResourceError` (over 170 call sites) and every 404
+  through `client.IsNotFoundError` (over 80 call sites) followed by
+  `resp.State.RemoveResource(ctx)`.
+* `tflog.Debug` at every CRUD boundary (over 230 call sites).
 * IDs are the dot-separated hierarchy (`metalake.catalog.schema`), parsed on import and rebuilt on
   rename.
-* An attribute the API cannot update in place carries `RequiresReplace()` (71 uses); computed
-  attributes either carry `UseStateForUnknown()` (41 uses) or are written on every code path.
+* An attribute the API cannot update in place carries `RequiresReplace()` (over 80 uses); computed
+  attributes either carry `UseStateForUnknown()` (over 40 uses) or are written on every code path.
 * Enum attributes carry `stringvalidator.OneOf` with the values from the OpenAPI specification
-  (30 uses); shared enums are constants in `internal/models/privilege_names.go`.
+  (over 30 uses); shared enums are constants in `internal/models/privilege_names.go`.
 * Server-owned properties (`in-use`, `gravitino.identifier`, `gravitino.bypass.*`,
   `default-location-name`) are filtered out of state instead of becoming drift.
 
@@ -204,8 +205,8 @@ Change `templates/` or `examples/`, never `docs/` directly.
 
 | Layer | Count | Location | Needs a server | What it proves |
 |---|---|---|---|---|
-| Unit | roughly 870 `Test*` functions | `internal/**/*_test.go` | no — `httptest.NewServer` in about 89 files | request shape, payload decoding, schema, plan modifiers, error mapping |
-| Acceptance (`TestAcc*`) | 66 | `*_test.go` | no — an `httptest` server, driven by `TF_ACC=1` through Terraform Core (`providerserver.NewProtocol6WithError`) | that the provider produces consistent state end to end, which direct framework calls miss |
+| Unit | over 900 `Test*` functions | `internal/**/*_test.go` | no — `httptest.NewServer` in more than 90 files | request shape, payload decoding, schema, plan modifiers, error mapping |
+| Acceptance (`TestAcc*`) | roughly 75 | `*_test.go` | no — an `httptest` server, driven by `TF_ACC=1` through Terraform Core (`providerserver.NewProtocol6WithError`) | that the provider produces consistent state end to end, which direct framework calls miss |
 | Live acceptance (`TestLiveAcc*`) | 26 | `*_test.go` + `internal/acceptance` | yes — real Gravitino via podman | that real server behaviour matches the spec; `LivePreCheck` refuses to run against a mock (`contributing/live-acceptance-tests.md`) |
 | Version matrix | 2 server versions | `.github/gravitino-versions.txt` | yes — Docker | the same suite passes on 1.3.0 and 1.3.1 (`make testacc-matrix`) |
 

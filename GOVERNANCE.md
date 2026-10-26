@@ -38,7 +38,7 @@ responsibilities and the workflows in `.github/workflows/` do the mechanical par
    called out in it.
 5. **Backwards compatibility is a commitment.** Terraform type and attribute names are public API:
    renaming `gravitino_metalake` or an attribute silently breaks user state. An attribute the API
-   cannot change in place carries `RequiresReplace()` (71 uses today) instead of silently doing
+   cannot change in place carries `RequiresReplace()` (over 80 uses today) instead of silently doing
    nothing, and Go package moves never change a Terraform type name.
 
 ## Continuous integration as the gate

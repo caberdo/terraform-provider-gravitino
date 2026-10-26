@@ -98,7 +98,7 @@ internal/
 ├── tfutil/                    # Plan/state and types helpers shared by both layers
 ```
 
-Tests live beside the code: roughly 312 Go files, 139 of them `*_test.go`, in 60 packages
+Tests live beside the code: over 300 Go files, more than 140 of them `*_test.go`, in 60 packages
 under `./internal/...` (59 with tests). Counts move with every test: treat them as approximate
 and rerun the `grep`/`go list` when the exact number matters.
 
@@ -278,7 +278,7 @@ unless `GRAVITINO_URI` answers `/api/version`. They never start their own HTTP m
 
 Write `Test*` for mocks, `TestAcc*` when the path must go through Terraform Core
 (`providerserver.NewProtocol6WithError`), and `TestLiveAcc*` only for behaviour that a mock
-cannot prove. Roughly 870 `Test*` functions today, about 72 of them `TestAcc*` and 26
+cannot prove. Over 900 `Test*` functions today, roughly 75 of them `TestAcc*` and 26
 `TestLiveAcc*`; the counts are approximate, so take the current numbers from `grep '^func Test'`.
 
 #### Coverage
