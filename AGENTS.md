@@ -26,7 +26,7 @@ fails. Resource and data source schema descriptions are the source of the refere
 
 ## Provider surface
 
-21 resources, 50 data sources, 12 schema attributes marked `Sensitive` (credentials,
+23 resources, 54 data sources, 12 schema attributes marked `Sensitive` (credentials,
 tokens and keytab material). Registration lives in `internal/provider/provider.go`;
 schemas are the source of `docs/`.
 
@@ -46,7 +46,9 @@ schemas are the source of `docs/`.
 | Function              | `gravitino_function`      | (implemented)                |
 | Partition             | `gravitino_partition`     | `metalake.catalog.schema.tb.pt` |
 | Tag                   | `gravitino_tag`           | `metalake.tag`                 |
+| Tag Association       | `gravitino_tag_association` | `metalake.{obj}.tags`        |
 | Policy                | `gravitino_policy`        | `metalake.{obj}.policy`        |
+| Policy Association    | `gravitino_policy_association` | `metalake.{obj}.policies`  |
 | Job                   | `gravitino_job`           | `metalake.job_id` (job run)    |
 | Job Template          | `gravitino_job_template`  | `metalake.job_template`        |
 | User                  | `gravitino_user`          | `metalake.user`                |
@@ -94,8 +96,8 @@ internal/
 ├── tfutil/                    # Plan/state and types helpers shared by both layers
 ```
 
-Tests live beside the code: 278 Go files, 122 of them `*_test.go`; 56 packages under
-`./internal/...`, 55 with tests.
+Tests live beside the code: 295 Go files, 131 of them `*_test.go`; 58 packages under
+`./internal/...`, 56 with tests.
 
 ## API compatibility target
 
@@ -116,7 +118,7 @@ version-restricted field.
 | Capability (Gravitino API) | Provider surface | 1.3.0 | 1.3.1 |
 |---|---|---|---|
 | `PolicyContentBase.supportedObjectTypes` gains `VIEW`/`FUNCTION` (`policies.yaml`) | `gravitino_policy.supported_object_types`, `gravitino_policies` | rejected at create/update with an explicit diagnostic | accepted |
-| `metadataObjectType` gains `VIEW`/`FUNCTION` (`openapi.yaml`) | `gravitino_statistics.resource_type`, `gravitino_credentials.resource_type` | rejected on read with an explicit diagnostic | accepted |
+| `metadataObjectType` gains `VIEW`/`FUNCTION` (`openapi.yaml`) | `gravitino_statistics.resource_type`, `gravitino_credentials.resource_type`, `gravitino_tag_association.object_type`, `gravitino_policy_association.object_type`, `gravitino_object_tags.object_type`, `gravitino_object_policies.object_type` | rejected with an explicit diagnostic | accepted |
 | `IndexSpec.properties` and the `data_skipping_*` `indexType` values (`indexes.yaml`) | `gravitino_table.index[].properties`, `index[].index_type` | rejected at create with an explicit diagnostic (an index change forces a replacement) | accepted |
 | `ExternalType` restored to `DataType.oneOf` (`datatype.yaml`) | column `type` of `gravitino_table`/`gravitino_view` as `{"type":"external","catalogString":"..."}` | rejected at create/update with an explicit diagnostic | accepted |
 | `AuthMeResponse.serviceAdmin` (`authn.yaml`) | `gravitino_principal.service_admin` | absent: always `false` | reported |

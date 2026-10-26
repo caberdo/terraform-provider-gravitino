@@ -6,9 +6,14 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
-func (c *Client) ListPoliciesForObject(ctx context.Context, metalake, objType, objFullName string) (*models.NameListResponse, error) {
-	path := objectPath(metalake, objType, objFullName) + "/policies"
-	var result models.NameListResponse
+// ListPoliciesForObject returns the policies associated with a metadata object
+// (GET /metalakes/{metalake}/objects/{metadataObjectType}/{metadataObjectFullName}/policies).
+// It requests details so callers can tell a direct association from one that is
+// inherited from an ancestor: the plain name listing of the endpoint does not
+// carry the `inherited` field.
+func (c *Client) ListPoliciesForObject(ctx context.Context, metalake, objType, objFullName string) (*models.PolicyListResponse, error) {
+	path := objectPath(metalake, objType, objFullName) + "/policies?details=true"
+	var result models.PolicyListResponse
 	if err := c.Get(ctx, path, &result); err != nil {
 		return nil, err
 	}
@@ -84,9 +89,13 @@ func (c *Client) DeletePolicy(ctx context.Context, metalake, name string) (*mode
 	return &result, nil
 }
 
-func (c *Client) ListObjectsForPolicy(ctx context.Context, metalake, name string) (*models.IdentifiersResponse, error) {
+// ListObjectsForPolicy returns the metadata objects a policy is attached to
+// (GET /metalakes/{metalake}/policies/{policy}/objects). The endpoint answers
+// with a `metadataObjects` list, not with the `identifiers` list other Gravitino
+// endpoints use.
+func (c *Client) ListObjectsForPolicy(ctx context.Context, metalake, name string) (*models.MetadataObjectListResponse, error) {
 	path := entityPath(metalake, "policies", name) + "/objects"
-	var result models.IdentifiersResponse
+	var result models.MetadataObjectListResponse
 	if err := c.Get(ctx, path, &result); err != nil {
 		return nil, err
 	}

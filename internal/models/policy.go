@@ -6,8 +6,9 @@ import (
 )
 
 // PolicyObjectTypes are the object types of CustomPolicyContent's
-// `supportedObjectTypes` (policies.yaml). VIEW and FUNCTION are added by
-// Gravitino 1.3.1; the policy resource rejects them client-side on older
+// `supportedObjectTypes` (policies.yaml), which are also the object types that
+// can carry a policy. VIEW and FUNCTION are added by Gravitino 1.3.1; the
+// policy resource and the policy association reject them client-side on older
 // servers.
 var PolicyObjectTypes = []string{"CATALOG", "SCHEMA", "TABLE", "FILESET", "TOPIC", "MODEL", "VIEW", "FUNCTION"}
 

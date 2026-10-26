@@ -1,5 +1,23 @@
 package models
 
+// TagObjectTypes are the metadata object types that can carry a tag
+// (the associateTags operation of tags.yaml, and the "What Can Carry a Tag"
+// table of the Gravitino documentation). METALAKE and ROLE are deliberately
+// absent: the API does not accept them. VIEW is not in the shared
+// metadataObjectType enum before Gravitino 1.3.1, so the association resource
+// gates VIEW on the server version; COLUMN exists in that enum since 1.3.0.
+var TagObjectTypes = []string{
+	ObjectTypeCatalog,
+	ObjectTypeSchema,
+	ObjectTypeTable,
+	ObjectTypeView,
+	ObjectTypeColumn,
+	ObjectTypeFileset,
+	ObjectTypeTopic,
+	ObjectTypeModel,
+	ObjectTypeFunction,
+}
+
 type Tag struct {
 	Name       string            `json:"name"`
 	Comment    string            `json:"comment,omitempty"`
