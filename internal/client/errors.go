@@ -169,7 +169,7 @@ func errorHint(err error) string {
 		return "Authentication failed. Check your credentials (username/password or OAuth token)."
 	}
 	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") {
-		return "Request timed out. The Gravitino server may be overloaded or unreachable; the provider aborts HTTP requests after 30s."
+		return "Request timed out. The Gravitino server may be overloaded or unreachable; the provider aborts each HTTP attempt after the configured timeout (30s by default; raise it with the provider's timeout attribute or GRAVITINO_TIMEOUT)."
 	}
 	if strings.Contains(errStr, "invalid character") {
 		return "Invalid response from server. The URI may be incorrect (e.g., pointing to a web page instead of the API)."

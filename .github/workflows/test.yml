@@ -34,20 +34,25 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.13.2
+          version: v2.15.0
           args: --config .github/golangci.yml
 
       - name: Check for unreferenced client methods
         run: ./scripts/dead-client-methods.sh
 
+      # The published gosec image is built with Go 1.27.2, whose go/types
+      # cannot decode the export data of the 1.27.3 toolchain in go.mod:
+      # gosec then reports type errors and exits non-zero even with no finding.
+      # Building the pinned gosec release with the job's own toolchain keeps the
+      # analyser and the compiled code on the same Go version.
+      - name: Install Gosec Security Scanner
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
+
       - name: Run Gosec Security Scanner
         id: gosec
-        uses: securego/gosec@5eb1d104ef85ff2c905c877eb600e8c1dee33a22 # v2.30.0
         continue-on-error: true
-        env:
-          GOTOOLCHAIN: auto
-        with:
-          args: -fmt sarif -out gosec.sarif -exclude-dir=vendor -tests=false ./
+        run: |
+          "$(go env GOPATH)/bin/gosec" -fmt sarif -out gosec.sarif -exclude-dir=vendor -tests=false ./
 
       - name: Upload security scan results
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
@@ -71,11 +76,37 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
+  # The released binary's module graph is scanned for advisories that its own
+  # code can reach: a dependency bump is not enough on its own, because a
+  # transitive module can be introduced by an unrelated change. Both the
+  # toolchain and golang.org/x/net are kept above the fixed versions in go.mod;
+  # this job fails the pull request that lowers either of them back below.
+  vuln:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          # An empty go-version-input is required: the action defaults it to
+          # `stable` and setup-go prefers it over go-version-file, which would
+          # silently ignore the toolchain from go.mod.
+          go-version-input: ""
+          # The Go version from go.mod, not the action's default `stable`, so
+          # the scan uses the toolchain the release binary is built with.
+          go-version-file: go.mod
+          repo-checkout: false
+          go-package: ./...
+
   test:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: lint
+    needs: [lint, vuln]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

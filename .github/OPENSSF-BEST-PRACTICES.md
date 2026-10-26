@@ -40,7 +40,9 @@ registered. Merged statement coverage clears the 80% requirement: the `Coverage`
 request below the per-scope floor in `.github/coverage-baseline.txt`, whose total floor is 82.5,
 and `merge-coverage.sh` keeps one line per block however the inputs were instrumented, so the
 merged total does not depend on which profile is read last. The measured total is `measured_total`
-in that file rather than a number quoted here, because it moves with every test.
+in that file rather than a number quoted here, because it moves with every test. `go.mod` and the
+acceptance container both instrument with Go 1.27.3, so the unit and merged profiles use the same
+statement weighting (see §4.3).
 `signed_releases` and `version_tags_signed` are **Met** since the tagged release became GPG-signed
 with the public key committed (§4.3). Gold (10) is **not reachable while the project has one
 maintainer**: `bus_factor`, `contributors_unassociated` and `two_person_review` are MUST criteria
@@ -140,17 +142,17 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `crypto_random` | N/A | The provider generates no cryptographic keys and no nonces; it signs nothing and encrypts nothing itself. The one random value it produces is a test-name suffix in `internal/acceptance`. | `blob/internal/acceptance/live.go` |
 | `delivery_mitm` | Met | Releases are delivered over HTTPS/SSH from GitHub and the Terraform Registry; Terraform records the release checksums in `.terraform.lock.hcl`. | `blob/.github/workflows/release.yml` |
 | `delivery_unsigned` | Met | Nothing is verified by an unsigned hash: the release's `SHA256SUMS` file is GPG-signed (`…_SHA256SUMS.sig`) and published next to the artifacts, the build carries SLSA v1.0 provenance verifiable with `gh attestation verify`, and Terraform itself re-checks the recorded checksums in `.terraform.lock.hcl`. | `blob/README.md#verifying-a-release`, `https://github.com/caberdo/terraform-provider-gravitino/releases/tag/v0.9.0` |
-| `vulnerabilities_fixed_60_days` | Met (judgement call, §6.1) | `querybatch` against OSV for all 154 non-main modules reports advisories in six of them. Every advisory older than 60 days is confined to build/test tooling that is not in the released binary (`go-git` v5 and `go-billy` v5 via the docs/registry tooling, `goldmark` v1.7.7 via `tfplugindocs`, `x/crypto/openpgp`, a package this provider does not import). The advisories that *are* in the binary's dependency graph (`golang.org/x/net` v0.59.0, five HTTP/2 issues published 2026-10-08) are ten days old and have a published fix; they are the top open item in §5. | `blob/go.mod`, `blob/.github/workflows/release.yml` |
-| `vulnerabilities_critical_fixed` | Met | No open critical vulnerability; the OSV query above is the check, and §5 tracks the fix for the one advisory group that is in the binary graph. | — |
+| `vulnerabilities_fixed_60_days` | Met | `govulncheck ./...` reports no vulnerability reachable from the provider binary. `go.mod` requires Go 1.27.3 (the stdlib `crypto/x509` fix, GO-2026-6809) and `golang.org/x/net` v0.60.0 (five HTTP/2 fixes: GO-2026-6603, GO-2026-6610, GO-2026-6611, GO-2026-6612, GO-2026-6617), and the `Vulnerability Scan` job reruns the scan on every pull request and blocks `Test`, so either pin cannot regress unnoticed. The only advisory left in the module graph is `golang.org/x/crypto/openpgp` (no fix published), which the provider does not import; `go-git`, `go-billy` and `goldmark` are docs/registry tooling outside the released binary. | `blob/go.mod`, `blob/.github/workflows/test.yml` |
+| `vulnerabilities_critical_fixed` | Met | No open critical vulnerability; `govulncheck ./...` reports none reachable, and the `Vulnerability Scan` job runs the same scan on every pull request. | `blob/.github/workflows/test.yml` |
 | `no_leaked_credentials` | Met | No valid private credential is in the repository or its history: the credentials in `examples/` and the test fixtures are `admin`/`admin` against a local container, `.gitignore` excludes key material, provider credentials come from the block or `GRAVITINO_*` at runtime, and the four credential-bearing attributes are `Sensitive`. | `blob/.gitignore`, `blob/internal/provider/provider.go` |
 | `static_analysis` | Met | Applied before every release and on every pull request: gosec (security rules, SARIF uploaded to code scanning) and golangci-lint (staticcheck, govet, errcheck, bodyclose). | `blob/.github/workflows/test.yml` |
 | `static_analysis_common_vulnerabilities` | Met | gosec's rule set targets the common Go/CWE classes (G101 secrets, G107 URL injection, G304 file inclusion, G4xx TLS), on top of staticcheck's correctness rules. | `blob/.github/workflows/test.yml` |
-| `static_analysis_fixed` | Met | The gosec step uploads its SARIF to code scanning and then fails the job, so a finding is visible in two places rather than merged past unnoticed; the maintainer fixes findings before merging. The ruleset does not yet require the check (§5 item 11). | `blob/.github/workflows/test.yml` |
+| `static_analysis_fixed` | Met | The gosec step uploads its SARIF to code scanning and then fails the job, so a finding is visible in two places rather than merged past unnoticed; the maintainer fixes findings before merging. The ruleset does not yet require the check (§5 item 10). | `blob/.github/workflows/test.yml` |
 | `static_analysis_often` | Met | Both tools run on every pull request and every push to `main`, far more often than once per six months. | `blob/.github/workflows/test.yml` |
 | `dynamic_analysis` | Met | Every `main` build runs the acceptance suite against real Gravitino **1.3.0 and 1.3.1** containers and the unit suite under `-race`. | `blob/.github/workflows/test.yml` |
 | `dynamic_analysis_unsafe` | N/A | The provider is Go, a memory-safe language, and `CGO_ENABLED=0` keeps C out of the released binary. | `blob/.github/goreleaser.yml` |
 | `dynamic_analysis_enable_assertions` | Met | CI runs the suite with `-race` and no build tags that disable checks, so a data race or panic fails the job. | `blob/.github/workflows/test.yml` |
-| `dynamic_analysis_fixed` | Met | No exploitable vulnerability has been reported by the acceptance suite or the race detector; if one were, it would be treated as a release blocker by the same policy as static findings (the `Test` job fails, and a red run is not merged — §5 item 11 covers making that mechanical). | `blob/.github/workflows/test.yml` |
+| `dynamic_analysis_fixed` | Met | No exploitable vulnerability has been reported by the acceptance suite or the race detector; if one were, it would be treated as a release blocker by the same policy as static findings (the `Test` job fails, and a red run is not merged — §5 item 10 covers making that mechanical). | `blob/.github/workflows/test.yml` |
 
 ### 4.2 Passing — SHOULD / SUGGESTED criteria (no level requires them; answer them anyway)
 
@@ -191,7 +193,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `vulnerability_report_credit` | N/A | No vulnerability report has been resolved in the last 12 months; `SECURITY.md` states the credit policy for when one is. | `blob/.github/SECURITY.md` |
 | `vulnerability_response_process` | Met | `SECURITY.md` documents the process and timelines: acknowledge within 48 hours, assess within 7 days, fix within 14 days. | `blob/.github/SECURITY.md` |
 | `coding_standards` | Met | Identified and required: `gofmt`, `go vet`, the repository's golangci-lint configuration, and the provider-specific rules (error handling, 404 handling, logging, plan modifiers, enum validators) in `CONTRIBUTING.md` and `AGENTS.md`. | `blob/.github/CONTRIBUTING.md` |
-| `coding_standards_enforced` | Met | Enforced by CI with pinned versions: golangci-lint v2.13.2 with `-race` tests, `go vet`, and the docs-drift gate. | `blob/.github/golangci.yml`, `blob/.github/workflows/test.yml` |
+| `coding_standards_enforced` | Met | Enforced by CI with pinned versions: golangci-lint v2.15.0 with `-race` tests, `go vet`, and the docs-drift gate. | `blob/.github/golangci.yml`, `blob/.github/workflows/test.yml` |
 | `build_standard_variables` | N/A | No C toolchain: pure Go with `CGO_ENABLED=0`, so `CC`/`CFLAGS`/`LDFLAGS` do not apply. | `blob/.github/goreleaser.yml` |
 | `build_non_recursive` | N/A | One Go module and a flat makefile with no recursion; `go build ./...` walks the packages. | `blob/GNUmakefile` |
 | `build_repeatable` | Met | See §4.2 and §6.5. | `blob/.github/goreleaser.yml` |
@@ -264,23 +266,20 @@ true.
 | 7 | `require_2FA` (Gold) | Turn on the organization's 2FA requirement for members with write access, and enable secret scanning with push protection while there. | Organization owner |
 | 8 | `security_review` (Gold) | Perform and date a security review against the requirements and boundary already written in `SECURITY.md`; a self-review by the maintainer against the threat model satisfies the criterion. | Maintainer |
 | 9 | `copyright_per_file` / `license_per_file` (Gold) | Add a copyright line and `SPDX-License-Identifier: Apache-2.0` to every source file. Deliberately out of scope of issue #50. | Code work |
-| 10 | `vulnerabilities_fixed_60_days` (Passing) | Bump `golang.org/x/net` to v0.60.0, the `go` directive to 1.27.2 (the stdlib `net/http` HTTP/2 fixes are in the 1.27.2 toolchain, and CI currently builds with the version from `go.mod`), and `goldmark` to v1.7.17 for the docs tooling, so the OSV answer stops resting on a reachability argument. | Code work |
-| 11 | `warnings_fixed`, `test_continuous_integration` hardening (Passing/Silver) | Add required status checks (`Lint & Security`, `Test`, `Coverage`) to the `main` ruleset so a red run cannot be merged, instead of relying on the maintainer's discipline. | Maintainer (repository settings) |
+| 10 | `warnings_fixed`, `test_continuous_integration` hardening (Passing/Silver) | Add required status checks (`Lint & Security`, `Vulnerability Scan`, `Test`, `Coverage`) to the `main` ruleset so a red run cannot be merged, instead of relying on the maintainer's discipline. | Maintainer (repository settings) |
 
-**Realistic target.** Items 1–2 and 10–11 unlock **Silver (7)**; items 3–9 are the price of
+**Realistic target.** Items 1–2 and 10 unlock **Silver (7)**; items 3–9 are the price of
 **Gold (10)** and are mostly about people, not code.
 
 ## 6. Judgement calls a reviewer may push back on
 
-1. **`vulnerabilities_fixed_60_days`.** Six modules in the graph have OSV advisories. Four of them
-   (`go-git` v5.18.0, `go-billy` v5.8.0, `goldmark` v1.7.7, `x/crypto/openpgp`) are not in
-   `go list -deps .`: they belong to the docs-generation and registry tooling, and the `openpgp`
-   package is one this provider never imports. The two that *are* in the released binary are
-   `golang.org/x/net` v0.59.0 and `golang.org/x/crypto` v0.57.0 — the `x/net` HTTP/2 advisories
-   (published 2026-10-08, fix in v0.60.0) are the ones to take seriously, since the plugin protocol
-   is gRPC over HTTP/2. The answer above is Met because no unfixed medium-or-higher advisory is
-   older than 60 days; if a reviewer wants the stronger position, land item 10 first and answer
-   without the argument.
+1. **`vulnerabilities_fixed_60_days`.** Met without a reachability argument since
+   [`#73`](https://github.com/caberdo/terraform-provider-gravitino/issues/73): `govulncheck ./...`
+   finds nothing reachable from the provider, and `go.mod` pins Go 1.27.3 and
+   `golang.org/x/net` v0.60.0. Advisories do remain in docs/registry tooling (`go-git`,
+   `go-billy`, `goldmark`) and in `x/crypto/openpgp`, which the provider never imports; the
+   `Vulnerability Scan` job is what keeps the reachable answer at zero rather than a periodic
+   manual query.
 2. **`crypto_used_network`.** The provider supports HTTPS and cannot be configured to skip
    certificate verification, but it does not *force* TLS: the scheme comes from the mandatory `uri`
    (and `oauth_server_uri`), which is explicit user configuration. The alternative — refusing

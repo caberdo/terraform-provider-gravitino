@@ -19,7 +19,7 @@ The provider currently exposes 25 resources and 55 data sources.
 
 Prerequisites:
 
-- **Go 1.27.1 or newer.** The `go` directive in `go.mod` is `1.27.1`.
+- **Go 1.27.3 or newer.** The `go` directive in `go.mod` is `1.27.3`.
 - **Docker with Compose**, for the container-based acceptance suite
   (`make testacc-docker`, `make testacc-matrix`).
 - **Podman with `podman compose`**, for the live acceptance suite
@@ -65,10 +65,12 @@ Every command below is a target in [`GNUmakefile`](../GNUmakefile):
 
 `GRAVITINO_VERSION` defaults to `1.3.0` and selects the `apache/gravitino` image tag; pass
 `GRAVITINO_VERSION=1.3.1` on the `make` command line to run against the other supported
-server. CI pins golangci-lint v2.13.2 with the config committed at
+server. CI pins golangci-lint v2.15.0 with the config committed at
 [`.github/golangci.yml`](./golangci.yml) (errcheck, govet with `enable-all` minus
 `fieldalignment` and `shadow`, ineffassign, staticcheck, unused, bodyclose, noctx, unconvert)
-and runs gosec v2.29.0 as a separate job that fails on findings.
+and runs gosec v2.30.0 as a separate job that fails on findings. The job installs
+gosec with `go install` rather than using its container image, so the analyser
+and the code it checks are built with the same Go toolchain.
 
 ## Test layers
 
@@ -154,7 +156,7 @@ patch release that produced the profile, so compare numbers only within one tool
 note that a merged profile takes its statement counts from the profile `merge-coverage.sh` reads
 last — the acceptance container's, in CI. CI's `test` job installs the `go.mod` toolchain, so its
 own summary prints a different denominator for the unit profile — the gated number is always the
-merged one.
+merged one. `go.mod` and the acceptance container both use Go 1.27.3.
 
 ## Code conventions
 

@@ -6,14 +6,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	providerschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -23,7 +27,7 @@ import (
 func unsetProviderEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
-		"GRAVITINO_URI", "GRAVITINO_AUTH", "GRAVITINO_USERNAME", "GRAVITINO_PASSWORD",
+		"GRAVITINO_URI", "GRAVITINO_AUTH", "GRAVITINO_TIMEOUT", "GRAVITINO_USERNAME", "GRAVITINO_PASSWORD",
 		"GRAVITINO_OAUTH_TOKEN", "GRAVITINO_OAUTH_CLIENT_ID", "GRAVITINO_OAUTH_CLIENT_SECRET",
 		"GRAVITINO_OAUTH_SERVER_URI", "GRAVITINO_OAUTH_TOKEN_PATH", "GRAVITINO_OAUTH_SCOPE",
 		"GRAVITINO_KERBEROS_PRINCIPAL", "GRAVITINO_KERBEROS_KEYTAB",
@@ -62,6 +66,7 @@ func emptyProviderModel() GravitinoProviderModel {
 	return GravitinoProviderModel{
 		URI:                    types.StringNull(),
 		Auth:                   types.StringNull(),
+		Timeout:                types.StringNull(),
 		Username:               types.StringNull(),
 		Password:               types.StringNull(),
 		OAuthToken:             types.StringNull(),
@@ -107,7 +112,7 @@ func TestProvider_Schema(t *testing.T) {
 	s := providerSchema(t, New("test")())
 
 	for _, name := range []string{
-		"uri", "auth", "username", "password", "oauth_token", "oauth_client_id",
+		"uri", "auth", "timeout", "username", "password", "oauth_token", "oauth_client_id",
 		"oauth_client_secret", "oauth_server_uri", "oauth_token_path", "oauth_scope",
 		"kerberos_principal", "kerberos_keytab", "kerberos_use_ticket_cache",
 	} {
@@ -361,5 +366,149 @@ func TestProvider_Registration(t *testing.T) {
 			t.Errorf("resource %q is registered twice", resp.TypeName)
 		}
 		rNames[resp.TypeName] = true
+	}
+}
+
+func TestResolveTimeout(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   types.String
+		env     string
+		want    time.Duration
+		wantErr bool
+	}{
+		{name: "default", value: types.StringNull(), want: client.DefaultTimeout},
+		{name: "attribute", value: types.StringValue("45s"), want: 45 * time.Second},
+		{name: "environment", value: types.StringNull(), env: "90s", want: 90 * time.Second},
+		{name: "attribute wins over environment", value: types.StringValue("45s"), env: "90s", want: 45 * time.Second},
+		{name: "invalid attribute", value: types.StringValue("soon"), wantErr: true},
+		{name: "invalid environment", value: types.StringNull(), env: "soon", wantErr: true},
+		{name: "zero", value: types.StringValue("0s"), wantErr: true},
+		{name: "negative", value: types.StringValue("-1s"), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GRAVITINO_TIMEOUT", tt.env)
+			got, err := resolveTimeout(tt.value, "GRAVITINO_TIMEOUT")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("resolveTimeout() = %s, want an error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveTimeout() failed: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("resolveTimeout() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProvider_ConfigureAppliesTimeoutAndUserAgent(t *testing.T) {
+	unsetProviderEnv(t)
+
+	var userAgent atomic.Value
+	userAgent.Store("")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userAgent.Store(r.Header.Get("User-Agent"))
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch r.URL.Path {
+		case "/api/version":
+			fmt.Fprint(w, `{"code":0,"version":{"version":"1.3.0","compileDate":"","gitCommit":""}}`)
+		case "/api/slow":
+			time.Sleep(100 * time.Millisecond)
+			fmt.Fprint(w, `{}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	p := New("9.9.9")()
+	model := emptyProviderModel()
+	model.URI = types.StringValue(server.URL)
+	model.Timeout = types.StringValue("25ms")
+
+	resp := &provider.ConfigureResponse{}
+	p.Configure(context.Background(), provider.ConfigureRequest{Config: providerConfig(t, p, model)}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Configure() failed: %v", resp.Diagnostics)
+	}
+
+	if got := userAgent.Load().(string); got != "terraform-provider-gravitino/9.9.9" {
+		t.Errorf("User-Agent = %q, want the provider version", got)
+	}
+
+	c := resp.DataSourceData.(*client.Client)
+	var result map[string]interface{}
+	err := c.Get(context.Background(), "/slow", &result)
+	if err == nil || !strings.Contains(err.Error(), "timed out after 25ms") {
+		t.Fatalf("Get() = %v, want the configured 25ms timeout", err)
+	}
+}
+
+func TestProvider_ConfigureRejectsInvalidTimeout(t *testing.T) {
+	unsetProviderEnv(t)
+	server := newVersionServer(t)
+
+	p := New("test")()
+	model := emptyProviderModel()
+	model.URI = types.StringValue(server.URL)
+	model.Timeout = types.StringValue("soon")
+
+	resp := &provider.ConfigureResponse{}
+	p.Configure(context.Background(), provider.ConfigureRequest{Config: providerConfig(t, p, model)}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a diagnostic for an invalid timeout")
+	}
+	if !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), "Invalid timeout") {
+		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
+	}
+}
+
+func TestDurationValidator(t *testing.T) {
+	v := durationValidator{}
+	if got := v.Description(context.Background()); !strings.Contains(got, "duration") {
+		t.Errorf("Description() = %q, want it to mention a duration", got)
+	}
+	if got := v.MarkdownDescription(context.Background()); got != v.Description(context.Background()) {
+		t.Errorf("MarkdownDescription() = %q, want the plain description", got)
+	}
+
+	tests := []struct {
+		name    string
+		value   types.String
+		wantErr bool
+	}{
+		{name: "null", value: types.StringNull()},
+		{name: "unknown", value: types.StringUnknown()},
+		{name: "valid", value: types.StringValue("45s")},
+		{name: "invalid", value: types.StringValue("soon"), wantErr: true},
+		{name: "zero", value: types.StringValue("0s"), wantErr: true},
+		{name: "negative", value: types.StringValue("-1s"), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &validator.StringResponse{}
+			v.ValidateString(context.Background(), validator.StringRequest{
+				Path:        path.Root("timeout"),
+				ConfigValue: tt.value,
+			}, resp)
+			if resp.Diagnostics.HasError() != tt.wantErr {
+				t.Errorf("ValidateString(%s) diagnostics = %v, want error = %t", tt.value, resp.Diagnostics, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNewClientFromEnvRejectsInvalidTimeout(t *testing.T) {
+	unsetProviderEnv(t)
+	t.Setenv("GRAVITINO_TIMEOUT", "soon")
+
+	if _, err := NewClientFromEnv("http://localhost:8090"); err == nil {
+		t.Fatal("NewClientFromEnv() = nil error, want a diagnostic for the invalid timeout")
 	}
 }

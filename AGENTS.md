@@ -333,7 +333,7 @@ Statement counts come straight from the cover profile, so they depend on the Go 
 produced it: the same block set sums differently under the `go.mod` toolchain (which CI installs)
 and a newer patch release. Compare numbers only within one toolchain, and note that a merged
 profile takes its statement counts from the profile `merge-coverage.sh` reads last (the acceptance
-container's, in CI).
+container's, in CI); both currently use Go 1.27.3.
 
 ### Logging
 
@@ -345,7 +345,7 @@ Use `tflog` from `github.com/hashicorp/terraform-plugin-log/tflog`:
 Fields use `map[string]interface{}` format. Logs respect `TF_LOG`, `TF_LOG_PATH`, `TF_LOG_PROVIDER` env vars.
 
 ### Dependencies
-- Go 1.27.1
+- Go 1.27.3
 - `terraform-plugin-framework` v1.19.0
 - `terraform-plugin-framework-validators` v0.19.0
 - `terraform-plugin-testing` v1.16.0

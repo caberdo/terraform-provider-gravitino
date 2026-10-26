@@ -20,6 +20,15 @@ DEPRECATIONS:
   `gravitino_roles_list` keeps its current behaviour and will be removed in the next major release;
   migrate by renaming the data source type in the configuration.
 
+SECURITY:
+- **The released binary no longer reaches any known vulnerability (issue #73, epic #85).** `go.mod`
+  now requires Go **1.27.3**, whose `crypto/x509` fix closes GO-2026-6809, and
+  `golang.org/x/net` **v0.60.0**, which closes the five HTTP/2 advisories GO-2026-6603,
+  GO-2026-6610, GO-2026-6611, GO-2026-6612 and GO-2026-6617. `govulncheck ./...` reports no
+  vulnerability reachable from the provider. A `Vulnerability Scan` CI job runs the same scan on
+  every pull request and on `main`; it is a prerequisite of the `Test` job, so reintroducing a
+  reachable advisory fails the pipeline instead of being noticed by hand.
+
 FEATURES:
 - **`in_use` on `gravitino_metalake` and `gravitino_catalog` (issue #71, epic #84).** Both resources
   expose the Gravitino in-use flag as an Optional+Computed boolean that is written through the
@@ -82,6 +91,17 @@ BUG FIXES:
   direct attachment from an inherited one.
 
 ENHANCEMENTS:
+- **HTTP requests survive a briefly unavailable or rate-limiting server (issue #77, epic #85).** The
+  provider gains a `timeout` attribute (a Go duration such as `"60s"`, default `30s`, also read
+  from `GRAVITINO_TIMEOUT`) and the client retries a transient failure up to three times with
+  exponential backoff and jitter: `429`, `500`, `502`, `503`, `504` and a reset connection,
+  honouring `Retry-After` up to a 2 s cap. Only requests that are safe to repeat are retried —
+  `GET`, `PUT`, `PATCH`, `DELETE` and the two read-only catalog connection probes — so a create
+  (`POST`) is never repeated and a `503` after a committed write cannot duplicate an object. Each
+  retry is logged at `WARN` with the attempt, status and delay. A request that exceeds `timeout`
+  now fails with an error naming the configured duration, and every request carries
+  `User-Agent: terraform-provider-gravitino/<version>` so a server operator can identify provider
+  traffic.
 - **The README coverage badge and block are generated.** `scripts/coverage-readme.sh` renders the
   badge and the per-scope block from `.github/coverage-baseline.txt` (`make coverage-readme`), so
   the number the README publishes is the one the coverage gate enforces; `make coverage-readme-check`

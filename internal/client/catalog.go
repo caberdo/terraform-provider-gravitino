@@ -49,7 +49,7 @@ func (c *Client) DropCatalog(ctx context.Context, metalake, name string, force b
 func (c *Client) TestCatalogConfig(ctx context.Context, metalake string, req *models.CatalogCreateRequest) (*models.CatalogTestConnectionResponse, error) {
 	path := metalakePath(metalake) + "/catalogs/testConnection"
 	var result models.CatalogTestConnectionResponse
-	if err := c.Post(ctx, path, req, &result); err != nil {
+	if err := c.PostIdempotent(ctx, path, req, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -73,7 +73,7 @@ func (c *Client) TestCatalogConnection(ctx context.Context, metalake, catalogNam
 	}
 
 	var result models.CatalogTestConnectionResponse
-	if err := c.Post(ctx, path, body, &result); err != nil {
+	if err := c.PostIdempotent(ctx, path, body, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

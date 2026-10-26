@@ -128,6 +128,26 @@ gh attestation verify terraform-provider-gravitino_<version>_linux_amd64.zip \
   --repo caberdo/terraform-provider-gravitino
 ```
 
+## Timeouts and retries
+
+Each HTTP attempt is bounded by `timeout` (default `30s`; also settable through `GRAVITINO_TIMEOUT`).
+Raise it for a slow backend, for example a remote metastore behind
+`gravitino_catalog_connection_test`:
+
+```hcl
+provider "gravitino" {
+  uri     = "http://localhost:8090"
+  timeout = "2m"
+}
+```
+
+Transient failures — `429`, `500`, `502`, `503`, `504` and a reset connection — are retried up to
+three times with exponential backoff and jitter, honouring `Retry-After` up to a 2 s cap. Only
+requests that are safe to repeat are retried: `GET`, `PUT`, `PATCH`, `DELETE` and the read-only
+catalog connection probes. A create (`POST`) is never retried, so a `503` that arrives after the
+server committed the write cannot create a second object. Every request carries
+`User-Agent: terraform-provider-gravitino/<version>`.
+
 ## Authentication
 
 The provider supports five authentication methods: `none` (default), `simple`, `basic`, `oauth`, and `kerberos`. Set the `auth` attribute to choose a method.
@@ -233,5 +253,6 @@ provider "gravitino" {
 - `oauth_token` (String, Sensitive) OAuth2 bearer token. Can also be set via GRAVITINO_OAUTH_TOKEN environment variable.
 - `oauth_token_path` (String) OAuth2 token endpoint path (e.g. /oauth2/token). Can also be set via GRAVITINO_OAUTH_TOKEN_PATH environment variable.
 - `password` (String, Sensitive) Password for basic authentication. Can also be set via GRAVITINO_PASSWORD environment variable.
+- `timeout` (String) HTTP request timeout as a Go duration string, for example `30s` or `2m`. Defaults to `30s`. Can also be set via GRAVITINO_TIMEOUT environment variable.
 - `uri` (String) The URI of the Gravitino server. Can also be set via GRAVITINO_URI environment variable.
 - `username` (String) Username for simple/basic authentication (simple falls back to GRAVITINO_USER). Can also be set via GRAVITINO_USERNAME environment variable.

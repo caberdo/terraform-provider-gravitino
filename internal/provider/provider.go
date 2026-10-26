@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/client/auth"
@@ -76,8 +77,9 @@ type GravitinoProvider struct {
 }
 
 type GravitinoProviderModel struct {
-	URI  types.String `tfsdk:"uri"`
-	Auth types.String `tfsdk:"auth"`
+	URI     types.String `tfsdk:"uri"`
+	Auth    types.String `tfsdk:"auth"`
+	Timeout types.String `tfsdk:"timeout"`
 
 	// Simple / Basic
 	Username types.String `tfsdk:"username"`
@@ -123,6 +125,12 @@ func (p *GravitinoProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 				Validators: []validator.String{
 					stringvalidator.OneOf("simple", "basic", "oauth", "kerberos", "none"),
 				},
+			},
+			"timeout": schema.StringAttribute{
+				Optional: true,
+				Description: "HTTP request timeout as a Go duration string, for example `30s` or `2m`. " +
+					"Defaults to `30s`. Can also be set via GRAVITINO_TIMEOUT environment variable.",
+				Validators: []validator.String{durationValidator{}},
 			},
 			"username": schema.StringAttribute{
 				Optional:    true,
@@ -196,6 +204,16 @@ func (p *GravitinoProvider) Configure(ctx context.Context, req provider.Configur
 		return
 	}
 
+	timeout, err := resolveTimeout(config.Timeout, "GRAVITINO_TIMEOUT")
+	if err != nil {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("timeout"),
+			"Invalid timeout",
+			err.Error(),
+		)
+		return
+	}
+
 	authMethod := readConfigString(config.Auth, "GRAVITINO_AUTH")
 	username := readConfigString(config.Username, "GRAVITINO_USERNAME")
 	password := readConfigString(config.Password, "GRAVITINO_PASSWORD")
@@ -237,7 +255,7 @@ func (p *GravitinoProvider) Configure(ctx context.Context, req provider.Configur
 		return
 	}
 
-	c, err := client.New(uri, ap)
+	c, err := client.New(uri, ap, client.WithTimeout(timeout), client.WithUserAgent(p.version))
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create client", err.Error())
 		return
@@ -269,6 +287,48 @@ func readConfigString(val types.String, envVar string) string {
 	return os.Getenv(envVar)
 }
 
+// resolveTimeout parses the provider's timeout attribute, falling back to
+// GRAVITINO_TIMEOUT and then to the client default, so the documented number
+// and the one the client uses cannot drift.
+func resolveTimeout(value types.String, envVar string) (time.Duration, error) {
+	raw := readConfigString(value, envVar)
+	if raw == "" {
+		return client.DefaultTimeout, nil
+	}
+
+	timeout, err := time.ParseDuration(raw)
+	if err != nil || timeout <= 0 {
+		return 0, fmt.Errorf("expected a positive Go duration such as \"30s\" or \"2m\", got %q", raw)
+	}
+	return timeout, nil
+}
+
+// durationValidator rejects a malformed timeout during plan, before Configure
+// would fail the apply.
+type durationValidator struct{}
+
+func (durationValidator) Description(_ context.Context) string {
+	return "value must be a positive Go duration such as \"30s\" or \"2m\""
+}
+
+func (v durationValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (durationValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	raw := req.ConfigValue.ValueString()
+	if timeout, err := time.ParseDuration(raw); err != nil || timeout <= 0 {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid timeout",
+			fmt.Sprintf("Expected a positive Go duration such as \"30s\" or \"2m\", got %q.", raw),
+		)
+	}
+}
+
 // NewClientFromEnv builds a client for uri using the authentication configured
 // through the GRAVITINO_* environment variables. The live acceptance pre-check
 // uses it so it authenticates exactly like the provider does, instead of probing
@@ -291,7 +351,11 @@ func NewClientFromEnv(uri string) (*client.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return client.New(uri, ap)
+	timeout, err := resolveTimeout(types.StringNull(), "GRAVITINO_TIMEOUT")
+	if err != nil {
+		return nil, err
+	}
+	return client.New(uri, ap, client.WithTimeout(timeout))
 }
 
 func envBool(name string) bool {
