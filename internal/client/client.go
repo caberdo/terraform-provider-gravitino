@@ -307,6 +307,7 @@ func (p retryPolicy) backoff(attempt int, retryAfter time.Duration, hasRetryAfte
 	}
 
 	half := delay / 2
+	// #nosec G404 -- jitter only spreads retries; it is not a security primitive.
 	return half + time.Duration(rand.Int64N(int64(half)+1))
 }
 
