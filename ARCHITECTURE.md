@@ -18,7 +18,7 @@ process, and it holds no state of its own beyond the client it is configured wit
 ```mermaid
 graph LR
   TF["Terraform CLI"] -->|plugin protocol 6.0| P["terraform-provider-gravitino"]
-  P --> R["internal/resources<br/>23 resources"]
+  P --> R["internal/resources<br/>25 resources"]
   P --> D["internal/datasources<br/>54 data sources"]
   R --> C["internal/client.Client"]
   D --> C
@@ -165,7 +165,7 @@ internal/
   datasources/      one package per data source area (27 packages, 54 data sources)
   models/           JSON wire types, Terraform value conversion, shared enums
   provider/         provider schema, Configure, resource/data source registration
-  resources/        one package per resource area (21 packages hosting 23 resources:
+  resources/        one package per resource area (22 packages hosting 25 resources:
                     tag and policy host an association each), plus
     resourceutil/   shared import-ID parsing and association helpers
     resourcetest/   shared test harness for schema/metadata tests)

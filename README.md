@@ -16,11 +16,11 @@ as code. This provider speaks the Gravitino REST API directly, so metalakes, cat
 tables, views, functions, models, tags, policies, roles, users, groups and jobs live in the same
 Terraform state as the rest of your infrastructure.
 
-**23 resources and 54 data sources.**
+**25 resources and 54 data sources.**
 
 | | |
 |---|---|
-| 🎯 **Broad Gravitino coverage** | Metalakes, catalogs, schemas, tables and partitions, views, filesets, topics, functions, models and model versions, tags, policies and their object associations, roles, users, groups, ownership, job templates and job runs, IDP users and groups |
+| 🎯 **Broad Gravitino coverage** | Metalakes, catalogs, schemas, tables and partitions, views, filesets, topics, functions, models and model versions, tags, policies and their object associations, roles, users, groups, ownership, statistics and partition statistics, job templates and job runs, IDP users and groups |
 | 🧪 **Tested against real servers** | 665 tests run by `make test` and 761 in the container suite, which runs against Gravitino `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
 | 🧱 **Version gates, not opaque 400s** | One build serves both server versions: the schema accepts the union and a runtime gate refuses a 1.3.1-only value against an older server with a diagnostic naming the required version (`Gravitino >= 1.3.1`) |
 | 🔐 **Verifiable supply chain** | GPG-signed release tags, signed `SHA256SUMS`, SLSA build provenance, SPDX SBOM and the Terraform registry manifest in every release |
@@ -273,6 +273,8 @@ Every resource links to its documentation on the Terraform Registry.
 | [`gravitino_schema`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/schema) | Schemas inside a catalog |
 | [`gravitino_table`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/table) | Tables, with columns, partitioning, distribution, sort order and indexes |
 | [`gravitino_partition`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/partition) | Partitions of a table |
+| [`gravitino_statistics`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/statistics) | Custom statistics of a metadata object |
+| [`gravitino_partition_statistics`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/partition_statistics) | Custom statistics of a table's partitions |
 | [`gravitino_view`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/view) | Views and their SQL representations |
 | [`gravitino_fileset`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/fileset) | Managed and external filesets |
 | [`gravitino_topic`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/topic) | Messaging topics |

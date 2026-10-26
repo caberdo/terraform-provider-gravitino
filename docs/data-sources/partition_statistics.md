@@ -47,7 +47,18 @@ Read-Only:
 
 Read-Only:
 
+- `audit` (Attributes) Audit information for the statistic. (see [below for nested schema](#nestedatt--partition_statistics--statistics--audit))
+- `modifiable` (Boolean) Whether the statistic can be written through Gravitino.
 - `name` (String) The statistic name.
-- `properties` (Map of String) The statistic properties.
-- `type` (String) The statistic type.
-- `value` (String) The statistic value.
+- `reserved` (Boolean) Whether the statistic is reserved (supplied by the underlying catalog).
+- `value` (String) The statistic value as a string. Gravitino's value is untyped JSON (statistics.yaml declares `additionalProperties: {}`); a string value contributes its text, a number, boolean, array or object its JSON encoding. Null when the statistic has no value.
+
+<a id="nestedatt--partition_statistics--statistics--audit"></a>
+### Nested Schema for `partition_statistics.statistics.audit`
+
+Read-Only:
+
+- `create_time` (String) The creation time in RFC 3339 format.
+- `creator` (String) The principal that created the statistic.
+- `last_modified_time` (String) The last modification time in RFC 3339 format.
+- `last_modifier` (String) The principal that last modified the statistic.

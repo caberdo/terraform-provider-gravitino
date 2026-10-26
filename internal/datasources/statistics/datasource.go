@@ -39,16 +39,18 @@ type StatisticsDataSourceModel struct {
 
 type statisticItemModel struct {
 	Name       types.String `tfsdk:"name"`
-	Type       types.String `tfsdk:"type"`
 	Value      types.String `tfsdk:"value"`
-	Properties types.Map    `tfsdk:"properties"`
+	Reserved   types.Bool   `tfsdk:"reserved"`
+	Modifiable types.Bool   `tfsdk:"modifiable"`
+	Audit      types.Object `tfsdk:"audit"`
 }
 
 var StatisticItemAttrTypes = map[string]attr.Type{
 	"name":       types.StringType,
-	"type":       types.StringType,
 	"value":      types.StringType,
-	"properties": types.MapType{ElemType: types.StringType},
+	"reserved":   types.BoolType,
+	"modifiable": types.BoolType,
+	"audit":      types.ObjectType{AttrTypes: models.AuditAttrTypes},
 }
 
 func (d *StatisticsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -72,7 +74,7 @@ func (d *StatisticsDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			},
 			"resource_type": schema.StringAttribute{
 				Required:    true,
-				Description: "The metadata object type (METALAKE, CATALOG, SCHEMA, TABLE, VIEW, COLUMN, FILESET, TOPIC, MODEL, FUNCTION, ROLE). VIEW and FUNCTION require Gravitino 1.3.1 or newer.",
+				Description: "The metadata object type (METALAKE, CATALOG, SCHEMA, TABLE, VIEW, COLUMN, FILESET, TOPIC, MODEL, FUNCTION, ROLE). Gravitino 1.3.x only implements statistics for TABLE; every other type answers 400. VIEW and FUNCTION require Gravitino 1.3.1 or newer.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(models.StatisticsObjectTypes...),
 				},
@@ -90,18 +92,41 @@ func (d *StatisticsDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 							Computed:    true,
 							Description: "The statistic name.",
 						},
-						"type": schema.StringAttribute{
-							Computed:    true,
-							Description: "The statistic type.",
-						},
 						"value": schema.StringAttribute{
-							Computed:    true,
-							Description: "The statistic value.",
+							Computed: true,
+							Description: "The statistic value as a string. Gravitino's value is untyped JSON " +
+								"(statistics.yaml declares `additionalProperties: {}`); a string value contributes its text, " +
+								"a number, boolean, array or object its JSON encoding. Null when the statistic has no value.",
 						},
-						"properties": schema.MapAttribute{
+						"reserved": schema.BoolAttribute{
 							Computed:    true,
-							ElementType: types.StringType,
-							Description: "The statistic properties.",
+							Description: "Whether the statistic is reserved (supplied by the underlying catalog).",
+						},
+						"modifiable": schema.BoolAttribute{
+							Computed:    true,
+							Description: "Whether the statistic can be written through Gravitino. Only modifiable statistics can be managed by gravitino_statistics.",
+						},
+						"audit": schema.SingleNestedAttribute{
+							Computed:    true,
+							Description: "Audit information for the statistic.",
+							Attributes: map[string]schema.Attribute{
+								"creator": schema.StringAttribute{
+									Computed:    true,
+									Description: "The principal that created the statistic.",
+								},
+								"create_time": schema.StringAttribute{
+									Computed:    true,
+									Description: "The creation time in RFC 3339 format.",
+								},
+								"last_modifier": schema.StringAttribute{
+									Computed:    true,
+									Description: "The principal that last modified the statistic.",
+								},
+								"last_modified_time": schema.StringAttribute{
+									Computed:    true,
+									Description: "The last modification time in RFC 3339 format.",
+								},
+							},
 						},
 					},
 				},
@@ -163,23 +188,29 @@ func (d *StatisticsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
-func statisticToItemModel(ctx context.Context, s *models.Statistics, diags *diag.Diagnostics) *statisticItemModel {
+func statisticToItemModel(ctx context.Context, s *models.Statistic, diags *diag.Diagnostics) *statisticItemModel {
 	if s == nil {
 		return nil
 	}
 
 	item := &statisticItemModel{
-		Name:  types.StringValue(s.Name),
-		Type:  types.StringValue(s.Type),
-		Value: types.StringValue(s.Value),
+		Name:       types.StringValue(s.Name),
+		Reserved:   types.BoolValue(s.Reserved),
+		Modifiable: types.BoolValue(s.Modifiable),
 	}
 
-	props, d := types.MapValueFrom(ctx, types.StringType, s.Properties)
-	diags.Append(d...)
+	if value, ok := s.ValueString(); ok {
+		item.Value = types.StringValue(value)
+	} else {
+		item.Value = types.StringNull()
+	}
+
+	audit, auditDiags := models.AuditToObjectValue(ctx, s.Audit)
+	diags.Append(auditDiags...)
 	if diags.HasError() {
 		return nil
 	}
-	item.Properties = props
+	item.Audit = audit
 
 	return item
 }

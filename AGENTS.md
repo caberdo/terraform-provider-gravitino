@@ -26,7 +26,7 @@ fails. Resource and data source schema descriptions are the source of the refere
 
 ## Provider surface
 
-23 resources, 54 data sources, 12 schema attributes marked `Sensitive` (credentials,
+25 resources, 54 data sources, 12 schema attributes marked `Sensitive` (credentials,
 tokens and keytab material). Registration lives in `internal/provider/provider.go`;
 schemas are the source of `docs/`.
 
@@ -45,6 +45,8 @@ schemas are the source of `docs/`.
 | Model Version         | `gravitino_model_version` | (implemented)                |
 | Function              | `gravitino_function`      | (implemented)                |
 | Partition             | `gravitino_partition`     | `metalake.catalog.schema.tb.pt` |
+| Statistics            | `gravitino_statistics`    | `metalake.{obj}.statistics`    |
+| Partition Statistics  | `gravitino_partition_statistics` | `metalake.catalog.schema.tb.statistics` |
 | Tag                   | `gravitino_tag`           | `metalake.tag`                 |
 | Tag Association       | `gravitino_tag_association` | `metalake.{obj}.tags`        |
 | Policy                | `gravitino_policy`        | `metalake.{obj}.policy`        |
