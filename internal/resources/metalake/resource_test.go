@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -57,6 +58,15 @@ const metalakeResponse = `{
 
 var nonNullRaw = tftypes.NewValue(tftypes.String, "state")
 
+func assertJSONBody(t *testing.T, want, got map[string]any) {
+	t.Helper()
+	wantJSON, _ := json.Marshal(want)
+	gotJSON, _ := json.Marshal(got)
+	if string(wantJSON) != string(gotJSON) {
+		t.Fatalf("unexpected body:\n want %s\n  got %s", wantJSON, gotJSON)
+	}
+}
+
 func metalakeSchema(t *testing.T) schema.Schema {
 	t.Helper()
 	r := res.NewMetalakeResource()
@@ -83,10 +93,12 @@ func props(t *testing.T, values map[string]string) types.Map {
 
 func baseModel() res.MetalakeResourceModel {
 	return res.MetalakeResourceModel{
-		Name:       types.StringValue("my_metalake"),
-		Comment:    types.StringNull(),
-		Properties: types.MapNull(types.StringType),
-		Audit:      types.ObjectNull(models.AuditAttrTypes),
+		Name:         types.StringValue("my_metalake"),
+		Comment:      types.StringNull(),
+		Properties:   types.MapNull(types.StringType),
+		InUse:        types.BoolValue(true),
+		ForceDestroy: types.BoolValue(false),
+		Audit:        types.ObjectNull(models.AuditAttrTypes),
 	}
 }
 
@@ -148,6 +160,35 @@ func TestMetalakeResource_SchemaUpdatePolicy(t *testing.T) {
 	}
 	if !mapResp.PlanValue.Equal(priorProps) {
 		t.Fatalf("properties: expected UseStateForUnknown to plan the prior value, got %v", mapResp.PlanValue)
+	}
+
+	// in_use is Optional+Computed: an omitted value keeps the last written
+	// value instead of becoming unknown on every plan.
+	inUseAttr := s.Attributes["in_use"].(schema.BoolAttribute)
+	if !inUseAttr.Optional || !inUseAttr.Computed {
+		t.Fatalf("in_use: expected Optional+Computed, got optional=%t computed=%t", inUseAttr.Optional, inUseAttr.Computed)
+	}
+	boolReq := planmodifier.BoolRequest{
+		StateValue: types.BoolValue(false), PlanValue: types.BoolUnknown(), ConfigValue: types.BoolNull(),
+		State: tfsdk.State{Raw: nonNullRaw}, Plan: tfsdk.Plan{Raw: nonNullRaw}, Config: tfsdk.Config{Raw: nonNullRaw},
+	}
+	boolResp := &planmodifier.BoolResponse{PlanValue: types.BoolUnknown()}
+	for _, m := range inUseAttr.PlanModifiers {
+		m.PlanModifyBool(ctx, boolReq, boolResp)
+	}
+	if !boolResp.PlanValue.Equal(types.BoolValue(false)) {
+		t.Fatalf("in_use: expected UseStateForUnknown to plan the prior value, got %v", boolResp.PlanValue)
+	}
+
+	// force_destroy defaults to false: the destructive cascade must be opt-in.
+	forceAttr := s.Attributes["force_destroy"].(schema.BoolAttribute)
+	if !forceAttr.Optional || forceAttr.Default == nil {
+		t.Fatalf("force_destroy: expected Optional with a default, got optional=%t default=%v", forceAttr.Optional, forceAttr.Default)
+	}
+	forceResp := &defaults.BoolResponse{PlanValue: types.BoolUnknown()}
+	forceAttr.Default.DefaultBool(ctx, defaults.BoolRequest{}, forceResp)
+	if forceResp.PlanValue.ValueBool() {
+		t.Fatalf("force_destroy: expected default false, got %v", forceResp.PlanValue)
 	}
 
 	// audit: Computed object.
@@ -245,6 +286,111 @@ func TestMetalakeResource_Create(t *testing.T) {
 	}
 	if state.Audit.IsNull() {
 		t.Fatal("audit must be set from the response")
+	}
+}
+
+// TestMetalakeResource_CreateWithInUseFalse: a configured in_use=false is
+// applied with PATCH {"inUse": false} after the create, because the create
+// request has no inUse field.
+func TestMetalakeResource_CreateWithInUseFalse(t *testing.T) {
+	ctx := context.Background()
+	s := metalakeSchema(t)
+
+	type request struct {
+		method string
+		path   string
+		body   []byte
+	}
+	var requests []request
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, request{r.Method, r.URL.Path, body})
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.Method == http.MethodPatch {
+			fmt.Fprint(w, `{"code":0}`)
+			return
+		}
+		fmt.Fprint(w, metalakeResponse)
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.NewMetalakeResource()
+	r.(*res.MetalakeResource).SetClient(c)
+
+	plan := baseModel()
+	plan.InUse = types.BoolValue(false)
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: s}}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)}}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+
+	if len(requests) != 2 {
+		t.Fatalf("expected a create followed by one PATCH, got %#v", requests)
+	}
+	if requests[0].method != http.MethodPost || requests[0].path != "/api/metalakes" {
+		t.Fatalf("unexpected create request: %s %s", requests[0].method, requests[0].path)
+	}
+	if requests[1].method != http.MethodPatch || requests[1].path != "/api/metalakes/my_metalake" {
+		t.Fatalf("unexpected in-use request: %s %s", requests[1].method, requests[1].path)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(requests[1].body, &body); err != nil {
+		t.Fatalf("invalid PATCH body %q: %v", requests[1].body, err)
+	}
+	assertJSONBody(t, map[string]any{"inUse": false}, body)
+
+	var state res.MetalakeResourceModel
+	if diags := resp.State.Get(ctx, &state); diags.HasError() {
+		t.Fatalf("failed to read state: %v", diags)
+	}
+	if state.InUse.ValueBool() {
+		t.Fatal("in_use must stay false in state")
+	}
+}
+
+// TestMetalakeResource_CreateWithoutInUseDefaultsTrue: an omitted in_use is
+// resolved to Gravitino's creation default without an extra request.
+func TestMetalakeResource_CreateWithoutInUseDefaultsTrue(t *testing.T) {
+	ctx := context.Background()
+	s := metalakeSchema(t)
+
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		fmt.Fprint(w, metalakeResponse)
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.NewMetalakeResource()
+	r.(*res.MetalakeResource).SetClient(c)
+
+	plan := baseModel()
+	plan.InUse = types.BoolUnknown()
+	plan.ForceDestroy = types.BoolUnknown()
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: s}}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)}}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if calls != 1 {
+		t.Fatalf("expected only the create request, got %d calls", calls)
+	}
+
+	var state res.MetalakeResourceModel
+	if diags := resp.State.Get(ctx, &state); diags.HasError() {
+		t.Fatalf("failed to read state: %v", diags)
+	}
+	if !state.InUse.ValueBool() {
+		t.Fatalf("an omitted in_use must become true, got %v", state.InUse)
+	}
+	if state.ForceDestroy.IsUnknown() || state.ForceDestroy.IsNull() || state.ForceDestroy.ValueBool() {
+		t.Fatalf("an unknown force_destroy must resolve to false, got %v", state.ForceDestroy)
 	}
 }
 
@@ -391,6 +537,173 @@ func TestMetalakeResource_Update(t *testing.T) {
 	}
 }
 
+// TestMetalakeResource_UpdateInUse: changing in_use is an in-place PATCH to
+// the current name and never a PUT update request.
+func TestMetalakeResource_UpdateInUse(t *testing.T) {
+	cases := []struct {
+		name  string
+		state bool
+		plan  bool
+	}{
+		{"disable", true, false},
+		{"enable", false, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			s := metalakeSchema(t)
+
+			var method, requestPath string
+			var rawBody []byte
+			puts := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				method, requestPath = r.Method, r.URL.Path
+				rawBody, _ = io.ReadAll(r.Body)
+				if r.Method == http.MethodPut {
+					puts++
+				}
+				w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+				fmt.Fprint(w, `{"code":0}`)
+			}))
+			defer server.Close()
+
+			c, _ := client.New(server.URL, nil)
+			r := res.NewMetalakeResource()
+			r.(*res.MetalakeResource).SetClient(c)
+
+			state := baseModel()
+			state.ID = types.StringValue("my_metalake")
+			state.InUse = types.BoolValue(tc.state)
+
+			plan := baseModel()
+			plan.InUse = types.BoolValue(tc.plan)
+
+			resp := &resource.UpdateResponse{State: tfsdk.State{Schema: s}}
+			r.Update(ctx, resource.UpdateRequest{
+				Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)},
+				State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
+			}, resp)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+			}
+
+			if puts != 0 {
+				t.Fatalf("changing only in_use must not send an updates PUT, got %d", puts)
+			}
+			if method != http.MethodPatch || requestPath != "/api/metalakes/my_metalake" {
+				t.Fatalf("unexpected request %s %s", method, requestPath)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(rawBody, &body); err != nil {
+				t.Fatalf("invalid PATCH body %q: %v", rawBody, err)
+			}
+			assertJSONBody(t, map[string]any{"inUse": tc.plan}, body)
+
+			var got res.MetalakeResourceModel
+			if diags := resp.State.Get(ctx, &got); diags.HasError() {
+				t.Fatalf("failed to read state: %v", diags)
+			}
+			if got.InUse.ValueBool() != tc.plan {
+				t.Fatalf("in_use = %v, want %v", got.InUse, tc.plan)
+			}
+		})
+	}
+}
+
+// TestMetalakeResource_UpdateEnablesBeforeMetadataUsesPut: enabling must happen
+// before the PUT so Gravitino never receives a metadata update on a disabled
+// metalake.
+func TestMetalakeResource_UpdateEnablesBeforeMetadataUsesPut(t *testing.T) {
+	ctx := context.Background()
+	s := metalakeSchema(t)
+
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		fmt.Fprint(w, metalakeResponse)
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.NewMetalakeResource()
+	r.(*res.MetalakeResource).SetClient(c)
+
+	state := baseModel()
+	state.ID = types.StringValue("my_metalake")
+	state.Comment = types.StringValue("old")
+	state.InUse = types.BoolValue(false)
+
+	plan := baseModel()
+	plan.Comment = types.StringValue("new")
+	plan.InUse = types.BoolValue(true)
+
+	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: s}}
+	r.Update(ctx, resource.UpdateRequest{
+		Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)},
+		State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+
+	if len(methods) != 2 || methods[0] != http.MethodPatch || methods[1] != http.MethodPut {
+		t.Fatalf("expected PATCH then PUT, got %v", methods)
+	}
+}
+
+// TestMetalakeResource_UpdateDisabledMetadataTemporarilyEnables: a disabled
+// metalake rejects metadata updates, so the provider enables it for the PUT and
+// disables it again afterwards.
+func TestMetalakeResource_UpdateDisabledMetadataTemporarilyEnables(t *testing.T) {
+	ctx := context.Background()
+	s := metalakeSchema(t)
+
+	var methods []string
+	var inUseValues []bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		if r.Method == http.MethodPatch {
+			var req models.MetalakeSetRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			inUseValues = append(inUseValues, req.InUse)
+		}
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		fmt.Fprint(w, metalakeResponse)
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.NewMetalakeResource()
+	r.(*res.MetalakeResource).SetClient(c)
+
+	state := baseModel()
+	state.ID = types.StringValue("my_metalake")
+	state.Comment = types.StringValue("old")
+	state.InUse = types.BoolValue(false)
+
+	plan := baseModel()
+	plan.Comment = types.StringValue("new")
+	plan.InUse = types.BoolValue(false)
+
+	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: s}}
+	r.Update(ctx, resource.UpdateRequest{
+		Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)},
+		State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+
+	if len(methods) != 3 || methods[0] != http.MethodPatch || methods[1] != http.MethodPut || methods[2] != http.MethodPatch {
+		t.Fatalf("expected PATCH(true)/PUT/PATCH(false), got %v", methods)
+	}
+	if len(inUseValues) != 2 || !inUseValues[0] || inUseValues[1] {
+		t.Fatalf("expected enable then disable, got %v", inUseValues)
+	}
+}
+
 // TestMetalakeResource_UpdateWithoutChangesSkipsApi: a no-op update must not
 // send an empty updates array (the plan may carry unknown computed values).
 func TestMetalakeResource_UpdateWithoutChangesSkipsApi(t *testing.T) {
@@ -417,6 +730,7 @@ func TestMetalakeResource_UpdateWithoutChangesSkipsApi(t *testing.T) {
 	plan := state
 	plan.Comment = types.StringUnknown()
 	plan.Properties = types.MapUnknown(types.StringType)
+	plan.ForceDestroy = types.BoolUnknown()
 
 	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: s}}
 	r.Update(ctx, resource.UpdateRequest{
@@ -435,6 +749,9 @@ func TestMetalakeResource_UpdateWithoutChangesSkipsApi(t *testing.T) {
 	}
 	if got.Audit.IsUnknown() {
 		t.Fatal("audit must be a known value after apply")
+	}
+	if got.ForceDestroy.IsUnknown() || got.ForceDestroy.IsNull() {
+		t.Fatalf("force_destroy must be a known value after apply, got %v", got.ForceDestroy)
 	}
 }
 
@@ -457,6 +774,7 @@ func TestMetalakeResource_Delete(t *testing.T) {
 	r.(*res.MetalakeResource).SetClient(c)
 
 	state := baseModel()
+	state.ForceDestroy = types.BoolValue(true)
 	resp := &resource.DeleteResponse{State: tfsdk.State{Schema: s}}
 	r.Delete(ctx, resource.DeleteRequest{State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)}}, resp)
 	if resp.Diagnostics.HasError() {
@@ -464,6 +782,99 @@ func TestMetalakeResource_Delete(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("delete was not called")
+	}
+}
+
+// TestMetalakeResource_DeleteDefaultDoesNotForce: force_destroy defaults to
+// false, so a destroy must not cascade.
+func TestMetalakeResource_DeleteDefaultDoesNotForce(t *testing.T) {
+	ctx := context.Background()
+	s := metalakeSchema(t)
+
+	var methods []string
+	var forceValue string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		if r.Method == http.MethodDelete {
+			forceValue = r.URL.Query().Get("force")
+			json.NewEncoder(w).Encode(models.DropResponse{Code: 0, Dropped: true})
+			return
+		}
+		json.NewEncoder(w).Encode(models.BaseResponse{Code: 0})
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.NewMetalakeResource()
+	r.(*res.MetalakeResource).SetClient(c)
+
+	state := baseModel()
+	resp := &resource.DeleteResponse{State: tfsdk.State{Schema: s}}
+	r.Delete(ctx, resource.DeleteRequest{State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)}}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if forceValue != "false" {
+		t.Fatalf("expected force=false, got %q", forceValue)
+	}
+	// Gravitino refuses to drop an in-use metalake even when empty, so the
+	// provider disables it first.
+	if len(methods) != 2 || methods[0] != http.MethodPatch || methods[1] != http.MethodDelete {
+		t.Fatalf("expected PATCH then DELETE, got %v", methods)
+	}
+}
+
+// TestMetalakeResource_DeleteRefusedNamesForceDestroy: a server refusal with
+// force_destroy=false must produce an actionable diagnostic naming the flag and
+// the retry command.
+func TestMetalakeResource_DeleteRefusedNamesForceDestroy(t *testing.T) {
+	ctx := context.Background()
+	s := metalakeSchema(t)
+
+	var methods []string
+	var inUseValues []bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch r.Method {
+		case http.MethodPatch:
+			var req models.MetalakeSetRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			inUseValues = append(inUseValues, req.InUse)
+			fmt.Fprint(w, `{"code":0}`)
+		case http.MethodDelete:
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprint(w, `{"code":1004,"type":"NonEmptyMetalakeException","message":"Metalake my_metalake is not empty","stack":["..."]}`)
+		}
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.NewMetalakeResource()
+	r.(*res.MetalakeResource).SetClient(c)
+
+	state := baseModel()
+	resp := &resource.DeleteResponse{State: tfsdk.State{Schema: s}}
+	r.Delete(ctx, resource.DeleteRequest{State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)}}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a refusal diagnostic")
+	}
+	if len(methods) != 3 || methods[0] != http.MethodPatch || methods[1] != http.MethodDelete || methods[2] != http.MethodPatch {
+		t.Fatalf("expected disable/DELETE/restore, got %v", methods)
+	}
+	if len(inUseValues) != 2 || inUseValues[0] || !inUseValues[1] {
+		t.Fatalf("expected disable then restore, got %v", inUseValues)
+	}
+	var text strings.Builder
+	for _, d := range resp.Diagnostics.Errors() {
+		text.WriteString(d.Summary())
+		text.WriteString(" ")
+		text.WriteString(d.Detail())
+		text.WriteString(" ")
+	}
+	if !strings.Contains(text.String(), "force_destroy") || !strings.Contains(text.String(), "terraform destroy") {
+		t.Fatalf("diagnostic must name force_destroy and the retry command, got %s", text.String())
 	}
 }
 

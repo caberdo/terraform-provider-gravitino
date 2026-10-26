@@ -1,6 +1,30 @@
 ## Unreleased
 
+BREAKING CHANGES:
+- **`gravitino_metalake` and `gravitino_catalog` no longer force-drop by default (issue #78, epic #84).**
+  Both resources gain `force_destroy`, defaulting to `false`. A destroy now sends `force=false`.
+  The provider first disables the object (removing no metadata), which Gravitino requires even for
+  an empty object, and then refuses to drop one that still contains catalogs or schemas; it reports
+  a diagnostic that names `force_destroy` and the command that retries the destroy after it is
+  enabled, and restores the previous in-use state when the drop is refused, instead of silently
+  cascading to objects Terraform may not manage.
+  **Upgrade path:** add `force_destroy = true` to every `gravitino_metalake` and `gravitino_catalog`
+  whose `terraform destroy` must keep removing nested objects, or remove those objects first.
+  Existing state stays valid — the attribute defaults to `false` — and imported resources adopt the
+  same safe default.
+
 FEATURES:
+- **`in_use` on `gravitino_metalake` and `gravitino_catalog` (issue #71, epic #84).** Both resources
+  expose the Gravitino in-use flag as an Optional+Computed boolean that is written through the
+  existing PATCH endpoints (`{"inUse": ...}`), so a catalog or metalake can be disabled during
+  maintenance without dropping its metadata and re-enabled later. The create path defaults an
+  omitted value to `true` (Gravitino's creation default) and sends the PATCH only for `false`; an
+  in-place change is a PATCH, never a replacement. Gravitino returns no top-level `inUse` field;
+  the same state is exposed only as the reserved `in-use` property, which the resource filters out
+  as server-managed, so the provider does not detect a change made outside Terraform. State records
+  what the provider last wrote, an imported object reports `true` (the creation default) until it
+  is written, and the `gravitino_metalake`/`gravitino_catalog` data sources expose the server value
+  in `properties`. The schema description and generated docs state this caveat explicitly.
 - **Statistics are writable through Terraform (issue #70, epic #83).**
   `gravitino_statistics` and `gravitino_partition_statistics` manage the custom statistics of a
   metadata object and of a table's partitions. Both read `listStatistics` / `listPartitionStatistics`

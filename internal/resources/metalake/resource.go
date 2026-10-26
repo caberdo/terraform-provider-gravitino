@@ -14,6 +14,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -30,11 +32,13 @@ type MetalakeResource struct {
 }
 
 type MetalakeResourceModel struct {
-	ID         types.String `tfsdk:"id"`
-	Name       types.String `tfsdk:"name"`
-	Comment    types.String `tfsdk:"comment"`
-	Properties types.Map    `tfsdk:"properties"`
-	Audit      types.Object `tfsdk:"audit"`
+	ID           types.String `tfsdk:"id"`
+	Name         types.String `tfsdk:"name"`
+	Comment      types.String `tfsdk:"comment"`
+	Properties   types.Map    `tfsdk:"properties"`
+	InUse        types.Bool   `tfsdk:"in_use"`
+	ForceDestroy types.Bool   `tfsdk:"force_destroy"`
+	Audit        types.Object `tfsdk:"audit"`
 }
 
 // reservedProperties are managed by Gravitino through dedicated endpoints
@@ -85,6 +89,32 @@ func (r *MetalakeResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
+			},
+			"in_use": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				Description: "Whether the metalake is in use. Gravitino creates every metalake in use, so " +
+					"an omitted value becomes true; set it to false to disable the metalake without dropping " +
+					"its metadata. Changing it sends PATCH /metalakes/{metalake} with {\"inUse\": ...}. " +
+					"Gravitino has no top-level inUse field in its response: the same state is exposed only " +
+					"as the reserved 'in-use' property, which this resource filters out as server-managed, " +
+					"so a change made outside Terraform is not detected. State keeps the value the provider " +
+					"last wrote, and an imported metalake reports true (the creation default) until it is " +
+					"written. The gravitino_metalake data source exposes the server value in properties.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"force_destroy": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
+				Description: "Whether destroying this metalake also drops every catalog, schema, table, view, " +
+					"fileset, topic and model underneath it, including objects Terraform does not manage. " +
+					"Defaults to false: the provider disables the metalake before dropping it (removing no " +
+					"metadata) and Gravitino then refuses to drop one that still contains catalogs, in which " +
+					"case the provider reports a diagnostic naming this flag and restores the previous " +
+					"in-use state. Set it to true to reproduce the forceful drop.",
 			},
 			"properties": schema.MapAttribute{
 				Optional:    true,
@@ -147,6 +177,23 @@ func (r *MetalakeResource) Create(ctx context.Context, req resource.CreateReques
 	}
 
 	plan.ID = plan.Name
+	plan.InUse = inUseOnCreate(plan.InUse)
+	if plan.ForceDestroy.IsUnknown() || plan.ForceDestroy.IsNull() {
+		// force_destroy is never sent to the API, but it must be known before it
+		// is written to state: an unknown computed expression would otherwise
+		// fail the apply with "Provider produced invalid result object".
+		plan.ForceDestroy = types.BoolValue(false)
+	}
+
+	// Gravitino creates the metalake in use. Only a configured false needs a
+	// second call; this is the only supported way to disable it without
+	// dropping its metadata.
+	if !plan.InUse.ValueBool() {
+		if _, err := r.client.SetMetalakeInUse(ctx, plan.Name.ValueString(), false); err != nil {
+			resp.Diagnostics.Append(client.NewResourceError("disabling metalake", plan.Name.ValueString(), err)...)
+			return
+		}
+	}
 
 	metalakeToState(ctx, &result.Metalake, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -203,6 +250,30 @@ func (r *MetalakeResource) Update(ctx context.Context, req resource.UpdateReques
 	// must target the current name.
 	name := state.Name.ValueString()
 
+	// in_use is Optional+Computed and written only through PATCH. Resolve an
+	// unknown plan value (a fresh import) from state so the applied value is
+	// never left unknown.
+	if plan.InUse.IsUnknown() {
+		plan.InUse = state.InUse
+	}
+	if plan.ForceDestroy.IsUnknown() || plan.ForceDestroy.IsNull() {
+		if state.ForceDestroy.IsUnknown() || state.ForceDestroy.IsNull() {
+			plan.ForceDestroy = types.BoolValue(false)
+		} else {
+			plan.ForceDestroy = state.ForceDestroy
+		}
+	}
+	inUseChanged := !plan.InUse.IsNull() && !plan.InUse.Equal(state.InUse)
+
+	// Enable before the metadata updates and disable after them: Gravitino
+	// refuses to operate on a disabled metalake.
+	if inUseChanged && plan.InUse.ValueBool() {
+		if _, err := r.client.SetMetalakeInUse(ctx, name, true); err != nil {
+			resp.Diagnostics.Append(client.NewResourceError("enabling metalake", name, err)...)
+			return
+		}
+	}
+
 	var updates []interface{}
 
 	if !plan.Name.Equal(state.Name) {
@@ -224,11 +295,30 @@ func (r *MetalakeResource) Update(ctx context.Context, req resource.UpdateReques
 		updates = append(updates, r.propertyUpdates(oldProps, newProps)...)
 	}
 
+	// A disabled metalake only allows list/load/drop/enable, so the PUT below
+	// would be rejected. Enable it for the duration of the metadata update and
+	// restore the disabled state afterwards when the plan keeps it disabled.
+	temporarilyEnabled := !inUseChanged && !plan.InUse.ValueBool() && len(updates) > 0
+	if temporarilyEnabled {
+		if _, err := r.client.SetMetalakeInUse(ctx, name, true); err != nil {
+			resp.Diagnostics.Append(client.NewResourceError("enabling metalake", name, err)...)
+			return
+		}
+	}
+
 	// Never send an empty update list: it is not a valid payload and would
 	// replace the planned values with an empty response.
 	if len(updates) > 0 {
 		result, err := r.client.UpdateMetalake(ctx, name, updates)
 		if err != nil {
+			if temporarilyEnabled {
+				if _, restoreErr := r.client.SetMetalakeInUse(ctx, name, false); restoreErr != nil {
+					tflog.Warn(ctx, "Failed to re-disable metalake after a failed update", map[string]interface{}{
+						"name":  name,
+						"error": restoreErr.Error(),
+					})
+				}
+			}
 			resp.Diagnostics.Append(client.NewResourceError("updating metalake", name, err)...)
 			return
 		}
@@ -242,6 +332,14 @@ func (r *MetalakeResource) Update(ctx context.Context, req resource.UpdateReques
 		// and therefore unknown in the plan, so it must be filled with a known
 		// value explicitly.
 		plan.Audit = state.Audit
+	}
+
+	if (inUseChanged && !plan.InUse.ValueBool()) || temporarilyEnabled {
+		finalName := plan.Name.ValueString()
+		if _, err := r.client.SetMetalakeInUse(ctx, finalName, false); err != nil {
+			resp.Diagnostics.Append(client.NewResourceError("disabling metalake", finalName, err)...)
+			return
+		}
 	}
 
 	plan.ID = plan.Name
@@ -260,14 +358,43 @@ func (r *MetalakeResource) Delete(ctx context.Context, req resource.DeleteReques
 
 	tflog.Debug(ctx, "Deleting metalake", map[string]interface{}{"name": state.Name.ValueString()})
 
-	_, err := r.client.DropMetalake(ctx, state.Name.ValueString(), true)
+	name := state.Name.ValueString()
+	forceDestroy := state.ForceDestroy.ValueBool()
+
+	// Gravitino refuses to drop an in-use metalake even when it is empty.
+	// Disabling it removes no metadata and is what the server's own message
+	// asks for; force_destroy=false still refuses a metalake with catalogs.
+	disabled := false
+	if !forceDestroy {
+		if _, err := r.client.SetMetalakeInUse(ctx, name, false); err != nil {
+			if client.IsNotFoundError(err) {
+				tflog.Debug(ctx, "Metalake already deleted", map[string]interface{}{"name": name})
+				return
+			}
+			resp.Diagnostics.Append(client.NewResourceError("disabling metalake before deletion", name, err)...)
+			return
+		}
+		disabled = true
+	}
+
+	_, err := r.client.DropMetalake(ctx, name, forceDestroy)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deleting twice is not an error.
-			tflog.Debug(ctx, "Metalake already deleted", map[string]interface{}{"name": state.Name.ValueString()})
+			tflog.Debug(ctx, "Metalake already deleted", map[string]interface{}{"name": name})
 			return
 		}
-		resp.Diagnostics.Append(client.NewResourceError("deleting metalake", state.Name.ValueString(), err)...)
+		// A refused destroy must not leave a live metalake out of service:
+		// restore the state it had before this attempt.
+		if disabled && state.InUse.ValueBool() {
+			if _, restoreErr := r.client.SetMetalakeInUse(ctx, name, true); restoreErr != nil {
+				tflog.Warn(ctx, "Failed to re-enable metalake after a failed drop", map[string]interface{}{
+					"name":  name,
+					"error": restoreErr.Error(),
+				})
+			}
+		}
+		resp.Diagnostics.Append(client.NewDropError("deleting metalake", name, forceDestroy, err)...)
 		return
 	}
 
@@ -312,9 +439,31 @@ func metalakeToState(ctx context.Context, m *models.Metalake, state *MetalakeRes
 
 	state.Properties = mergeProperties(ctx, state.Properties, m.Properties, diags)
 
+	// in_use cannot be read back. A null value only occurs after an import:
+	// adopt Gravitino's creation default so the planned value stays known
+	// instead of flipping between null and unknown on every plan.
+	if state.InUse.IsNull() {
+		state.InUse = types.BoolValue(true)
+	}
+	// force_destroy has no server-side value either; an imported resource
+	// adopts the safe default instead of leaving the attribute null.
+	if state.ForceDestroy.IsNull() {
+		state.ForceDestroy = types.BoolValue(false)
+	}
+
 	auditObj, d := models.AuditToObjectValue(ctx, m.Audit)
 	diags.Append(d...)
 	state.Audit = auditObj
+}
+
+// inUseOnCreate resolves the Optional+Computed in_use value for a new
+// metalake: Gravitino creates every metalake in use, so an unconfigured
+// (unknown or null) plan becomes true. A configured value is kept.
+func inUseOnCreate(planned types.Bool) types.Bool {
+	if planned.IsUnknown() || planned.IsNull() {
+		return types.BoolValue(true)
+	}
+	return planned
 }
 
 // commentFromServer resolves a comment returned by the API into a known value:

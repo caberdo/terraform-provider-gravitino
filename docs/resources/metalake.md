@@ -17,8 +17,10 @@ resource "gravitino_metalake" "minimal" {
 }
 
 resource "gravitino_metalake" "example" {
-  name    = "example_metalake"
-  comment = "Example metalake for development"
+  name          = "example_metalake"
+  comment       = "Example metalake for development"
+  in_use        = true
+  force_destroy = false
   properties = {
     env = "dev"
   }
@@ -44,6 +46,8 @@ terraform import gravitino_metalake.example my_metalake
 ### Optional
 
 - `comment` (String)
+- `force_destroy` (Boolean) Whether destroying this metalake also drops every catalog, schema, table, view, fileset, topic and model underneath it, including objects Terraform does not manage. Defaults to false: the provider disables the metalake before dropping it (removing no metadata) and Gravitino then refuses to drop one that still contains catalogs, in which case the provider reports a diagnostic naming this flag and restores the previous in-use state. Set it to true to reproduce the forceful drop.
+- `in_use` (Boolean) Whether the metalake is in use. Gravitino creates every metalake in use, so an omitted value becomes true; set it to false to disable the metalake without dropping its metadata. Changing it sends PATCH /metalakes/{metalake} with {"inUse": ...}. Gravitino has no top-level inUse field in its response: the same state is exposed only as the reserved 'in-use' property, which this resource filters out as server-managed, so a change made outside Terraform is not detected. State keeps the value the provider last wrote, and an imported metalake reports true (the creation default) until it is written. The gravitino_metalake data source exposes the server value in properties.
 - `properties` (Map of String) A map of key-value properties. The reserved 'in-use' and 'gravitino.identifier' properties are managed by Gravitino and cannot be configured here.
 
 ### Read-Only

@@ -2,6 +2,7 @@ package metalake_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -386,6 +387,110 @@ resource "gravitino_metalake" "this" {
 			},
 		},
 	})
+}
+
+// TestAccMetalakeResource_InUseAndForceDestroy drives both lifecycle levers
+// through Terraform Core, which is where an Optional+Computed in_use and the
+// force_destroy default must survive the plan/apply round trip.
+func TestAccMetalakeResource_InUseAndForceDestroy(t *testing.T) {
+	var inUseValues []bool
+	var forceValues []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/metalakes":
+			var req models.MetalakeCreateRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name:    req.Name,
+					Comment: req.Comment,
+				},
+			})
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/metalakes/lifecycle_ml":
+			var req models.MetalakeSetRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			inUseValues = append(inUseValues, req.InUse)
+			json.NewEncoder(w).Encode(models.BaseResponse{Code: 0})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/metalakes/lifecycle_ml":
+			json.NewEncoder(w).Encode(models.MetalakeResponse{
+				Code: 0,
+				Metalake: models.Metalake{
+					Name: "lifecycle_ml",
+				},
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/metalakes/lifecycle_ml":
+			forceValues = append(forceValues, r.URL.Query().Get("force"))
+			json.NewEncoder(w).Encode(models.DropResponse{Code: 0, Dropped: true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("GRAVITINO_URI", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		CheckDestroy: func(_ *terraform.State) error {
+			for _, force := range forceValues {
+				if force != "false" {
+					return fmt.Errorf("destroy must use force=false by default, got force=%s", force)
+				}
+			}
+			return nil
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "gravitino_metalake" "this" {
+  name          = "lifecycle_ml"
+  in_use        = false
+  force_destroy = false
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "in_use", "false"),
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "force_destroy", "false"),
+				),
+			},
+			{
+				Config: `
+resource "gravitino_metalake" "this" {
+  name   = "lifecycle_ml"
+  in_use = true
+}
+`,
+				Check: resource.TestCheckResourceAttr("gravitino_metalake.this", "in_use", "true"),
+			},
+			{
+				ResourceName:      "gravitino_metalake.this",
+				ImportState:       true,
+				ImportStateId:     "lifecycle_ml",
+				ImportStateVerify: true,
+			},
+			{
+				// The write-only attributes adopt a known value on import, so
+				// the next plan must be empty instead of showing in_use or
+				// force_destroy as "known after apply".
+				Config: `
+resource "gravitino_metalake" "this" {
+  name   = "lifecycle_ml"
+  in_use = true
+}
+`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+
+	// Create disables it, the update enables it, and the destroy disables it
+	// again before sending force=false.
+	if len(inUseValues) != 3 || inUseValues[0] != false || inUseValues[1] != true || inUseValues[2] != false {
+		t.Fatalf("expected PATCH inUse false/true/false, got %v", inUseValues)
+	}
 }
 
 func timePtr(s string) *time.Time {
