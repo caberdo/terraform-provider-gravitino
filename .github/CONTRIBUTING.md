@@ -4,7 +4,7 @@ The Terraform provider for Apache Gravitino, published as
 `registry.terraform.io/caberdo/gravitino`. Plugin protocol 6.0, built on
 `terraform-plugin-framework` v1.19.0. Go module
 `github.com/gravitino/terraform-provider-gravitino`, Apache-2.0, default branch `main`.
-The provider currently exposes 21 resources and 50 data sources.
+The provider currently exposes 23 resources and 54 data sources.
 
 | Document | Contents |
 |---|---|

@@ -16,12 +16,12 @@ as code. This provider speaks the Gravitino REST API directly, so metalakes, cat
 tables, views, functions, models, tags, policies, roles, users, groups and jobs live in the same
 Terraform state as the rest of your infrastructure.
 
-**21 resources and 50 data sources.**
+**23 resources and 54 data sources.**
 
 | | |
 |---|---|
-| 🎯 **Broad Gravitino coverage** | Metalakes, catalogs, schemas, tables and partitions, views, filesets, topics, functions, models and model versions, tags, policies, roles, users, groups, ownership, job templates and job runs, IDP users and groups |
-| 🧪 **Tested against real servers** | 609 tests run by `make test` and 700 in the container suite, which runs against Gravitino `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
+| 🎯 **Broad Gravitino coverage** | Metalakes, catalogs, schemas, tables and partitions, views, filesets, topics, functions, models and model versions, tags, policies and their object associations, roles, users, groups, ownership, job templates and job runs, IDP users and groups |
+| 🧪 **Tested against real servers** | 665 tests run by `make test` and 761 in the container suite, which runs against Gravitino `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
 | 🧱 **Version gates, not opaque 400s** | One build serves both server versions: the schema accepts the union and a runtime gate refuses a 1.3.1-only value against an older server with a diagnostic naming the required version (`Gravitino >= 1.3.1`) |
 | 🔐 **Verifiable supply chain** | GPG-signed release tags, signed `SHA256SUMS`, SLSA build provenance, SPDX SBOM and the Terraform registry manifest in every release |
 | ⚡ **Modern internals** | terraform-plugin-framework v1.19.0 (plugin protocol 6.0), Go 1.27.1, Docker/Podman acceptance harness against a real server |
@@ -151,7 +151,7 @@ Version-restricted attributes and data sources say so in their schema descriptio
 | Capability | 1.3.0 | 1.3.1 |
 |---|---|---|
 | `gravitino_policy.supported_object_types` (`VIEW`, `FUNCTION`) | rejected at create/update | accepted |
-| `gravitino_statistics` / `gravitino_credentials` `resource_type` (`VIEW`, `FUNCTION`) | rejected on read | accepted |
+| `gravitino_statistics` / `gravitino_credentials` `resource_type`, and `gravitino_tag_association` / `gravitino_policy_association` / `gravitino_object_tags` / `gravitino_object_policies` `object_type` (`VIEW`, and `FUNCTION` for policies) | rejected with an explicit diagnostic | accepted |
 | `gravitino_table` index `index_type` (`data_skipping_minmax`, `data_skipping_bloom_filter`, `data_skipping_set`) and index `properties` | rejected at create (an index change replaces the table) | accepted |
 | `gravitino_table` / `gravitino_view` column type `external` (`{"type":"external","catalogString":"..."}`) | rejected at create/update | accepted |
 | `gravitino_principal.service_admin` | always `false` | reported |
@@ -280,7 +280,9 @@ Every resource links to its documentation on the Terraform Registry.
 | [`gravitino_model`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/model) | ML models in a model catalog |
 | [`gravitino_model_version`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/model_version) | Model versions, URIs and aliases |
 | [`gravitino_tag`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/tag) | Tags for classifying metadata objects |
+| [`gravitino_tag_association`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/tag_association) | Tags attached to a metadata object |
 | [`gravitino_policy`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/policy) | Access-control policies and their custom rules |
+| [`gravitino_policy_association`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/policy_association) | Policies attached to a metadata object |
 | [`gravitino_role`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/role) | Roles and the privileges granted on securable objects |
 | [`gravitino_user`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/user) | Platform users and their roles |
 | [`gravitino_group`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/resources/group) | Groups and their members |
@@ -344,8 +346,12 @@ Every data source links to its documentation on the Terraform Registry.
 |---|---|
 | [`gravitino_tags`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/tags) | Tags of a metalake |
 | [`gravitino_tag`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/tag) | One tag |
+| [`gravitino_object_tags`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/object_tags) | Tags attached to one metadata object, including inherited tags |
+| [`gravitino_tag_objects`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/tag_objects) | Metadata objects a tag is directly attached to |
 | [`gravitino_policies`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/policies) | Policies of a metalake |
 | [`gravitino_policy`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/policy) | One policy |
+| [`gravitino_object_policies`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/object_policies) | Policies attached to one metadata object, including inherited policies |
+| [`gravitino_policy_objects`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/policy_objects) | Metadata objects a policy is directly attached to |
 | [`gravitino_roles`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/roles) | Roles granted on a metadata object |
 | [`gravitino_roles_list`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/roles_list) | Roles defined in a metalake |
 | [`gravitino_role`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/role) | One role, with its privileges |

@@ -17,8 +17,9 @@ func (c *Client) GetVersion(ctx context.Context) (*models.VersionResponse, error
 
 // CheckMetadataObjectTypeSupported returns an error when objectType is one of
 // the metadata object types that Gravitino 1.3.1 added to the shared
-// `metadataObjectType` path parameter (VIEW, FUNCTION, used by the statistics
-// and credentials endpoints) and the server reports an older version.
+// `metadataObjectType` path parameter (VIEW, FUNCTION, used by the statistics,
+// credentials, tag-association and policy-association endpoints) and the server
+// reports an older version.
 //
 // The version detected at provider.Configure is used when it is known, so the
 // check normally costs no request of its own.

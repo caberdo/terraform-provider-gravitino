@@ -495,6 +495,23 @@ resource "gravitino_policy" "pii_restrict" {
 }
 
 # ---------------------------------------------------------------------------
+# ASSOCIATIONS — Apply the governance objects to metadata
+# ---------------------------------------------------------------------------
+resource "gravitino_tag_association" "orders_pii" {
+  metalake         = gravitino_metalake.platform.name
+  object_type      = "TABLE"
+  object_full_name = "data_lake.analytics.orders"
+  tags             = [gravitino_tag.pii.name, gravitino_tag.sensitive.name]
+}
+
+resource "gravitino_policy_association" "orders_pii_restriction" {
+  metalake         = gravitino_metalake.platform.name
+  object_type      = "TABLE"
+  object_full_name = "data_lake.analytics.orders"
+  policies         = [gravitino_policy.pii_restrict.name]
+}
+
+# ---------------------------------------------------------------------------
 # USERS — Platform users
 # ---------------------------------------------------------------------------
 resource "gravitino_user" "alice" {

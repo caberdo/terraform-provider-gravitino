@@ -2,7 +2,7 @@
 page_title: "Gravitino Provider"
 subcategory: ""
 description: |-
-  Terraform provider for Apache Gravitino, the unified metadata lakehouse: metalakes, catalogs, schemas, tables, views, filesets, topics, functions, models, tags, policies, roles, users, groups, ownership and jobs - 21 resources and 50 data sources.
+  Terraform provider for Apache Gravitino, the unified metadata lakehouse: metalakes, catalogs, schemas, tables, views, filesets, topics, functions, models, tags, policies, roles, users, groups, ownership and jobs - 23 resources and 54 data sources.
 ---
 
 # Gravitino Provider
@@ -11,12 +11,13 @@ Terraform provider for [Apache Gravitino](https://gravitino.apache.org/), the un
 lakehouse. It speaks the Gravitino REST API directly, so metadata and access control live in the
 same Terraform state as the rest of your infrastructure.
 
-**21 resources and 50 data sources**, covering:
+**23 resources and 54 data sources**, covering:
 
 - **Metadata** - metalakes, catalogs (relational, fileset, messaging, model), schemas, tables with
   columns, partitioning and indexes, partitions, views, filesets, topics and functions
 - **ML assets** - models and model versions
-- **Governance** - tags, policies, roles and privileges, ownership, users and groups
+- **Governance** - tags, policies and their object associations, roles and privileges, ownership,
+  users and groups
 - **Jobs** - job templates and job runs
 - **Identity provider** - IDP users and groups
 - **Server state** - the authenticated principal, health, liveness, readiness, the Iceberg REST
@@ -103,7 +104,7 @@ FAQ.
 | Capability | 1.3.0 | 1.3.1 |
 |---|---|---|
 | `gravitino_policy.supported_object_types` (`VIEW`, `FUNCTION`) | rejected at create/update | accepted |
-| `gravitino_statistics` / `gravitino_credentials` `resource_type` (`VIEW`, `FUNCTION`) | rejected on read | accepted |
+| `gravitino_statistics` / `gravitino_credentials` `resource_type`, and `gravitino_tag_association` / `gravitino_policy_association` / `gravitino_object_tags` / `gravitino_object_policies` `object_type` (`VIEW`, and `FUNCTION` for policies) | rejected with an explicit diagnostic | accepted |
 | `gravitino_table` index `index_type` (`data_skipping_minmax`, `data_skipping_bloom_filter`, `data_skipping_set`) and index `properties` | rejected at create/update | accepted |
 | `gravitino_table` / `gravitino_view` column type `external` (`{"type":"external","catalogString":"..."}`) | rejected at create/update | accepted |
 | `gravitino_principal.service_admin` | always `false` | reported |

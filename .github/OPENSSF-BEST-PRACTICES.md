@@ -55,8 +55,8 @@ there, and no amount of code satisfies them.
    * **Project homepage URL / source repository:** `https://github.com/caberdo/terraform-provider-gravitino`
    * **Project description:** what `README.md` says — a Terraform provider that manages Apache
      Gravitino metadata (metalakes, catalogs, schemas, tables, filesets, topics, views, functions,
-     models, partitions, tags, policies, jobs, users/groups/roles, owners) as code: 21 resources and
-     50 data sources against the Gravitino REST API.
+     models, partitions, tags, policies, jobs, users/groups/roles, owners) as code: 23 resources and
+     54 data sources against the Gravitino REST API.
    * **License:** `Apache-2.0` (the SPDX identifier; `LICENSE` and GitHub agree).
 3. Answer from §4. Criteria answered `Met` need a justification and, where the table says so, a URL.
 4. Submit at **Passing** first, then re-answer §4.3/§4.4 as §5 items close.
@@ -321,10 +321,10 @@ Commands behind every figure in this pack (run from the repository root; coverag
 
 | Figure | Command |
 |---|---|
-| 21 resources, 50 data sources | `ls docs/resources \| wc -l`, `ls docs/data-sources \| wc -l` |
-| 615 `Test*`, 66 `TestAcc*`, 26 `TestLiveAcc*` | `grep -rh '^func Test' --include='*_test.go' . \| wc -l`, same with `TestAcc`/`TestLiveAcc` |
+| 23 resources, 54 data sources | `ls docs/resources \| wc -l`, `ls docs/data-sources \| wc -l` |
+| 761 `Test*`, 70 `TestAcc*`, 26 `TestLiveAcc*` | `grep -rh '^func Test' --include='*_test.go' . \| wc -l`, same with `TestAcc`/`TestLiveAcc` |
 | 56 packages, 55 with tests | `go list ./internal/... \| wc -l`, `find internal -name '*_test.go' -exec dirname {} + \| sort -u \| wc -l` |
-| 272 Go files, 116 test files, 25,733 non-test / 34,003 test lines | `find . -name '*.go' \| wc -l`, `cat` the sets into `wc -l` |
+| 295 Go files, 131 test files, 27,763 non-test / 39,236 test lines | `find . -name '*.go' \| wc -l`, `cat` the sets into `wc -l` |
 | 12 `Sensitive` attributes, 30 `OneOf`, 71 `RequiresReplace`, 41 `UseStateForUnknown` | `grep -r 'Sensitive: *true' internal/ \| wc -l`, same for the other patterns |
 | Merged coverage 79.2% total (6069/7661), 83.1% (8116/9766) for the same block set under the `go.mod` toolchain's counts; floors 78.5 / 76.5 / 84.0 / 69.5 | `make coverage`, `make testacc-docker`, `make coverage-merge`, `make coverage-gate`, `make coverage-readme-check` (`scripts/coverage-summary.sh`, `scripts/merge-coverage.sh`, `scripts/coverage-gate.sh`, `scripts/coverage-readme.sh`, `.github/coverage-baseline.txt`) |
 | Unit coverage per package 59.8% (4584/7661) | `make coverage`, or `go test -coverprofile=c.out ./internal/...` then `go tool cover -func=c.out \| tail -1` |

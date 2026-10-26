@@ -1,5 +1,32 @@
 ## Unreleased
 
+FEATURES:
+- **Metadata-governance associations are usable from Terraform (issues #68, #69, epic #82).**
+  `gravitino_tag_association` and `gravitino_policy_association` attach existing tags or policies
+  to a catalog, schema, table, view, column, fileset, topic, model or function and detach them
+  again. Both resources update in place through `associateTags` / `associatePolicies`
+  (`tagsToAdd`/`tagsToRemove`, `policiesToAdd`/`policiesToRemove`) and destroy by sending one
+  remove request, because the API has no `DELETE` for an association; a 404 is treated as success.
+  Read uses the detailed listing and ignores inherited associations, so a resource records only the
+  attachments it owns and never tries to detach one that belongs to an ancestor. The policy
+  resource also reads each policy before attaching it and rejects an object type the policy does
+  not list in `supported_object_types` with a diagnostic naming the allowed types, instead of the
+  API's opaque `400`. Both resources validate the shared `metadataObjectType` enum, reject VIEW
+  (and FUNCTION for policies) against a server older than 1.3.1 with an explicit version
+  diagnostic, and support import with `metalake.object_type.object_full_name`.
+- **New data sources for both associations.** `gravitino_object_tags` and
+  `gravitino_object_policies` list the tags or policies attached to one metadata object (including
+  inherited ones); `gravitino_tag_objects` and `gravitino_policy_objects` list the metadata objects
+  a tag or policy is directly attached to. Object types are canonicalised to the upper-case API
+  spelling in the results.
+
+BUG FIXES:
+- **Policy object listing decoded the wrong schema.** `ListObjectsForPolicy` expected an
+  `identifiers` array, but `GET /metalakes/{metalake}/policies/{policy}/objects` returns
+  `metadataObjects`; the `gravitino_policy_objects` data source now sees the real list. The
+  policy-for-object listing requests `?details=true`, which is the only form that distinguishes a
+  direct attachment from an inherited one.
+
 ENHANCEMENTS:
 - **The README coverage badge and block are generated.** `scripts/coverage-readme.sh` renders the
   badge and the per-scope block from `.github/coverage-baseline.txt` (`make coverage-readme`), so

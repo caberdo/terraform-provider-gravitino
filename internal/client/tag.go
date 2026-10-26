@@ -2,16 +2,9 @@ package client
 
 import (
 	"context"
-	"net/url"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
-
-func (c *Client) ListTags(ctx context.Context, metalake string) (*models.TagNameListResponse, error) {
-	var result models.TagNameListResponse
-	err := c.Get(ctx, collectionPath(metalake, "tags"), &result)
-	return &result, err
-}
 
 func (c *Client) ListTagsDetailed(ctx context.Context, metalake string) (*models.TagListResponse, error) {
 	var result models.TagListResponse
@@ -61,15 +54,6 @@ func (c *Client) AssociateTags(ctx context.Context, metalake, metadataObjectType
 	path := objectPath(metalake, metadataObjectType, metadataObjectFullName) + "/tags"
 	var result models.TagNameListResponse
 	err := c.Post(ctx, path, req, &result)
-	return &result, err
-}
-
-// GetTagForObject returns a single tag associated with a metadata object
-// (GET /metalakes/{metalake}/objects/{metadataObjectType}/{metadataObjectFullName}/tags/{tag}).
-func (c *Client) GetTagForObject(ctx context.Context, metalake, metadataObjectType, metadataObjectFullName, tag string) (*models.TagResponse, error) {
-	path := objectPath(metalake, metadataObjectType, metadataObjectFullName) + "/tags/" + url.PathEscape(tag)
-	var result models.TagResponse
-	err := c.Get(ctx, path, &result)
 	return &result, err
 }
 
