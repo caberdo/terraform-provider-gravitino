@@ -71,11 +71,33 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
+  # The released binary's module graph is scanned for advisories that its own
+  # code can reach: a dependency bump is not enough on its own, because a
+  # transitive module can be introduced by an unrelated change. Both the
+  # toolchain and golang.org/x/net are kept above the fixed versions in go.mod;
+  # this job fails the pull request that lowers either of them back below.
+  vuln:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          # The Go version from go.mod, not the action's default `stable`, so
+          # the scan uses the toolchain the release binary is built with.
+          go-version-file: go.mod
+          repo-checkout: false
+          go-package: ./...
+
   test:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: lint
+    needs: [lint, vuln]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -49,20 +49,35 @@ type Client struct {
     baseURL      string
     httpClient   *http.Client
     authProvider auth.AuthProvider
+    timeout      time.Duration
+    userAgent    string
+    retry        retryPolicy
     versionMu    sync.RWMutex
     version      string
 }
 ```
 
-* `New(uri, authProvider)` validates the URI (scheme must be `http` or `https`, host must not be
-  empty) and builds one `http.Client` with a 30 s timeout. When the auth provider also implements
-  `auth.TransportProvider` (Kerberos), `WrapTransport` is wrapped around `http.DefaultTransport`.
+* `New(uri, authProvider, opts...)` validates the URI (scheme must be `http` or `https`, host must
+  not be empty) and builds one `http.Client`. `WithTimeout` sets the per-attempt ceiling (the
+  provider passes its `timeout` attribute, 30 s by default) and `WithUserAgent` sets
+  `terraform-provider-gravitino/<version>`. When the auth provider also implements
+  `auth.TransportProvider` (Kerberos), `WrapTransport` is wrapped around
+  `http.DefaultTransport`.
 * `doRequest` is the single mediated path to the server: it prefixes `baseURL + "/api"`, sends
-  `Accept: application/vnd.gravitino.v1+json`, marshals a JSON body with
-  `Content-Type: application/json`, and asks the auth provider for the header pair to set.
-  `Get`, `Post`, `Put`, `Patch` and `Delete` are thin wrappers over `do`.
+  `Accept: application/vnd.gravitino.v1+json`, `User-Agent` and
+  `Content-Type: application/json`, and asks the auth provider for the header pair to set. The
+  marshalled body is re-read for every attempt, so a retry is a complete request rather than a
+  replay of a consumed reader.
+* `Get`, `Put`, `Patch`, `Delete` and `PostIdempotent` are retryable; `Post` is not, so a create is
+  never repeated. `PostIdempotent` is used only by the two read-only `testConnection` probes. A
+  retryable request is attempted at most four times (three retries) on `429`, `500`, `502`, `503`,
+  `504` or a reset connection, with exponential backoff and equal jitter, and the server's
+  `Retry-After` (delta-seconds or HTTP-date) wins up to a 2 s cap. Every retry is logged with
+  `tflog.Warn` (attempt, status, delay).
 * `do` maps every non-2xx response to `*HTTPError` and otherwise decodes the JSON envelope; an
-  empty body (several `DELETE` endpoints) is not an error.
+  empty body (several `DELETE` endpoints) is not an error. A request that exceeds `timeout` fails
+  with the configured duration in the message, and a cancelled caller context is reported as
+  aborted rather than retried.
 * `internal/client/paths.go` builds the URL paths and escapes every user-supplied segment with
   `url.PathEscape`, so callers pass raw names.
 * One file per API area (`catalog.go`, `table.go`, `policy.go`, …) holds that area's REST methods;
@@ -213,7 +228,8 @@ acceptance-matrix cell only, because the older cells skip the version-gated test
 The merged profile is the number to quote, and the gate is the number that blocks a pull request; a
 bare `-coverprofile` measures each package against its own statements only. Statement counts depend
 on the Go patch release that produced the profile, and a merged profile takes them from the profile
-`merge-coverage.sh` reads last, so compare within one toolchain.
+`merge-coverage.sh` reads last, so compare within one toolchain; `go.mod` and the acceptance
+container both use Go 1.27.3.
 
 ## Release pipeline
 

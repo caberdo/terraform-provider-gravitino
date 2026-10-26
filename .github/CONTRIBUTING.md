@@ -19,7 +19,7 @@ The provider currently exposes 25 resources and 55 data sources.
 
 Prerequisites:
 
-- **Go 1.27.1 or newer.** The `go` directive in `go.mod` is `1.27.1`.
+- **Go 1.27.3 or newer.** The `go` directive in `go.mod` is `1.27.3`.
 - **Docker with Compose**, for the container-based acceptance suite
   (`make testacc-docker`, `make testacc-matrix`).
 - **Podman with `podman compose`**, for the live acceptance suite
@@ -154,7 +154,7 @@ patch release that produced the profile, so compare numbers only within one tool
 note that a merged profile takes its statement counts from the profile `merge-coverage.sh` reads
 last — the acceptance container's, in CI. CI's `test` job installs the `go.mod` toolchain, so its
 own summary prints a different denominator for the unit profile — the gated number is always the
-merged one.
+merged one. `go.mod` and the acceptance container both use Go 1.27.3.
 
 ## Code conventions
 

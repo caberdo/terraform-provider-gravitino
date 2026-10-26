@@ -37,13 +37,14 @@ runs weekly on `main`, on branch-protection changes and publishes its result for
 and CI reports the merged unit + acceptance statement coverage in its job summaries
 ([#49](https://github.com/caberdo/terraform-provider-gravitino/issues/49)).
 
-Still open, with no issue filed yet: six modules in the dependency graph carry OSV advisories
-(measured with `go list -m all` against `api.osv.dev/v1/querybatch`). The ones that matter are in
-the released binary's graph, not the docs tooling — `golang.org/x/net` v0.59.0 (five HTTP/2
-advisories published 2026-10-08, fixed in v0.60.0) and the stdlib `net/http` HTTP/2 fixes that ship
-in the Go **1.27.2** toolchain while `go.mod` still says `1.27.1`. Bumping both, plus `goldmark`
-v1.7.17 for the docs tooling, is the next supply-chain step; it is also open item 10 of
-[`.github/OPENSSF-BEST-PRACTICES.md`](./.github/OPENSSF-BEST-PRACTICES.md#5-open-items--what-is-not-met-yet-and-who-can-fix-it).
+The reachable supply-chain exposure is closed ([#73](https://github.com/caberdo/terraform-provider-gravitino/issues/73)):
+`go.mod` requires Go **1.27.3**, so the stdlib `crypto/x509` fix (GO-2026-6809) is in the released
+binary, and `golang.org/x/net` **v0.60.0** closes the five HTTP/2 advisories (GO-2026-6603,
+GO-2026-6610, GO-2026-6611, GO-2026-6612, GO-2026-6617). `govulncheck ./...` reports no
+vulnerability reachable from the provider, and the `Vulnerability Scan` CI job runs it on every pull
+request and blocks the `Test` job, so a dependency change cannot silently reintroduce one. The one
+advisory left in the module graph (`golang.org/x/crypto/openpgp`, no fix published) belongs to the
+docs tooling and is not imported; `goldmark` is likewise docs-only.
 
 Two configuration gaps are recorded in [`GOVERNANCE.md`](./GOVERNANCE.md#continuous-integration-as-the-gate)
 rather than tracked as issues, because they are repository settings and not code: the `main` ruleset

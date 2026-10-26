@@ -98,7 +98,7 @@ Trust boundaries and what crosses each one:
 | Boundary | Data crossing | Controls |
 |----------|---------------|----------|
 | Terraform CLI ↔ plugin process | Configuration values, credentials, resource state | Terraform plugin protocol 6.0; `Sensitive` marking; credentials carried only in the `Authorization` header |
-| Provider → Gravitino REST API over the configured `uri` | Resources, data-source reads, catalog and metadata payloads | Scheme restricted to http/https (`internal/client/client.go`); one 30 s-timeout `http.Client`; JSON request bodies with `Accept: application/vnd.gravitino.v1+json` |
+| Provider → Gravitino REST API over the configured `uri` | Resources, data-source reads, catalog and metadata payloads | Scheme restricted to http/https (`internal/client/client.go`); one `http.Client` bounded by the configurable `timeout` (30 s default) and identifying itself with `User-Agent: terraform-provider-gravitino/<version>`; JSON request bodies with `Accept: application/vnd.gravitino.v1+json` |
 | Provider → OAuth2 token endpoint | Client id and secret, bearer token in the response | Separate 30 s HTTP client; token cached with a refresh margin; refreshes serialised (`internal/client/auth/oauth_credentials.go`) |
 | Provider → Kerberos KDC | Principal, keytab material or cached ticket | `gokrb5/v8` SPNEGO; keytab path read from disk; ticket cache optional (`internal/client/auth/kerberos.go`) |
 | Provider → local filesystem | The keytab file at the configured path | Read-only access to the keytab path; no other filesystem access, no `os/exec` anywhere in the provider |
@@ -127,9 +127,12 @@ Secure-design principles mapped to the code that implements them:
   so a transient probe failure cannot reject a configuration the server would
   accept; an external data type is the only signal the provider has for such a
   column. The provider has no switch to disable TLS verification.
-- Economy of mechanism. One `http.Client` with a 30 s timeout per provider
-  instance; no `os/exec` anywhere; no template, SQL or shell evaluation; JSON
-  bodies decoded into typed models in `internal/models`.
+- Economy of mechanism. One `http.Client` bounded by the configurable `timeout` (30 s by
+  default) per provider instance; no `os/exec` anywhere; no template, SQL or shell evaluation; JSON
+  bodies decoded into typed models in `internal/models`. Retries are limited to requests that are
+  safe to repeat (`GET`, `PUT`, `PATCH`, `DELETE` and the read-only connection probes) and are
+  bounded in both attempts and delay, so an unresponsive or hostile server cannot amplify one
+  Terraform operation without limit.
 - Open design. The provider source is public and Apache-2.0 licensed; the threat
   model and limitations below are published rather than implied.
 

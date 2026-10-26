@@ -24,7 +24,7 @@ Terraform state as the rest of your infrastructure.
 | 🧪 **Tested against real servers** | 665 tests run by `make test` and 761 in the container suite, which runs against Gravitino `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
 | 🧱 **Version gates, not opaque 400s** | One build serves both server versions: the schema accepts the union and a runtime gate refuses a 1.3.1-only value against an older server with a diagnostic naming the required version (`Gravitino >= 1.3.1`) |
 | 🔐 **Verifiable supply chain** | GPG-signed release tags, signed `SHA256SUMS`, SLSA build provenance, SPDX SBOM and the Terraform registry manifest in every release |
-| ⚡ **Modern internals** | terraform-plugin-framework v1.19.0 (plugin protocol 6.0), Go 1.27.1, Docker/Podman acceptance harness against a real server |
+| ⚡ **Modern internals** | terraform-plugin-framework v1.19.0 (plugin protocol 6.0), Go 1.27.3, Docker/Podman acceptance harness against a real server |
 
 ## Contents
 
@@ -131,7 +131,7 @@ export GRAVITINO_PASSWORD="admin"
 |---|---|
 | Terraform | 1.0 or later (plugin protocol 6.0, see [`terraform-registry-manifest.json`](./terraform-registry-manifest.json)) |
 | Gravitino | API v1.3.0, and v1.3.1 from the same build; acceptance-tested against `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
-| Go (to build from source) | 1.27.1 |
+| Go (to build from source) | 1.27.3 |
 
 Some capabilities depend on server-side configuration and only work once the matching Gravitino
 feature is enabled — roles, owners, users and groups on `gravitino.authorization.enable`, IDP users
