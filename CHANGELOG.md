@@ -1,6 +1,24 @@
 ## Unreleased
 
 FEATURES:
+- **Statistics are writable through Terraform (issue #70, epic #83).**
+  `gravitino_statistics` and `gravitino_partition_statistics` manage the custom statistics of a
+  metadata object and of a table's partitions. Both read `listStatistics` / `listPartitionStatistics`
+  before every apply and send only what changed: differing entries through `updateStatistics` /
+  `updatePartitionStatistics` (`PUT`) and entries removed from the configuration through
+  `dropStatistics` / `dropPartitionStatistics` (`POST`, because the API has no `DELETE` for
+  statistics). Read keeps only modifiable, non-reserved statistics, so catalog-supplied values never
+  reach state and are never dropped. Gravitino's refusals become actionable diagnostics: `409
+  UnmodifiableStatisticException` explains that the underlying catalog owns the statistic, `501
+  UnsupportedOperationException` that the catalog does not implement statistics at all. Statistic
+  names are validated in the plan (`custom-` prefix, at most 128 characters), which is the only
+  shape Gravitino 1.3.x accepts, instead of the server's opaque `400 IllegalStatisticNameException`.
+  Both resources support import with `metalake.object_type.object_full_name` and
+  `metalake.catalog.schema.table`.
+- **Statistics value typing is fixed and documented.** `statistics` is a map of strings and
+  `partitions` a map of maps of strings: the API's `updates`/`statistics` objects are untyped JSON
+  (`additionalProperties: {}`), the provider writes every value as a JSON string and renders a value
+  read back as a string (a non-string value as its JSON encoding).
 - **Metadata-governance associations are usable from Terraform (issues #68, #69, epic #82).**
   `gravitino_tag_association` and `gravitino_policy_association` attach existing tags or policies
   to a catalog, schema, table, view, column, fileset, topic, model or function and detach them
@@ -21,6 +39,11 @@ FEATURES:
   spelling in the results.
 
 BUG FIXES:
+- **`gravitino_statistics` and `gravitino_partition_statistics` decoded a schema that does not
+  exist.** `models.Statistics` expected `type`/`properties`, which no published Gravitino release
+  returns. The data sources now expose the `Statistic` schema of `statistics.yaml` — `value` as a
+  string (non-strings as their JSON encoding), `reserved`, `modifiable` and `audit` — and keep a
+  numeric value such as `{"value": 42}` instead of failing to decode the whole listing.
 - **Policy object listing decoded the wrong schema.** `ListObjectsForPolicy` expected an
   `identifiers` array, but `GET /metalakes/{metalake}/policies/{policy}/objects` returns
   `metadataObjects`; the `gravitino_policy_objects` data source now sees the real list. The

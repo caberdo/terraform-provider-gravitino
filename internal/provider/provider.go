@@ -51,6 +51,7 @@ import (
 	rspolicy "github.com/gravitino/terraform-provider-gravitino/internal/resources/policy"
 	rsrole "github.com/gravitino/terraform-provider-gravitino/internal/resources/role"
 	rsschema "github.com/gravitino/terraform-provider-gravitino/internal/resources/schema"
+	rsstatistics "github.com/gravitino/terraform-provider-gravitino/internal/resources/statistics"
 	rstable "github.com/gravitino/terraform-provider-gravitino/internal/resources/table"
 	rstag "github.com/gravitino/terraform-provider-gravitino/internal/resources/tag"
 	rstopic "github.com/gravitino/terraform-provider-gravitino/internal/resources/topic"
@@ -405,6 +406,8 @@ func (p *GravitinoProvider) Resources(_ context.Context) []func() resource.Resou
 		rsfunction.New,
 		rsgroup.New,
 		rspartition.NewPartitionResource,
+		rsstatistics.New,
+		rsstatistics.NewPartition,
 		rspolicy.New,
 		rspolicy.NewAssociation,
 		rsrole.NewRoleResource,

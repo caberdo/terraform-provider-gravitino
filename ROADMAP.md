@@ -9,9 +9,9 @@ actually shipped.
 ## What the project is
 
 A Terraform provider for [Apache Gravitino](https://gravitino.apache.org): it manages metalakes,
-catalogs, schemas, tables, filesets, topics, views, functions, models, partitions, tags, policies,
+catalogs, schemas, tables, filesets, topics, views, functions, models, partitions, statistics, tags, policies,
 jobs, users/groups/roles and owners as Terraform state, through the Gravitino REST API. Today:
-**23 resources and 54 data sources** (`ls docs/resources | wc -l`, `ls docs/data-sources | wc -l`),
+**25 resources and 54 data sources** (`ls docs/resources | wc -l`, `ls docs/data-sources | wc -l`),
 one build supporting Gravitino **1.3.0 and 1.3.1** (`.github/gravitino-versions.txt`), 24 tags with
 `v0.9.0` as the latest release (2026-10-08).
 

@@ -2,17 +2,14 @@ package statistics_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/statistics"
-	"github.com/gravitino/terraform-provider-gravitino/internal/models"
-
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/statistics"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -32,25 +29,55 @@ func TestStatisticsDataSource_Schema(t *testing.T) {
 	}
 }
 
+// statisticListResponse is the StatisticListResponse example of
+// statistics.yaml, extended with a numeric custom value to pin the documented
+// value typing (a non-string value renders as its JSON encoding).
+const statisticListResponse = `{
+  "code": 0,
+  "statistics": [
+    {
+      "name": "row_count",
+      "value": "1000",
+      "reserved": true,
+      "modifiable": false,
+      "audit": {
+        "creator": "user1",
+        "createTime": "2023-10-01T12:00:00Z",
+        "lastModifier": "user2",
+        "lastModifiedTime": "2023-10-02T12:00:00Z"
+      }
+    },
+    {
+      "name": "custom-k1",
+      "value": "v1",
+      "reserved": false,
+      "modifiable": true,
+      "audit": {
+        "creator": "user1",
+        "createTime": "2023-10-01T12:00:00Z"
+      }
+    },
+    {
+      "name": "custom-k2",
+      "value": 42,
+      "reserved": false,
+      "modifiable": true,
+      "audit": {
+        "creator": "user1",
+        "createTime": "2023-10-01T12:00:00Z"
+      }
+    }
+  ]
+}`
+
 func TestStatisticsDataSource_Read(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		expectedPath := "/api/metalakes/test_metalake/objects/CATALOG/test_catalog/statistics"
 		if r.URL.Path != expectedPath {
 			t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
 		}
-
-		resp := models.StatisticsResponse{
-			Code: 0,
-			Statistics: []models.Statistics{
-				{
-					Name:       "numRows",
-					Type:       "long",
-					Value:      "1000",
-					Properties: map[string]string{"unit": "rows"},
-				},
-			},
-		}
-		json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		_, _ = w.Write([]byte(statisticListResponse))
 	}))
 	defer server.Close()
 
@@ -58,53 +85,39 @@ func TestStatisticsDataSource_Read(t *testing.T) {
 	d := ds.New()
 	d.(*ds.StatisticsDataSource).SetClient(c)
 
-	ctx := context.Background()
-	schemaResp := &datasource.SchemaResponse{}
-	d.Schema(ctx, datasource.SchemaRequest{}, schemaResp)
-	schemaObj := schemaResp.Schema
-
-	statItemObjType := types.ObjectType{AttrTypes: ds.StatisticItemAttrTypes}
-	statsListType := types.ListType{ElemType: statItemObjType}
-
-	attrTypes := map[string]attr.Type{
-		"metalake":      types.StringType,
-		"resource_type": types.StringType,
-		"resource":      types.StringType,
-		"statistics":    statsListType,
-	}
-
-	configModel := ds.StatisticsDataSourceModel{
+	resp, state := readStatistics(t, d, ds.StatisticsDataSourceModel{
 		Metalake:     types.StringValue("test_metalake"),
 		ResourceType: types.StringValue("CATALOG"),
 		Resource:     types.StringValue("test_catalog"),
-		Statistics:   types.ListNull(statItemObjType),
-	}
-
-	configObj, diags := types.ObjectValueFrom(ctx, attrTypes, configModel)
-	if diags.HasError() {
-		t.Fatalf("failed to create config object: %v", diags)
-	}
-
-	tfVal, err := configObj.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("failed to convert to terraform value: %v", err)
-	}
-
-	req := datasource.ReadRequest{
-		Config: tfsdk.Config{Schema: schemaObj, Raw: tfVal},
-	}
-	resp := &datasource.ReadResponse{
-		State: tfsdk.State{Schema: schemaObj},
-	}
-
-	d.Read(ctx, req, resp)
-
+	})
 	if resp.Diagnostics.HasError() {
-		for _, diag := range resp.Diagnostics.Errors() {
-			t.Logf("diag error: %s: %s", diag.Summary(), diag.Detail())
-		}
-		t.Fatal("unexpected diagnostics errors")
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
 	}
+
+	items := state.Statistics.Elements()
+	if len(items) != 3 {
+		t.Fatalf("expected 3 statistics, got %d", len(items))
+	}
+
+	rowCount := statisticAttributes(t, items[0])
+	assertStringAttribute(t, rowCount, "name", "row_count")
+	assertStringAttribute(t, rowCount, "value", "1000")
+	assertBoolAttribute(t, rowCount, "reserved", true)
+	assertBoolAttribute(t, rowCount, "modifiable", false)
+
+	audit, ok := rowCount["audit"].(types.Object)
+	if !ok {
+		t.Fatalf("audit = %T, want types.Object", rowCount["audit"])
+	}
+	assertStringAttribute(t, audit.Attributes(), "creator", "user1")
+	assertStringAttribute(t, audit.Attributes(), "create_time", "2023-10-01T12:00:00Z")
+	assertStringAttribute(t, audit.Attributes(), "last_modifier", "user2")
+
+	// A numeric value has no string form in the spec, so it crosses the
+	// provider boundary as its JSON encoding; this is the documented typing.
+	customK2 := statisticAttributes(t, items[2])
+	assertStringAttribute(t, customK2, "value", "42")
+	assertBoolAttribute(t, customK2, "modifiable", true)
 }
 
 func TestPartitionStatisticsDataSource_Schema(t *testing.T) {
@@ -156,6 +169,40 @@ func readStatistics(t *testing.T, d datasource.DataSource, model ds.StatisticsDa
 		}
 	}
 	return resp, state
+}
+
+func statisticAttributes(t *testing.T, value attr.Value) map[string]attr.Value {
+	t.Helper()
+
+	obj, ok := value.(types.Object)
+	if !ok {
+		t.Fatalf("statistic = %T, want types.Object", value)
+	}
+	return obj.Attributes()
+}
+
+func assertStringAttribute(t *testing.T, attrs map[string]attr.Value, name, want string) {
+	t.Helper()
+
+	value, ok := attrs[name].(types.String)
+	if !ok {
+		t.Fatalf("%s = %T, want types.String", name, attrs[name])
+	}
+	if value.ValueString() != want {
+		t.Errorf("%s = %q, want %q", name, value.ValueString(), want)
+	}
+}
+
+func assertBoolAttribute(t *testing.T, attrs map[string]attr.Value, name string, want bool) {
+	t.Helper()
+
+	value, ok := attrs[name].(types.Bool)
+	if !ok {
+		t.Fatalf("%s = %T, want types.Bool", name, attrs[name])
+	}
+	if value.ValueBool() != want {
+		t.Errorf("%s = %t, want %t", name, value.ValueBool(), want)
+	}
 }
 
 // TestStatisticsDataSource_ResourceTypeEnum pins the resource_type validator to
@@ -224,7 +271,7 @@ func TestStatisticsDataSource_VersionRestrictedObjectTypes(t *testing.T) {
 						_, _ = fmt.Fprintf(w, `{"code":0,"version":{"version":%q,"compileDate":"","gitCommit":""}}`, tc.version)
 						return
 					}
-					_, _ = w.Write([]byte(`{"code":0,"statistics":[{"name":"numRows","type":"long","value":"42","properties":{}}]}`))
+					_, _ = w.Write([]byte(`{"code":0,"statistics":[{"name":"custom-numRows","value":"42","reserved":false,"modifiable":true,"audit":{"creator":"user1","createTime":"2023-10-01T12:00:00Z"}}]}`))
 				}))
 				defer server.Close()
 
@@ -283,30 +330,41 @@ func TestStatisticsDataSource_VersionRestrictedObjectTypes(t *testing.T) {
 	}
 }
 
+// partitionStatisticListResponse is the PartitionStatisticListResponse example
+// of statistics.yaml.
+const partitionStatisticListResponse = `{
+  "code": 0,
+  "partitionStatistics": [
+    {
+      "partitionName": "p0",
+      "statistics": [
+        {
+          "name": "custom-row_count",
+          "value": "1000",
+          "reserved": false,
+          "modifiable": true,
+          "audit": {"creator": "user1", "createTime": "2023-10-01T12:00:00Z"}
+        },
+        {
+          "name": "custom-file_size",
+          "value": "500MB",
+          "reserved": false,
+          "modifiable": true,
+          "audit": {"creator": "user1", "createTime": "2023-10-01T12:00:00Z"}
+        }
+      ]
+    }
+  ]
+}`
+
 func TestPartitionStatisticsDataSource_Read(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		expectedPath := "/api/metalakes/test_metalake/objects/TABLE/test_catalog.test_schema.test_table/statistics/partitions"
 		if r.URL.Path != expectedPath {
 			t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
 		}
-
-		resp := models.PartitionStatisticsResponse{
-			Code: 0,
-			Statistics: []models.PartitionStatistics{
-				{
-					PartitionName: "dt=2024-01-01",
-					Statistics: []models.Statistics{
-						{
-							Name:       "numRows",
-							Type:       "long",
-							Value:      "500",
-							Properties: map[string]string{"unit": "rows"},
-						},
-					},
-				},
-			},
-		}
-		json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		_, _ = w.Write([]byte(partitionStatisticListResponse))
 	}))
 	defer server.Close()
 
@@ -363,4 +421,28 @@ func TestPartitionStatisticsDataSource_Read(t *testing.T) {
 		}
 		t.Fatal("unexpected diagnostics errors")
 	}
+
+	var state ds.PartitionStatisticsDataSourceModel
+	resp.Diagnostics.Append(resp.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("failed to read state: %v", resp.Diagnostics)
+	}
+
+	partitions := state.PartitionStatistics.Elements()
+	if len(partitions) != 1 {
+		t.Fatalf("expected 1 partition, got %d", len(partitions))
+	}
+	partition := statisticAttributes(t, partitions[0])
+	assertStringAttribute(t, partition, "partition_name", "p0")
+
+	stats, ok := partition["statistics"].(types.List)
+	if !ok {
+		t.Fatalf("statistics = %T, want types.List", partition["statistics"])
+	}
+	items := stats.Elements()
+	if len(items) != 2 {
+		t.Fatalf("expected 2 statistics, got %d", len(items))
+	}
+	assertStringAttribute(t, statisticAttributes(t, items[0]), "value", "1000")
+	assertStringAttribute(t, statisticAttributes(t, items[1]), "value", "500MB")
 }

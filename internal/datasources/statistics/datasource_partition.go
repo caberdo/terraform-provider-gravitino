@@ -96,18 +96,41 @@ func (d *PartitionStatisticsDataSource) Schema(_ context.Context, _ datasource.S
 										Computed:    true,
 										Description: "The statistic name.",
 									},
-									"type": schema.StringAttribute{
-										Computed:    true,
-										Description: "The statistic type.",
-									},
 									"value": schema.StringAttribute{
-										Computed:    true,
-										Description: "The statistic value.",
+										Computed: true,
+										Description: "The statistic value as a string. Gravitino's value is untyped JSON " +
+											"(statistics.yaml declares `additionalProperties: {}`); a string value contributes its text, " +
+											"a number, boolean, array or object its JSON encoding. Null when the statistic has no value.",
 									},
-									"properties": schema.MapAttribute{
+									"reserved": schema.BoolAttribute{
 										Computed:    true,
-										ElementType: types.StringType,
-										Description: "The statistic properties.",
+										Description: "Whether the statistic is reserved (supplied by the underlying catalog).",
+									},
+									"modifiable": schema.BoolAttribute{
+										Computed:    true,
+										Description: "Whether the statistic can be written through Gravitino.",
+									},
+									"audit": schema.SingleNestedAttribute{
+										Computed:    true,
+										Description: "Audit information for the statistic.",
+										Attributes: map[string]schema.Attribute{
+											"creator": schema.StringAttribute{
+												Computed:    true,
+												Description: "The principal that created the statistic.",
+											},
+											"create_time": schema.StringAttribute{
+												Computed:    true,
+												Description: "The creation time in RFC 3339 format.",
+											},
+											"last_modifier": schema.StringAttribute{
+												Computed:    true,
+												Description: "The principal that last modified the statistic.",
+											},
+											"last_modified_time": schema.StringAttribute{
+												Computed:    true,
+												Description: "The last modification time in RFC 3339 format.",
+											},
+										},
 									},
 								},
 							},
