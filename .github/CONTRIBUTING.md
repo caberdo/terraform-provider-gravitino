@@ -78,13 +78,13 @@ The suite is deliberately layered; each layer catches what the previous one cann
 
 | Layer | Prefix | Count | Needs | Command |
 |---|---|---|---|---|
-| Unit and mock | `Test*` | about 870 `Test*` functions across 139 `*_test.go` files | nothing | `make test` |
-| Acceptance through Terraform Core | `TestAcc*` | 72 | nothing beyond Go (mock server) | `make testacc` |
-| Container acceptance matrix | `TestAcc*` | same 72 | Docker | `make testacc-matrix` |
+| Unit and mock | `Test*` | over 900 `Test*` functions across more than 140 `*_test.go` files | nothing | `make test` |
+| Acceptance through Terraform Core | `TestAcc*` | roughly 75 | nothing beyond Go (mock server) | `make testacc` |
+| Container acceptance matrix | `TestAcc*` | the same `TestAcc*` set | Docker | `make testacc-matrix` |
 | Live acceptance against a real server | `TestLiveAcc*` | 26 | Podman | `make testacc-live` |
 
 - **Unit tests** run the resource and client code directly. Provider HTTP interaction is
-  served by `httptest.NewServer`; about 89 files across the suite start one. There is no fuzzing.
+  served by `httptest.NewServer`; more than 90 files across the suite start one. There is no fuzzing.
 - **`TestAcc*` tests** exercise the provider the way Terraform does: they call
   `resource.Test` with providers built by `providerserver.NewProtocol6WithError`, so the
   requests really travel through Terraform Core in-process and the mock Gravitino server is
@@ -164,13 +164,13 @@ These are enforced in review; see [AGENTS.md](../AGENTS.md) for the complete lis
 
 | Convention | Rule |
 |---|---|
-| API errors | Every API error is returned through `client.NewResourceError` (153 call sites). |
-| Not found | A 404 is detected with `client.IsNotFoundError` and handled by `resp.State.RemoveResource(ctx)` (69 call sites). Delete treats a missing object as success. |
-| Logging | `tflog.Debug` at the start and end of every Create/Read/Update/Delete (192 call sites). The provider `uri` and credentials are never logged. |
+| API errors | Every API error is returned through `client.NewResourceError` (over 170 call sites). |
+| Not found | A 404 is detected with `client.IsNotFoundError` and handled by `resp.State.RemoveResource(ctx)` (over 80 call sites). Delete treats a missing object as success. |
+| Logging | `tflog.Debug` at the start and end of every Create/Read/Update/Delete (over 230 call sites). The provider `uri` and credentials are never logged. |
 | IDs | Hierarchy IDs are dot-separated (`metalake.catalog.schema`). Import parses and validates them. |
-| Immutable attributes | An attribute the API cannot update in place carries `RequiresReplace()` (71 call sites); a change is never accepted and silently dropped. |
-| Computed attributes | Set on every code path, or carry `UseStateForUnknown()` (41 call sites), so refresh cannot produce an inconsistent result. |
-| Enum attributes | `stringvalidator.OneOf` on every enum field, with the values taken from the Gravitino API docs (30 call sites). |
+| Immutable attributes | An attribute the API cannot update in place carries `RequiresReplace()` (over 80 call sites); a change is never accepted and silently dropped. |
+| Computed attributes | Set on every code path, or carry `UseStateForUnknown()` (over 40 call sites), so refresh cannot produce an inconsistent result. |
+| Enum attributes | `stringvalidator.OneOf` on every enum field, with the values taken from the Gravitino API docs (over 30 call sites). |
 
 ## Testing policy
 

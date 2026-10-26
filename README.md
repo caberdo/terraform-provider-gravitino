@@ -459,12 +459,12 @@ registered to the releasing account.
 CI runs the unit suite with `-race` on every pull request, and the acceptance matrix on every push
 to `main`.
 
-The suite is 700 tests in total:
+The suite has over 900 `Test*` functions:
 
 | Group | Count | Needs |
 |---|---|---|
-| Unit and schema tests | 608 | Go only |
-| Mock acceptance tests (`TestAcc*`) | 66 | `TF_ACC=1`; the server is an `httptest` instance |
+| Unit and schema tests | over 800 | Go only |
+| Mock acceptance tests (`TestAcc*`) | roughly 75 | `TF_ACC=1`; the server is an `httptest` instance |
 | Live acceptance tests (`TestLiveAcc*`) | 26 | `GRAVITINO_URI` pointing at a real server, started by `make testacc-live` |
 
 The live tests do not trust that address blindly: `acceptance.LivePreCheck` refuses to run unless
