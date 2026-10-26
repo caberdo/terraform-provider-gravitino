@@ -92,6 +92,49 @@ func NewResourceError(operation, resource string, err error) diag.Diagnostics {
 	return diags
 }
 
+// NewDropError renders a failed drop. When force_destroy is false and
+// Gravitino refused because the object still contains children or is in use,
+// it appends an actionable diagnostic naming the force_destroy attribute and
+// the command that retries the destroy after it is enabled.
+func NewDropError(operation, resource string, forceDestroy bool, err error) diag.Diagnostics {
+	diags := NewResourceError(operation, resource, err)
+	if forceDestroy || !isDropRefused(err) {
+		return diags
+	}
+
+	diags = append(diags, diag.NewErrorDiagnostic(
+		"force_destroy is false",
+		fmt.Sprintf(
+			"Gravitino refused to drop %q because it still contains objects or is in use. "+
+				"Set force_destroy = true on this resource and run terraform destroy again to drop it "+
+				"together with everything underneath it, or delete the nested objects first.",
+			resource,
+		),
+	))
+	return diags
+}
+
+// isDropRefused reports whether err is Gravitino's refusal to drop a
+// non-empty or in-use entity. The server reports these as InUseException or
+// NonEmpty*Exception types. A typed payload is authoritative: NotInUseException
+// (a disabled parent metalake or catalog) is also an HTTP 409, but force_destroy
+// cannot resolve it. Only an untyped 409 falls back to the status.
+func isDropRefused(err error) bool {
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		return false
+	}
+	if httpErr.Response != nil && httpErr.Response.Type != "" {
+		switch httpErr.Response.Type {
+		case "InUseException", "MetalakeInUseException", "CatalogInUseException",
+			"NonEmptyMetalakeException", "NonEmptyCatalogException":
+			return true
+		}
+		return false
+	}
+	return httpErr.StatusCode == http.StatusConflict
+}
+
 // IsNotFoundError reports whether err is a Gravitino 404.
 //
 // Callers use it to drop a resource from state (Read) or to treat an already

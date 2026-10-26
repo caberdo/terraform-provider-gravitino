@@ -4,6 +4,8 @@ resource "gravitino_catalog" "hive" {
   type             = "relational"
   catalog_provider = "hive"
   comment          = "Hive catalog for data warehouse"
+  in_use           = true
+  force_destroy    = false
   properties = {
     "metastore.uris" = "thrift://localhost:9083"
   }

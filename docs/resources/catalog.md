@@ -18,6 +18,8 @@ resource "gravitino_catalog" "hive" {
   type             = "relational"
   catalog_provider = "hive"
   comment          = "Hive catalog for data warehouse"
+  in_use           = true
+  force_destroy    = false
   properties = {
     "metastore.uris" = "thrift://localhost:9083"
   }
@@ -66,6 +68,8 @@ terraform import gravitino_catalog.example my_metalake.my_catalog
 
 - `catalog_provider` (String) The catalog provider. Must be one of: hive, lakehouse-iceberg, lakehouse-paimon, lakehouse-hudi, jdbc-mysql, jdbc-postgresql, jdbc-doris, jdbc-oceanbase, kafka, fileset, model. Changing the provider forces a new catalog: the Gravitino API has no update request for it.
 - `comment` (String) A comment or description for the catalog. The Gravitino API can only replace an existing comment (updateComment), never remove it.
+- `force_destroy` (Boolean) Whether destroying this catalog also drops every schema, table, view, fileset, topic and model underneath it, including objects Terraform does not manage. Defaults to false: the provider disables the catalog before dropping it (removing no metadata) and Gravitino then refuses to drop one that still contains schemas, in which case the provider reports a diagnostic naming this flag and restores the previous in-use state. Set it to true to reproduce the forceful drop.
+- `in_use` (Boolean) Whether the catalog is in use. Gravitino creates every catalog in use, so an omitted value becomes true; set it to false to disable the catalog without dropping its metadata (a disabled catalog is unavailable to clients and fails its connection tests). Changing it sends PATCH /metalakes/{metalake}/catalogs/{catalog} with {"inUse": ...}. Gravitino has no top-level inUse field in its response: the same state is exposed only as the reserved 'in-use' property, which this resource filters out as server-managed, so a change made outside Terraform is not detected. State keeps the value the provider last wrote, and an imported catalog reports true (the creation default) until it is written. The gravitino_catalog data source exposes the server value in properties.
 - `properties` (Map of String, Sensitive) A map of key-value properties for the catalog. May contain credentials (for example JDBC passwords or S3 keys), therefore it is marked sensitive. The reserved 'in-use' key is managed by Gravitino (PATCH .../catalogs/{name}) and cannot be configured here.
 
 ### Read-Only
