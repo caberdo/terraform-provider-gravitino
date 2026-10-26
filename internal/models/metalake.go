@@ -70,3 +70,9 @@ func NewSetMetalakePropertyRequest(property, value string) SetMetalakePropertyRe
 func NewRemoveMetalakePropertyRequest(property string) RemoveMetalakePropertyRequest {
 	return RemoveMetalakePropertyRequest{Type: "removeProperty", Property: property}
 }
+
+// MetalakeSetRequest mirrors `MetalakeSetRequest`, used by
+// PATCH /metalakes/{metalake} to mark a metalake in-use (or not).
+type MetalakeSetRequest struct {
+	InUse bool `json:"inUse"`
+}

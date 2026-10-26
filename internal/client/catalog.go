@@ -78,3 +78,14 @@ func (c *Client) TestCatalogConnection(ctx context.Context, metalake, catalogNam
 	}
 	return &result, nil
 }
+
+// SetCatalogInUse marks a catalog as in-use (or not), via
+// PATCH /metalakes/{metalake}/catalogs/{catalog} with a `CatalogSetRequest` body.
+func (c *Client) SetCatalogInUse(ctx context.Context, metalake, name string, inUse bool) (*models.BaseResponse, error) {
+	path := catalogPath(metalake, name)
+	var result models.BaseResponse
+	if err := c.Patch(ctx, path, &models.CatalogSetRequest{InUse: inUse}, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}

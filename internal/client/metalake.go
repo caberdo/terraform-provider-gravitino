@@ -37,3 +37,14 @@ func (c *Client) DropMetalake(ctx context.Context, name string, force bool) (*mo
 	err := c.Delete(ctx, path, &result)
 	return &result, err
 }
+
+// SetMetalakeInUse marks a metalake as in-use (or not), via
+// PATCH /metalakes/{metalake} with a `MetalakeSetRequest` body.
+func (c *Client) SetMetalakeInUse(ctx context.Context, metalake string, inUse bool) (*models.BaseResponse, error) {
+	path := metalakePath(metalake)
+	var result models.BaseResponse
+	if err := c.Patch(ctx, path, &models.MetalakeSetRequest{InUse: inUse}, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}

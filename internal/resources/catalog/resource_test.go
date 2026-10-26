@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -82,13 +83,15 @@ func tfValue(t *testing.T, ctx context.Context, s schema.Schema, model res.Catal
 
 func baseModel() res.CatalogResourceModel {
 	return res.CatalogResourceModel{
-		Metalake:   types.StringValue("my_test_metalake"),
-		Name:       types.StringValue("my_hive_catalog"),
-		Type:       types.StringValue("relational"),
-		Provider:   types.StringValue("hive"),
-		Comment:    types.StringNull(),
-		Properties: types.MapNull(types.StringType),
-		Audit:      types.ObjectNull(res.AuditAttrTypes),
+		Metalake:     types.StringValue("my_test_metalake"),
+		Name:         types.StringValue("my_hive_catalog"),
+		Type:         types.StringValue("relational"),
+		Provider:     types.StringValue("hive"),
+		Comment:      types.StringNull(),
+		Properties:   types.MapNull(types.StringType),
+		InUse:        types.BoolValue(true),
+		ForceDestroy: types.BoolValue(false),
+		Audit:        types.ObjectNull(res.AuditAttrTypes),
 	}
 }
 
@@ -174,6 +177,35 @@ func TestCatalogResource_SchemaUpdatePolicy(t *testing.T) {
 	plannedAudit, _ := objectPlanWithConfig(ctx, auditAttr, priorAudit, types.ObjectUnknown(res.AuditAttrTypes), types.ObjectNull(res.AuditAttrTypes))
 	if !plannedAudit.IsUnknown() {
 		t.Fatalf("audit: expected the planned value to stay unknown, got %v", plannedAudit)
+	}
+
+	// in_use is Optional+Computed: an omitted value keeps the last written
+	// value instead of becoming unknown on every plan.
+	inUseAttr := s.Attributes["in_use"].(schema.BoolAttribute)
+	if !inUseAttr.Optional || !inUseAttr.Computed {
+		t.Fatalf("in_use: expected Optional+Computed, got optional=%t computed=%t", inUseAttr.Optional, inUseAttr.Computed)
+	}
+	boolReq := planmodifier.BoolRequest{
+		StateValue: types.BoolValue(false), PlanValue: types.BoolUnknown(), ConfigValue: types.BoolNull(),
+		State: tfsdk.State{Raw: nonNullRaw}, Plan: tfsdk.Plan{Raw: nonNullRaw}, Config: tfsdk.Config{Raw: nonNullRaw},
+	}
+	boolResp := &planmodifier.BoolResponse{PlanValue: types.BoolUnknown()}
+	for _, m := range inUseAttr.PlanModifiers {
+		m.PlanModifyBool(ctx, boolReq, boolResp)
+	}
+	if !boolResp.PlanValue.Equal(types.BoolValue(false)) {
+		t.Fatalf("in_use: expected UseStateForUnknown to plan the prior value, got %v", boolResp.PlanValue)
+	}
+
+	// force_destroy defaults to false: the destructive cascade must be opt-in.
+	forceAttr := s.Attributes["force_destroy"].(schema.BoolAttribute)
+	if !forceAttr.Optional || forceAttr.Default == nil {
+		t.Fatalf("force_destroy: expected Optional with a default, got optional=%t default=%v", forceAttr.Optional, forceAttr.Default)
+	}
+	forceResp := &defaults.BoolResponse{PlanValue: types.BoolUnknown()}
+	forceAttr.Default.DefaultBool(ctx, defaults.BoolRequest{}, forceResp)
+	if forceResp.PlanValue.ValueBool() {
+		t.Fatalf("force_destroy: expected default false, got %v", forceResp.PlanValue)
 	}
 
 	// Catalog properties may hold credentials (JDBC passwords, S3 keys).
@@ -329,6 +361,111 @@ func TestCatalogResource_Create(t *testing.T) {
 	}
 }
 
+// TestCatalogResource_CreateWithInUseFalse: a configured in_use=false is
+// applied with PATCH {"inUse": false} after the create, because the create
+// request has no inUse field.
+func TestCatalogResource_CreateWithInUseFalse(t *testing.T) {
+	ctx := context.Background()
+	s := catalogSchema(t)
+
+	type request struct {
+		method string
+		path   string
+		body   []byte
+	}
+	var requests []request
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, request{r.Method, r.URL.Path, body})
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.Method == http.MethodPatch {
+			fmt.Fprint(w, `{"code":0}`)
+			return
+		}
+		fmt.Fprint(w, catalogResponse)
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.New()
+	r.(*res.CatalogResource).SetClient(c)
+
+	plan := baseModel()
+	plan.InUse = types.BoolValue(false)
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: s}}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)}}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+
+	if len(requests) != 2 {
+		t.Fatalf("expected a create followed by one PATCH, got %#v", requests)
+	}
+	if requests[0].method != http.MethodPost || requests[0].path != "/api/metalakes/my_test_metalake/catalogs" {
+		t.Fatalf("unexpected create request: %s %s", requests[0].method, requests[0].path)
+	}
+	if requests[1].method != http.MethodPatch || requests[1].path != "/api/metalakes/my_test_metalake/catalogs/my_hive_catalog" {
+		t.Fatalf("unexpected in-use request: %s %s", requests[1].method, requests[1].path)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(requests[1].body, &body); err != nil {
+		t.Fatalf("invalid PATCH body %q: %v", requests[1].body, err)
+	}
+	assertJSONEqual(t, map[string]any{"inUse": false}, body)
+
+	var state res.CatalogResourceModel
+	if diags := resp.State.Get(ctx, &state); diags.HasError() {
+		t.Fatalf("failed to read state: %v", diags)
+	}
+	if state.InUse.ValueBool() {
+		t.Fatal("in_use must stay false in state")
+	}
+}
+
+// TestCatalogResource_CreateWithoutInUseDefaultsTrue: an omitted in_use is
+// resolved to Gravitino's creation default without an extra request.
+func TestCatalogResource_CreateWithoutInUseDefaultsTrue(t *testing.T) {
+	ctx := context.Background()
+	s := catalogSchema(t)
+
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		fmt.Fprint(w, catalogResponse)
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.New()
+	r.(*res.CatalogResource).SetClient(c)
+
+	plan := baseModel()
+	plan.InUse = types.BoolUnknown()
+	plan.ForceDestroy = types.BoolUnknown()
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: s}}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)}}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if calls != 1 {
+		t.Fatalf("expected only the create request, got %d calls", calls)
+	}
+
+	var state res.CatalogResourceModel
+	if diags := resp.State.Get(ctx, &state); diags.HasError() {
+		t.Fatalf("failed to read state: %v", diags)
+	}
+	if !state.InUse.ValueBool() {
+		t.Fatalf("an omitted in_use must become true, got %v", state.InUse)
+	}
+	if state.ForceDestroy.IsUnknown() || state.ForceDestroy.IsNull() || state.ForceDestroy.ValueBool() {
+		t.Fatalf("an unknown force_destroy must resolve to false, got %v", state.ForceDestroy)
+	}
+}
+
 func TestCatalogResource_ReadNotFoundRemovesState(t *testing.T) {
 	ctx := context.Background()
 	s := catalogSchema(t)
@@ -468,6 +605,173 @@ func TestCatalogResource_Update(t *testing.T) {
 	}
 }
 
+// TestCatalogResource_UpdateInUse: changing in_use is an in-place PATCH to the
+// current name and never a PUT update request.
+func TestCatalogResource_UpdateInUse(t *testing.T) {
+	cases := []struct {
+		name  string
+		state bool
+		plan  bool
+	}{
+		{"disable", true, false},
+		{"enable", false, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			s := catalogSchema(t)
+
+			var method, requestPath string
+			var rawBody []byte
+			puts := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				method, requestPath = r.Method, r.URL.Path
+				rawBody, _ = io.ReadAll(r.Body)
+				if r.Method == http.MethodPut {
+					puts++
+				}
+				w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+				fmt.Fprint(w, `{"code":0}`)
+			}))
+			defer server.Close()
+
+			c, _ := client.New(server.URL, nil)
+			r := res.New()
+			r.(*res.CatalogResource).SetClient(c)
+
+			state := baseModel()
+			state.ID = types.StringValue("my_test_metalake.my_hive_catalog")
+			state.InUse = types.BoolValue(tc.state)
+
+			plan := baseModel()
+			plan.InUse = types.BoolValue(tc.plan)
+
+			resp := &resource.UpdateResponse{State: tfsdk.State{Schema: s}}
+			r.Update(ctx, resource.UpdateRequest{
+				Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)},
+				State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
+			}, resp)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+			}
+
+			if puts != 0 {
+				t.Fatalf("changing only in_use must not send an updates PUT, got %d", puts)
+			}
+			if method != http.MethodPatch || requestPath != "/api/metalakes/my_test_metalake/catalogs/my_hive_catalog" {
+				t.Fatalf("unexpected request %s %s", method, requestPath)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(rawBody, &body); err != nil {
+				t.Fatalf("invalid PATCH body %q: %v", rawBody, err)
+			}
+			assertJSONEqual(t, map[string]any{"inUse": tc.plan}, body)
+
+			var got res.CatalogResourceModel
+			if diags := resp.State.Get(ctx, &got); diags.HasError() {
+				t.Fatalf("failed to read state: %v", diags)
+			}
+			if got.InUse.ValueBool() != tc.plan {
+				t.Fatalf("in_use = %v, want %v", got.InUse, tc.plan)
+			}
+		})
+	}
+}
+
+// TestCatalogResource_UpdateEnablesBeforeMetadataUsesPut: enabling must happen
+// before the PUT so Gravitino never receives a metadata update on a disabled
+// catalog.
+func TestCatalogResource_UpdateEnablesBeforeMetadataUsesPut(t *testing.T) {
+	ctx := context.Background()
+	s := catalogSchema(t)
+
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		fmt.Fprint(w, catalogResponse)
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.New()
+	r.(*res.CatalogResource).SetClient(c)
+
+	state := baseModel()
+	state.ID = types.StringValue("my_test_metalake.my_hive_catalog")
+	state.Comment = types.StringValue("old")
+	state.InUse = types.BoolValue(false)
+
+	plan := baseModel()
+	plan.Comment = types.StringValue("new")
+	plan.InUse = types.BoolValue(true)
+
+	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: s}}
+	r.Update(ctx, resource.UpdateRequest{
+		Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)},
+		State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+
+	if len(methods) != 2 || methods[0] != http.MethodPatch || methods[1] != http.MethodPut {
+		t.Fatalf("expected PATCH then PUT, got %v", methods)
+	}
+}
+
+// TestCatalogResource_UpdateDisabledMetadataTemporarilyEnables: a disabled
+// catalog rejects alter requests, so the provider enables it for the PUT and
+// disables it again afterwards.
+func TestCatalogResource_UpdateDisabledMetadataTemporarilyEnables(t *testing.T) {
+	ctx := context.Background()
+	s := catalogSchema(t)
+
+	var methods []string
+	var inUseValues []bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		if r.Method == http.MethodPatch {
+			var req models.CatalogSetRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			inUseValues = append(inUseValues, req.InUse)
+		}
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		fmt.Fprint(w, catalogResponse)
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.New()
+	r.(*res.CatalogResource).SetClient(c)
+
+	state := baseModel()
+	state.ID = types.StringValue("my_test_metalake.my_hive_catalog")
+	state.Comment = types.StringValue("old")
+	state.InUse = types.BoolValue(false)
+
+	plan := baseModel()
+	plan.Comment = types.StringValue("new")
+	plan.InUse = types.BoolValue(false)
+
+	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: s}}
+	r.Update(ctx, resource.UpdateRequest{
+		Plan:  tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, plan)},
+		State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+
+	if len(methods) != 3 || methods[0] != http.MethodPatch || methods[1] != http.MethodPut || methods[2] != http.MethodPatch {
+		t.Fatalf("expected PATCH(true)/PUT/PATCH(false), got %v", methods)
+	}
+	if len(inUseValues) != 2 || !inUseValues[0] || inUseValues[1] {
+		t.Fatalf("expected enable then disable, got %v", inUseValues)
+	}
+}
+
 // TestCatalogResource_UpdateIgnoresUnknownPlanValues guards against the classic
 // "Computed attribute is unknown in the plan" bug: an unknown comment or
 // property map must never be turned into an updateComment("") or a
@@ -502,6 +806,7 @@ func TestCatalogResource_UpdateIgnoresUnknownPlanValues(t *testing.T) {
 	plan := baseModel()
 	plan.Comment = types.StringUnknown()
 	plan.Properties = types.MapUnknown(types.StringType)
+	plan.ForceDestroy = types.BoolUnknown()
 
 	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: s}}
 	r.Update(ctx, resource.UpdateRequest{
@@ -526,6 +831,9 @@ func TestCatalogResource_UpdateIgnoresUnknownPlanValues(t *testing.T) {
 	}
 	if got.Audit.IsUnknown() {
 		t.Fatal("audit must be a known value after apply")
+	}
+	if got.ForceDestroy.IsUnknown() || got.ForceDestroy.IsNull() {
+		t.Fatalf("force_destroy must be a known value after apply, got %v", got.ForceDestroy)
 	}
 }
 
@@ -624,6 +932,7 @@ func TestCatalogResource_Delete(t *testing.T) {
 
 	state := baseModel()
 	state.ID = types.StringValue("my_test_metalake.my_hive_catalog")
+	state.ForceDestroy = types.BoolValue(true)
 
 	resp := &resource.DeleteResponse{State: tfsdk.State{Schema: s}}
 	r.Delete(ctx, resource.DeleteRequest{State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)}}, resp)
@@ -632,6 +941,99 @@ func TestCatalogResource_Delete(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("delete was not called")
+	}
+}
+
+// TestCatalogResource_DeleteDefaultDoesNotForce: force_destroy defaults to
+// false, so a destroy must not cascade.
+func TestCatalogResource_DeleteDefaultDoesNotForce(t *testing.T) {
+	ctx := context.Background()
+	s := catalogSchema(t)
+
+	var methods []string
+	var forceValue string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		if r.Method == http.MethodDelete {
+			forceValue = r.URL.Query().Get("force")
+			json.NewEncoder(w).Encode(models.DropResponse{Code: 0, Dropped: true})
+			return
+		}
+		json.NewEncoder(w).Encode(models.BaseResponse{Code: 0})
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.New()
+	r.(*res.CatalogResource).SetClient(c)
+
+	state := baseModel()
+	resp := &resource.DeleteResponse{State: tfsdk.State{Schema: s}}
+	r.Delete(ctx, resource.DeleteRequest{State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)}}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if forceValue != "false" {
+		t.Fatalf("expected force=false, got %q", forceValue)
+	}
+	// Gravitino refuses to drop an in-use catalog even when empty, so the
+	// provider disables it first.
+	if len(methods) != 2 || methods[0] != http.MethodPatch || methods[1] != http.MethodDelete {
+		t.Fatalf("expected PATCH then DELETE, got %v", methods)
+	}
+}
+
+// TestCatalogResource_DeleteRefusedNamesForceDestroy: a server refusal with
+// force_destroy=false must produce an actionable diagnostic naming the flag and
+// the retry command.
+func TestCatalogResource_DeleteRefusedNamesForceDestroy(t *testing.T) {
+	ctx := context.Background()
+	s := catalogSchema(t)
+
+	var methods []string
+	var inUseValues []bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch r.Method {
+		case http.MethodPatch:
+			var req models.CatalogSetRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			inUseValues = append(inUseValues, req.InUse)
+			fmt.Fprint(w, `{"code":0}`)
+		case http.MethodDelete:
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprint(w, `{"code":1004,"type":"NonEmptyCatalogException","message":"Catalog my_hive_catalog is not empty","stack":["..."]}`)
+		}
+	}))
+	defer server.Close()
+
+	c, _ := client.New(server.URL, nil)
+	r := res.New()
+	r.(*res.CatalogResource).SetClient(c)
+
+	state := baseModel()
+	resp := &resource.DeleteResponse{State: tfsdk.State{Schema: s}}
+	r.Delete(ctx, resource.DeleteRequest{State: tfsdk.State{Schema: s, Raw: tfValue(t, ctx, s, state)}}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a refusal diagnostic")
+	}
+	if len(methods) != 3 || methods[0] != http.MethodPatch || methods[1] != http.MethodDelete || methods[2] != http.MethodPatch {
+		t.Fatalf("expected disable/DELETE/restore, got %v", methods)
+	}
+	if len(inUseValues) != 2 || inUseValues[0] || !inUseValues[1] {
+		t.Fatalf("expected disable then restore, got %v", inUseValues)
+	}
+	var text strings.Builder
+	for _, d := range resp.Diagnostics.Errors() {
+		text.WriteString(d.Summary())
+		text.WriteString(" ")
+		text.WriteString(d.Detail())
+		text.WriteString(" ")
+	}
+	if !strings.Contains(text.String(), "force_destroy") || !strings.Contains(text.String(), "terraform destroy") {
+		t.Fatalf("diagnostic must name force_destroy and the retry command, got %s", text.String())
 	}
 }
 

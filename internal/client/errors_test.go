@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
 // Gravitino v1.3.0 docs/open-api/metalakes.yaml, components/examples/NoSuchMetalakeException.
@@ -117,6 +119,108 @@ func TestNewResourceError_SurfacesStatusTypeAndStack(t *testing.T) {
 			t.Errorf("diagnostics missing %q:\n%s", want, combined)
 		}
 	}
+}
+
+func TestNewDropError_HintsWhenCascadeIsDisabled(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		noHint bool
+	}{
+		{
+			name:   "typed non-empty refusal",
+			status: http.StatusConflict,
+			body:   `{"code":1004,"type":"NonEmptyMetalakeException","message":"metalake is not empty"}`,
+		},
+		{
+			name:   "typed refusal with a 400 status",
+			status: http.StatusBadRequest,
+			body:   `{"code":1005,"type":"MetalakeInUseException","message":"metalake is in use"}`,
+		},
+		{
+			name:   "untyped 409",
+			status: http.StatusConflict,
+			body:   "conflict",
+		},
+		{
+			// NotInUseException is also 409, but force_destroy cannot fix a
+			// disabled parent metalake; the hint would hide the real cause.
+			name:   "typed not-in-use 409",
+			status: http.StatusConflict,
+			body:   `{"code":1006,"type":"MetalakeNotInUseException","message":"metalake is not in use"}`,
+			noHint: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			c, _ := New(srv.URL, nil)
+			var out map[string]interface{}
+			err := c.Delete(context.Background(), "/metalakes/ml", &out)
+			if err == nil {
+				t.Fatal("Delete() error = nil, want a refusal")
+			}
+
+			diags := NewDropError("deleting metalake", "ml", false, err)
+			combined := diagnosticsText(diags)
+			if tc.noHint {
+				if strings.Contains(combined, "force_destroy") {
+					t.Fatalf("this failure is not a drop refusal and must not suggest force_destroy:\n%s", combined)
+				}
+				return
+			}
+			if !strings.Contains(combined, "force_destroy") {
+				t.Fatalf("diagnostics must name force_destroy:\n%s", combined)
+			}
+			if !strings.Contains(combined, "terraform destroy") {
+				t.Fatalf("diagnostics must name the retry command:\n%s", combined)
+			}
+
+			// With force_destroy enabled there is nothing left for the user to
+			// do, so the hint must not appear.
+			if combined := diagnosticsText(NewDropError("deleting metalake", "ml", true, err)); strings.Contains(combined, "force_destroy") {
+				t.Fatalf("force_destroy=true must not add the hint:\n%s", combined)
+			}
+		})
+	}
+}
+
+func TestNewDropError_NoHintForUnrelatedError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"code":1100,"type":"InternalError","message":"boom"}`))
+	}))
+	defer srv.Close()
+
+	c, _ := New(srv.URL, nil)
+	var out map[string]interface{}
+	err := c.Delete(context.Background(), "/metalakes/ml", &out)
+
+	combined := diagnosticsText(NewDropError("deleting metalake", "ml", false, err))
+	if strings.Contains(combined, "force_destroy") {
+		t.Fatalf("an unrelated server error must not suggest force_destroy:\n%s", combined)
+	}
+	if !strings.Contains(combined, "boom") {
+		t.Fatalf("the server message must be preserved:\n%s", combined)
+	}
+}
+
+func diagnosticsText(diags []diag.Diagnostic) string {
+	var b strings.Builder
+	for _, d := range diags {
+		b.WriteString(d.Summary())
+		b.WriteString(" | ")
+		b.WriteString(d.Detail())
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 func TestDo_EmptyBodyIsNotAnError(t *testing.T) {
