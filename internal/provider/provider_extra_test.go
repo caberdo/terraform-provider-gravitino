@@ -13,9 +13,11 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	providerschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -464,5 +466,49 @@ func TestProvider_ConfigureRejectsInvalidTimeout(t *testing.T) {
 	}
 	if !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), "Invalid timeout") {
 		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
+	}
+}
+
+func TestDurationValidator(t *testing.T) {
+	v := durationValidator{}
+	if got := v.Description(context.Background()); !strings.Contains(got, "duration") {
+		t.Errorf("Description() = %q, want it to mention a duration", got)
+	}
+	if got := v.MarkdownDescription(context.Background()); got != v.Description(context.Background()) {
+		t.Errorf("MarkdownDescription() = %q, want the plain description", got)
+	}
+
+	tests := []struct {
+		name    string
+		value   types.String
+		wantErr bool
+	}{
+		{name: "null", value: types.StringNull()},
+		{name: "unknown", value: types.StringUnknown()},
+		{name: "valid", value: types.StringValue("45s")},
+		{name: "invalid", value: types.StringValue("soon"), wantErr: true},
+		{name: "zero", value: types.StringValue("0s"), wantErr: true},
+		{name: "negative", value: types.StringValue("-1s"), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &validator.StringResponse{}
+			v.ValidateString(context.Background(), validator.StringRequest{
+				Path:        path.Root("timeout"),
+				ConfigValue: tt.value,
+			}, resp)
+			if resp.Diagnostics.HasError() != tt.wantErr {
+				t.Errorf("ValidateString(%s) diagnostics = %v, want error = %t", tt.value, resp.Diagnostics, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNewClientFromEnvRejectsInvalidTimeout(t *testing.T) {
+	unsetProviderEnv(t)
+	t.Setenv("GRAVITINO_TIMEOUT", "soon")
+
+	if _, err := NewClientFromEnv("http://localhost:8090"); err == nil {
+		t.Fatal("NewClientFromEnv() = nil error, want a diagnostic for the invalid timeout")
 	}
 }
