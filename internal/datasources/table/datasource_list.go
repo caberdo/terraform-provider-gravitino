@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -15,7 +16,7 @@ var _ datasource.DataSource = (*tablesDataSource)(nil)
 var _ datasource.DataSourceWithConfigure = (*tablesDataSource)(nil)
 
 type tablesDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewTablesDataSource() datasource.DataSource {
@@ -27,14 +28,6 @@ type tablesDataSourceModel struct {
 	Catalog  types.String `tfsdk:"catalog"`
 	Schema   types.String `tfsdk:"schema"`
 	Tables   types.List   `tfsdk:"tables"`
-}
-
-func (d *tablesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *tablesDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -68,7 +61,7 @@ func (d *tablesDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	listResp, err := d.client.ListTables(ctx,
+	listResp, err := d.Client.ListTables(ctx,
 		config.Metalake.ValueString(),
 		config.Catalog.ValueString(),
 		config.Schema.ValueString(),

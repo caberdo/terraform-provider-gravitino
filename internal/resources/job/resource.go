@@ -8,6 +8,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -30,15 +31,11 @@ var _ resource.ResourceWithConfigure = &JobResource{}
 // Therefore every configured attribute forces a replacement (a new run) and
 // Delete cancels the run rather than deleting it, because the API has no delete.
 type JobResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &JobResource{}
-}
-
-func (r *JobResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type JobResourceModel struct {
@@ -67,14 +64,6 @@ const (
 	// deliberately short and best effort.
 	cancelPollTimeout = 10 * time.Second
 )
-
-func (r *JobResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *JobResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_job"
@@ -180,7 +169,7 @@ func (r *JobResource) Create(ctx context.Context, req resource.CreateRequest, re
 		JobConf:         mapFromTF(plan.JobConf),
 	}
 
-	result, err := r.client.RunJob(ctx, plan.Metalake.ValueString(), runReq)
+	result, err := r.Client.RunJob(ctx, plan.Metalake.ValueString(), runReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("running job", plan.JobTemplate.ValueString(), err)...)
 		return
@@ -211,7 +200,7 @@ func (r *JobResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		"job_id":   state.JobID.ValueString(),
 	})
 
-	result, err := r.client.GetJob(ctx, state.Metalake.ValueString(), state.JobID.ValueString())
+	result, err := r.Client.GetJob(ctx, state.Metalake.ValueString(), state.JobID.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -252,7 +241,7 @@ func (r *JobResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 
 	tflog.Debug(ctx, "Cancelling job", map[string]interface{}{"metalake": metalake, "job_id": jobID})
 
-	current, err := r.client.GetJob(ctx, metalake, jobID)
+	current, err := r.Client.GetJob(ctx, metalake, jobID)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: nothing to cancel.
@@ -265,7 +254,7 @@ func (r *JobResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 	// Cancelling a finished job is rejected by the server, so only interrupt
 	// jobs that can still make progress.
 	if !jobIsTerminal(current.Job.Status) {
-		if _, err := r.client.CancelJob(ctx, metalake, jobID); err != nil && !client.IsNotFoundError(err) {
+		if _, err := r.Client.CancelJob(ctx, metalake, jobID); err != nil && !client.IsNotFoundError(err) {
 			resp.Diagnostics.Append(client.NewResourceError("cancelling job", jobID, err)...)
 			return
 		}
@@ -275,7 +264,7 @@ func (r *JobResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		// jobs is deterministic whenever an executor is doing its work; if the
 		// job stays active we continue anyway and let the template delete report
 		// the server's own InUseException.
-		waitForTerminalJob(ctx, r.client, metalake, jobID)
+		waitForTerminalJob(ctx, r.Client, metalake, jobID)
 	}
 
 	tflog.Debug(ctx, "Cancelled job", map[string]interface{}{"metalake": metalake, "job_id": jobID})

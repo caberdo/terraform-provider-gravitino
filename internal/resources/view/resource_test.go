@@ -690,12 +690,32 @@ func assertJSONEqual(t *testing.T, want string, got []byte) {
 	}
 }
 
-// TestViewResourceModelsMatchSchema keeps the slice model and the framework
-// boundary model in lockstep with the schema.
+// TestViewResourceModelsMatchSchema keeps the slice model, the framework
+// boundary model and every nested schema object in lockstep with the schema.
 func TestViewResourceModelsMatchSchema(t *testing.T) {
 	resp := &resource.SchemaResponse{}
 	resourceview.NewViewResource().Schema(context.Background(), resource.SchemaRequest{}, resp)
-	names := modeltest.Keys(resp.Schema.Attributes)
-	modeltest.AssertAttributesMatch(t, resourceview.ViewResourceModel{}, names)
-	modeltest.AssertAttributesMatch(t, models.ViewResourceTFModel{}, names)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, resourceview.ViewResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+	modeltest.AssertSchemaMatches(t, models.ViewResourceTFModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	column, ok := resp.Schema.Attributes["column"].(rschema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("column attribute = %T, want rschema.ListNestedAttribute", resp.Schema.Attributes["column"])
+	}
+	modeltest.AssertAttributesMatch(t, models.ColumnTFSDK{}, modeltest.Keys(column.NestedObject.Attributes))
+
+	representation, ok := resp.Schema.Attributes["representation"].(rschema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("representation attribute = %T, want rschema.ListNestedAttribute", resp.Schema.Attributes["representation"])
+	}
+	modeltest.AssertAttributesMatch(t, models.ViewRepresentationTFSDK{}, modeltest.Keys(representation.NestedObject.Attributes))
+
+	audit, ok := resp.Schema.Attributes["audit"].(rschema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want rschema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
 }

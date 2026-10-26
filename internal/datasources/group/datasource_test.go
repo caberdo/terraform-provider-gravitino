@@ -10,6 +10,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/group"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -271,4 +272,16 @@ func TestGroupsDataSource_ReadServerError(t *testing.T) {
 	if !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), `Failed listing groups "my_test_metalake"`) {
 		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
 	}
+}
+
+func TestGroupDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewGetDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.GroupDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+func TestGroupsDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewListDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.GroupsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

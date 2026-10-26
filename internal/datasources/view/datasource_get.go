@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -16,7 +17,7 @@ var _ datasource.DataSource = &ViewDataSource{}
 var _ datasource.DataSourceWithConfigure = &ViewDataSource{}
 
 type ViewDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 type ViewDataSourceModel struct {
@@ -51,10 +52,6 @@ func viewDataSourceModelToTF(ctx context.Context, in ViewDataSourceModel, diags 
 
 func NewViewDataSource() datasource.DataSource {
 	return &ViewDataSource{}
-}
-
-func (d *ViewDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 func (d *ViewDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -159,14 +156,6 @@ func (d *ViewDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 	}
 }
 
-func (ds *ViewDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		ds.client = c
-	}
-}
-
 func (ds *ViewDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var tfConfig models.ViewDataSourceTFModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &tfConfig)...)
@@ -181,7 +170,7 @@ func (ds *ViewDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		Properties: tfConfig.Properties,
 	}
 
-	viewResp, err := ds.client.GetView(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
+	viewResp, err := ds.Client.GetView(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading view", config.Name.ValueString(), err)...)
 		return

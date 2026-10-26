@@ -8,18 +8,11 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
-func (c *Client) ListModels(ctx context.Context, metalake, catalog, schema string) (*models.IdentifiersResponse, error) {
-	var result models.IdentifiersResponse
-	path := catalogCollectionPath(metalake, catalog, schema, "models")
-	err := c.Get(ctx, path, &result)
-	return &result, err
-}
-
 // ListModelsDetails returns the full model objects of a schema. The list
 // endpoint only returns identifiers, so every model is fetched individually.
 func (c *Client) ListModelsDetails(ctx context.Context, metalake, catalog, schema string) ([]models.Model, error) {
-	identifiers, err := c.ListModels(ctx, metalake, catalog, schema)
-	if err != nil {
+	var identifiers models.IdentifiersResponse
+	if err := c.Get(ctx, catalogCollectionPath(metalake, catalog, schema, "models"), &identifiers); err != nil {
 		return nil, err
 	}
 	mods := make([]models.Model, 0, len(identifiers.Identifiers))
@@ -123,45 +116,6 @@ func (c *Client) DeleteModelVersion(ctx context.Context, metalake, catalog, sche
 func (c *Client) GetModelVersionByAlias(ctx context.Context, metalake, catalog, schema, model, alias string) (*models.ModelVersionResponse, error) {
 	var result models.ModelVersionResponse
 	if err := c.Get(ctx, modelVersionAliasPath(metalake, catalog, schema, model, alias), &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-func (c *Client) UpdateModelVersionByAlias(ctx context.Context, metalake, catalog, schema, model, alias string, updates []interface{}) (*models.ModelVersionResponse, error) {
-	var result models.ModelVersionResponse
-	if err := c.Put(ctx, modelVersionAliasPath(metalake, catalog, schema, model, alias), &models.ModelVersionUpdatesRequest{Updates: updates}, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-func (c *Client) DeleteModelVersionByAlias(ctx context.Context, metalake, catalog, schema, model, alias string) (*models.DropResponse, error) {
-	var result models.DropResponse
-	if err := c.Delete(ctx, modelVersionAliasPath(metalake, catalog, schema, model, alias), &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-// GetModelVersionURI returns the URI of a model version. An empty uriName
-// returns the unnamed URI of the model version.
-func (c *Client) GetModelVersionURI(ctx context.Context, metalake, catalog, schema, model string, version int32, uriName string) (*models.ModelVersionURIResponse, error) {
-	return c.getModelVersionURI(ctx, modelVersionPath(metalake, catalog, schema, model, version)+"/uri", uriName)
-}
-
-// GetModelVersionURIByAlias returns the URI of the model version a model alias
-// points to. An empty uriName returns the unnamed URI of the model version.
-func (c *Client) GetModelVersionURIByAlias(ctx context.Context, metalake, catalog, schema, model, alias, uriName string) (*models.ModelVersionURIResponse, error) {
-	return c.getModelVersionURI(ctx, modelVersionAliasPath(metalake, catalog, schema, model, alias)+"/uri", uriName)
-}
-
-func (c *Client) getModelVersionURI(ctx context.Context, path, uriName string) (*models.ModelVersionURIResponse, error) {
-	if uriName != "" {
-		path += "?" + url.Values{"uriName": []string{uriName}}.Encode()
-	}
-	var result models.ModelVersionURIResponse
-	if err := c.Get(ctx, path, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

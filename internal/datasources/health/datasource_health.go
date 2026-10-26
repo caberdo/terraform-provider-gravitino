@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -14,15 +15,11 @@ var _ datasource.DataSource = (*HealthDataSource)(nil)
 var _ datasource.DataSourceWithConfigure = &HealthDataSource{}
 
 type HealthDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewHealthDataSource() datasource.DataSource {
 	return &HealthDataSource{}
-}
-
-func (d *HealthDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type HealthDataSourceModel struct {
@@ -34,14 +31,6 @@ type HealthCheckModel struct {
 	Name    types.String `tfsdk:"name"`
 	Status  types.String `tfsdk:"status"`
 	Details types.Map    `tfsdk:"details"`
-}
-
-func (d *HealthDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *HealthDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -88,7 +77,7 @@ func (d *HealthDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	result, err := d.client.GetHealth(ctx)
+	result, err := d.Client.GetHealth(ctx)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading health", "health", err)...)
 		return

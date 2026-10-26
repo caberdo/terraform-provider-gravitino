@@ -12,6 +12,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/credential"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -573,4 +574,16 @@ func assertMapEntry(t *testing.T, m map[string]attr.Value, key, want string) {
 	if s.ValueString() != want {
 		t.Errorf("map entry %q = %q, want %q", key, s.ValueString(), want)
 	}
+}
+
+func TestCredentialsDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.New().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.CredentialsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	credentials, ok := resp.Schema.Attributes["credentials"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("credentials attribute = %T, want schema.ListNestedAttribute", resp.Schema.Attributes["credentials"])
+	}
+	modeltest.AssertAttributesMatch(t, ds.CredentialItemModel{}, modeltest.Keys(credentials.NestedObject.Attributes))
 }

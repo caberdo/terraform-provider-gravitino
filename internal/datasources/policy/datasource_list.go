@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -18,15 +19,11 @@ var _ datasource.DataSource = &PoliciesDataSource{}
 var _ datasource.DataSourceWithConfigure = &PoliciesDataSource{}
 
 type PoliciesDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewListDataSource() datasource.DataSource {
 	return &PoliciesDataSource{}
-}
-
-func (d *PoliciesDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type PoliciesDataSourceModel struct {
@@ -57,14 +54,6 @@ var PolicyItemAttrTypes = map[string]attr.Type{
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (d *PoliciesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
 
 func (d *PoliciesDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = "gravitino_policies"
@@ -100,7 +89,7 @@ func (d *PoliciesDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.ListPolicies(ctx, config.Metalake.ValueString())
+	result, err := d.Client.ListPolicies(ctx, config.Metalake.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

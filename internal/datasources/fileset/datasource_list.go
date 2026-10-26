@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -18,15 +19,11 @@ var _ datasource.DataSource = &FilesetsDataSource{}
 var _ datasource.DataSourceWithConfigure = &FilesetsDataSource{}
 
 type FilesetsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewListDataSource() datasource.DataSource {
 	return &FilesetsDataSource{}
-}
-
-func (d *FilesetsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type FilesetsDataSourceModel struct {
@@ -58,14 +55,6 @@ var AuditAttrTypes = models.AuditAttrTypes
 
 func auditToObjectValueForDS(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {
 	return models.AuditToObjectValue(ctx, audit)
-}
-
-func (d *FilesetsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *FilesetsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -131,7 +120,7 @@ func (d *FilesetsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.ListFilesetsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
+	result, err := d.Client.ListFilesetsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

@@ -11,6 +11,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/authentication"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -290,4 +291,10 @@ func TestAuthMeResponseDTOMatchesSpec(t *testing.T) {
 	if !v131.ServiceAdmin {
 		t.Error("serviceAdmin must decode to true from the v1.3.1 example")
 	}
+}
+
+func TestPrincipalDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.New().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.PrincipalDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

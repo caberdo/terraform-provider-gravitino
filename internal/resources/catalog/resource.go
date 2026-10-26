@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -27,15 +28,11 @@ var _ resource.ResourceWithImportState = &CatalogResource{}
 var _ resource.ResourceWithConfigure = &CatalogResource{}
 
 type CatalogResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &CatalogResource{}
-}
-
-func (r *CatalogResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type CatalogResourceModel struct {
@@ -50,14 +47,6 @@ type CatalogResourceModel struct {
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (r *CatalogResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *CatalogResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_catalog"
@@ -157,7 +146,7 @@ func (r *CatalogResource) Create(ctx context.Context, req resource.CreateRequest
 		Properties: mapFromTF(plan.Properties),
 	}
 
-	result, err := r.client.CreateCatalog(ctx, plan.Metalake.ValueString(), createReq)
+	result, err := r.Client.CreateCatalog(ctx, plan.Metalake.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating catalog", plan.Name.ValueString(), err)...)
 		return
@@ -182,7 +171,7 @@ func (r *CatalogResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	tflog.Debug(ctx, "Reading catalog", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	result, err := r.client.GetCatalog(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	result, err := r.Client.GetCatalog(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -244,7 +233,7 @@ func (r *CatalogResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	if len(updates) > 0 {
-		result, err := r.client.UpdateCatalog(ctx, metalake, currentName, updates)
+		result, err := r.Client.UpdateCatalog(ctx, metalake, currentName, updates)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating catalog", currentName, err)...)
 			return
@@ -276,7 +265,7 @@ func (r *CatalogResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 	tflog.Debug(ctx, "Deleting catalog", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.DropCatalog(ctx, state.Metalake.ValueString(), state.Name.ValueString(), true)
+	_, err := r.Client.DropCatalog(ctx, state.Metalake.ValueString(), state.Name.ValueString(), true)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deleting twice is not an error.

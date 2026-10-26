@@ -36,12 +36,11 @@ The README badge is for humans; Scorecard never parses it.
 
 **Where the climb stands.** Passing (5) is reachable now. Silver (7) is short of one item,
 recorded in §5: the badge itself cannot be linked from the README before the project is
-registered. Merged statement coverage clears the 80% requirement on the `go.mod` toolchain —
-86.8% (8481/9766) of its statements are covered by the unit + acceptance profile, and the
-`Coverage` job fails a pull request below the floor in `.github/coverage-baseline.txt`. The
-merged profile itself prints **83.4%** (6387/7661) because `merge-coverage.sh` takes a block's
-statement count from the profile it reads last, the acceptance container's Go 1.27.2 one, which
-counts fewer statements per block than go 1.27.1 for the same block set (see §4.3).
+registered. Merged statement coverage clears the 80% requirement: the `Coverage` job fails a pull
+request below the per-scope floor in `.github/coverage-baseline.txt`, whose total floor is 82.5,
+and `merge-coverage.sh` keeps one line per block however the inputs were instrumented, so the
+merged total does not depend on which profile is read last. The measured total is `measured_total`
+in that file rather than a number quoted here, because it moves with every test.
 `signed_releases` and `version_tags_signed` are **Met** since the tagged release became GPG-signed
 with the public key committed (§4.3). Gold (10) is **not reachable while the project has one
 maintainer**: `bus_factor`, `contributors_unassociated` and `two_person_review` are MUST criteria
@@ -55,8 +54,8 @@ there, and no amount of code satisfies them.
    * **Project homepage URL / source repository:** `https://github.com/caberdo/terraform-provider-gravitino`
    * **Project description:** what `README.md` says — a Terraform provider that manages Apache
      Gravitino metadata (metalakes, catalogs, schemas, tables, filesets, topics, views, functions,
-     models, partitions, tags, policies, jobs, users/groups/roles, owners) as code: 23 resources and
-     54 data sources against the Gravitino REST API.
+     models, partitions, tags, policies, jobs, users/groups/roles, owners) as code: 25 resources and
+     55 data sources against the Gravitino REST API.
    * **License:** `Apache-2.0` (the SPDX identifier; `LICENSE` and GitHub agree).
 3. Answer from §4. Criteria answered `Met` need a justification and, where the table says so, a URL.
 4. Submit at **Passing** first, then re-answer §4.3/§4.4 as §5 items close.
@@ -118,7 +117,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `build` | Met | Anyone can rebuild the provider from source: `go build ./...` or `make build`, with the Go version pinned in `go.mod`. | `blob/GNUmakefile` |
 | `build_common_tools` | Met | The build uses the standard Go toolchain; no custom build language. | `blob/GNUmakefile` |
 | `build_floss_tools` | Met | `go`, `make`, GoReleaser, `terraform-plugin-docs` and the Terraform CLI are all FLOSS. | `blob/.github/goreleaser.yml` |
-| `test` | Met | An automated test suite ships with the project under the same licence: 615 `Test*` functions across 55 of the 56 packages under `internal/`, run by `make test` / `make testacc`; `README.md` and `CONTRIBUTING.md` document how to run it. | `blob/GNUmakefile`, `blob/README.md` |
+| `test` | Met | An automated test suite ships with the project under the same licence: roughly 870 `Test*` functions across 59 of the 60 packages under `internal/`, run by `make test` / `make testacc`; `README.md` and `CONTRIBUTING.md` document how to run it. | `blob/GNUmakefile`, `blob/README.md` |
 | `test_invocation` | Met | The suite is invoked the standard way for Go: `go test ./internal/...`, or `make test`. | `blob/GNUmakefile` |
 | `test_most` | Met | Most tests need no server; the acceptance suite needs the shipped Docker/Podman environment (`make testacc-docker`, `make testacc-live`). | `blob/README.md#testing` |
 | `test_continuous_integration` | Met | `test.yml` runs build, vet, dependency verification, example validation, the docs-drift gate and `go test -race` on every pull request and push to `main`, and the acceptance matrix on `main`; each job's result is visible on the pull request. | `blob/.github/workflows/test.yml` |
@@ -204,7 +203,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `updateable_reused_components` | Met | Every reused component is a versioned Go module declared in `go.mod` with hashes in `go.sum`; nothing is vendored or copied in, so an update is `go get` plus a pull request. | `blob/go.mod` |
 | `automated_integration_testing` | Met | Every pull request runs build, vet, example validation, docs-drift check and `go test -race` with a coverage artifact; every push to `main` runs the acceptance matrix against real Gravitino servers. Both publish their result as a job summary. | `blob/.github/workflows/test.yml` |
 | `regression_tests_added50` | Met | The 0.9.0 bug fixes came with tests (property drift, inconsistent results after apply, statistics conversion, OAuth refresh), and the pull request template makes a regression test a checklist item. | `blob/CHANGELOG.md`, `blob/.github/PULL_REQUEST_TEMPLATE.md` |
-| `test_statement_coverage80` | Met | The unit + acceptance profile covers 86.8% (8481/9766) of the statements the `go.mod` toolchain instruments, and 83.4% (6387/7661) when the same covered block set is weighted by the acceptance container's Go 1.27.2 counts — the merged profile prints the latter, because `merge-coverage.sh` takes a block's statement count from the last input. `scripts/coverage-gate.sh` (`make coverage-gate`) enforces a per-scope floor in `.github/coverage-baseline.txt` (total 82.5, including the previously weak data source, provider and Kerberos areas) that both weightings clear, and the `Coverage` job runs it on every pull request after the acceptance container. | `blob/.github/workflows/test.yml`, `blob/.github/coverage-baseline.txt`, `blob/scripts/coverage-gate.sh` |
+| `test_statement_coverage80` | Met | The unit + acceptance profile clears the 80% requirement, and `scripts/coverage-gate.sh` (`make coverage-gate`) enforces a per-scope floor in `.github/coverage-baseline.txt` (total 82.5, including the previously weak data source, provider and Kerberos areas) on every pull request after the acceptance container. The measured total is `measured_total` in that file. | `blob/.github/workflows/test.yml`, `blob/.github/coverage-baseline.txt`, `blob/scripts/coverage-gate.sh` |
 | `test_policy_mandated` | Met | Written policy in `CONTRIBUTING.md`: tests for major new functionality, a regression test for every bug fix, enforced by the pull request checklist. | `blob/.github/CONTRIBUTING.md` |
 | `tests_documented_added` | Met | Same files state that tests are part of the change, with the commands. | `blob/.github/PULL_REQUEST_TEMPLATE.md` |
 | `warnings_strict` | Met | Nearly all `go vet` checks enabled (only `fieldalignment` and `shadow` excluded, with the reason in the config), staticcheck and gofmt enforced. | `blob/.github/golangci.yml` |
@@ -242,7 +241,7 @@ true.
 | `build_reproducible` | Met (see §6.5) | The release build is reproducible from the tag: `go.mod`/`go.sum` pin the module graph, `-trimpath` removes checkout paths, `mod_timestamp` is the commit timestamp, `CGO_ENABLED=0` removes toolchain variance. | `blob/.github/goreleaser.yml` |
 | `test_invocation` | Met | Standard Go invocation, plus the documented `make` split for the server-backed layers. | `blob/GNUmakefile` |
 | `test_continuous_integration` | Met | `test.yml` integrates every pull request after lint, vet, example validation, docs drift and `go test -race`, and runs the acceptance matrix on `main`. | `blob/.github/workflows/test.yml` |
-| `test_statement_coverage90` | **Unmet** | 83.4% merged by the committed construction (86.8% of the `go.mod` toolchain's statements for the same block set) today; 90% needs the error and drift paths a stock server never reaches, the live-coverage gaps, and unit coverage of `internal/client` and `internal/models`. | `blob/.github/coverage-baseline.txt`, `blob/scripts/coverage-gate.sh` |
+| `test_statement_coverage90` | **Unmet** | The 80% floor is met (`measured_total` in `.github/coverage-baseline.txt`); 90% needs the error and drift paths a stock server never reaches, the live-coverage gaps, and unit coverage of `internal/client` and `internal/models`. | `blob/.github/coverage-baseline.txt`, `blob/scripts/coverage-gate.sh` |
 | `test_branch_coverage80` | N/A (see §6.3) | Go's coverage tooling measures statement coverage (`-covermode=set|count|atomic`); no mature FLOSS branch-coverage tool exists for Go, so this cannot be measured with the standard toolchain. | — |
 | `crypto_used_network` | Met for the API path (see §6.2) | Go's TLS client defaults; HTTPS when the configured endpoint is HTTPS, and no way to weaken verification. | `blob/internal/client/client.go` |
 | `crypto_tls12` | Met | Go's default minimum is TLS 1.2 and the provider configures no lower bound. | `blob/internal/client/client.go` |
@@ -256,7 +255,7 @@ true.
 
 | # | Criterion (level) | What has to happen | Who |
 |---|---|---|---|
-| 1 | `test_statement_coverage90` (Gold) | The 80% criterion is met (83.1% of the `go.mod` toolchain's statements for the covered block set; the merged profile prints 79.2% under the container's weights); the remaining gap to 90% is unit tests for the error and drift paths of the packages `make coverage` ranks lowest — `internal/datasources/schema`, `internal/datasources/secrets`, `internal/datasources/policy`, `internal/models` — measured as merged profiles, since per-package numbers understate them. Raise `floor_*` in `.github/coverage-baseline.txt` as tests land. | Code work |
+| 1 | `test_statement_coverage90` (Gold) | The 80% criterion is met (`measured_total` in `.github/coverage-baseline.txt`); the remaining gap to 90% is unit tests for the error and drift paths of the packages `make coverage` ranks lowest — `internal/datasources/schema`, `internal/datasources/secrets`, `internal/datasources/policy`, `internal/models` — measured as merged profiles, since per-package numbers understate them. Raise `floor_*` in `.github/coverage-baseline.txt` as tests land. | Code work |
 | 2 | `documentation_achievements` (Silver) | Merge the badge line from §3 after registration. | Maintainer |
 | 3 | `access_continuity` + `bus_factor` (Silver/Gold) | A second person with `maintain`/`admin` on the organization, the release secrets and a documented hand-over in `GOVERNANCE.md`. | Maintainer |
 | 4 | `contributors_unassociated` (Gold) | A significant contributor outside the `caberdo` organization. | Maintainer + community |
@@ -317,17 +316,17 @@ true.
 | Coverage baseline, floor, README badge/block and the scripts that read them | [`.github/coverage-baseline.txt`](./coverage-baseline.txt), [`scripts/coverage-gate.sh`](../scripts/coverage-gate.sh), [`scripts/coverage-readme.sh`](../scripts/coverage-readme.sh), [`scripts/coverage-summary.sh`](../scripts/coverage-summary.sh), [`scripts/merge-coverage.sh`](../scripts/merge-coverage.sh) |
 | Dependency updates | [`.github/dependabot.yml`](./dependabot.yml) |
 
-Commands behind every figure in this pack (run from the repository root; coverage figures on 2026-10-19):
+Commands behind every figure in this pack (run from the repository root; counts move with every test, so the command is the source of truth):
 
 | Figure | Command |
 |---|---|
-| 23 resources, 54 data sources | `ls docs/resources \| wc -l`, `ls docs/data-sources \| wc -l` |
-| 761 `Test*`, 70 `TestAcc*`, 26 `TestLiveAcc*` | `grep -rh '^func Test' --include='*_test.go' . \| wc -l`, same with `TestAcc`/`TestLiveAcc` |
-| 56 packages, 55 with tests | `go list ./internal/... \| wc -l`, `find internal -name '*_test.go' -exec dirname {} + \| sort -u \| wc -l` |
-| 295 Go files, 131 test files, 27,763 non-test / 39,236 test lines | `find . -name '*.go' \| wc -l`, `cat` the sets into `wc -l` |
-| 12 `Sensitive` attributes, 30 `OneOf`, 71 `RequiresReplace`, 41 `UseStateForUnknown` | `grep -r 'Sensitive: *true' internal/ \| wc -l`, same for the other patterns |
-| Merged coverage 79.2% total (6069/7661), 83.1% (8116/9766) for the same block set under the `go.mod` toolchain's counts; floors 78.5 / 76.5 / 84.0 / 69.5 | `make coverage`, `make testacc-docker`, `make coverage-merge`, `make coverage-gate`, `make coverage-readme-check` (`scripts/coverage-summary.sh`, `scripts/merge-coverage.sh`, `scripts/coverage-gate.sh`, `scripts/coverage-readme.sh`, `.github/coverage-baseline.txt`) |
-| Unit coverage per package 59.8% (4584/7661) | `make coverage`, or `go test -coverprofile=c.out ./internal/...` then `go tool cover -func=c.out \| tail -1` |
+| 25 resources, 55 data sources | `ls docs/resources \| wc -l`, `ls docs/data-sources \| wc -l` |
+| 869 `Test*`, 72 `TestAcc*`, 26 `TestLiveAcc*` | `grep -rh '^func Test' --include='*_test.go' . \| wc -l`, same with `TestAcc`/`TestLiveAcc` |
+| 60 packages, 59 with tests | `go list ./internal/... \| wc -l`, `find internal -name '*_test.go' -exec dirname {} + \| sort -u \| wc -l` |
+| 312 Go files, 139 test files, 28,312 non-test / 42,254 test lines | `find . -name '*.go' \| wc -l`, `cat` the sets into `wc -l` |
+| 12 `Sensitive` attributes, 35 `OneOf`, 84 `RequiresReplace`, 41 `UseStateForUnknown` | `grep -r 'Sensitive: *true' internal/ \| wc -l`, same for the other patterns |
+| Merged coverage (the gated number) and its floors | `make coverage`, `make testacc-docker`, `make coverage-merge`, `make coverage-gate`, `make coverage-readme-check` (`scripts/coverage-summary.sh`, `scripts/merge-coverage.sh`, `scripts/coverage-gate.sh`, `scripts/coverage-readme.sh`, `.github/coverage-baseline.txt`) |
+| Unit coverage per package | `make coverage`, or `go test -coverprofile=c.out ./internal/...` then `go tool cover -func=c.out \| tail -1` |
 | 7 direct dependencies, 155 modules | `awk` over `go.mod`, `go list -m all \| wc -l` |
 | OSV advisories per module | `go list -m all` → `POST https://api.osv.dev/v1/querybatch` |
 | Ruleset, 2FA, secret scanning, contributors, 24 tags | `gh api repos/caberdo/terraform-provider-gravitino/…` |

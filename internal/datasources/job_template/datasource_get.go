@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -20,15 +21,11 @@ var _ datasource.DataSource = &JobTemplateDataSource{}
 var _ datasource.DataSourceWithConfigure = &JobTemplateDataSource{}
 
 type JobTemplateDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewJobTemplateDataSource() datasource.DataSource {
 	return &JobTemplateDataSource{}
-}
-
-func (d *JobTemplateDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type JobTemplateDataSourceModel struct {
@@ -47,14 +44,6 @@ type JobTemplateDataSourceModel struct {
 	Archives     types.List   `tfsdk:"archives"`
 	Configs      types.Map    `tfsdk:"configs"`
 	Audit        types.Object `tfsdk:"audit"`
-}
-
-func (d *JobTemplateDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *JobTemplateDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -159,7 +148,7 @@ func (d *JobTemplateDataSource) Read(ctx context.Context, req datasource.ReadReq
 	metalake := config.Metalake.ValueString()
 	name := config.Name.ValueString()
 
-	result, err := d.client.GetJobTemplate(ctx, metalake, name)
+	result, err := d.Client.GetJobTemplate(ctx, metalake, name)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

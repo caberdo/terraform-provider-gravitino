@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -17,15 +18,11 @@ var _ datasource.DataSource = &FilesetDataSource{}
 var _ datasource.DataSourceWithConfigure = &FilesetDataSource{}
 
 type FilesetDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewGetDataSource() datasource.DataSource {
 	return &FilesetDataSource{}
-}
-
-func (d *FilesetDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type FilesetDataSourceModel struct {
@@ -38,14 +35,6 @@ type FilesetDataSourceModel struct {
 	StorageLocation types.String `tfsdk:"storage_location"`
 	Properties      types.Map    `tfsdk:"properties"`
 	Audit           types.Object `tfsdk:"audit"`
-}
-
-func (d *FilesetDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *FilesetDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -104,7 +93,7 @@ func (d *FilesetDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	result, err := d.client.GetFileset(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
+	result, err := d.Client.GetFileset(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

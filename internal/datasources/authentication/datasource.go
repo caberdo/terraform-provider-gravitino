@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -16,28 +17,16 @@ var _ datasource.DataSource = &PrincipalDataSource{}
 var _ datasource.DataSourceWithConfigure = &PrincipalDataSource{}
 
 type PrincipalDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func New() datasource.DataSource {
 	return &PrincipalDataSource{}
 }
 
-func (d *PrincipalDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
-
 type PrincipalDataSourceModel struct {
 	Name         types.String `tfsdk:"name"`
 	ServiceAdmin types.Bool   `tfsdk:"service_admin"`
-}
-
-func (d *PrincipalDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *PrincipalDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -72,7 +61,7 @@ func (d *PrincipalDataSource) Read(ctx context.Context, req datasource.ReadReque
 
 	tflog.Debug(ctx, "Reading authenticated principal")
 
-	result, err := d.client.GetAuthenticatedPrincipal(ctx)
+	result, err := d.Client.GetAuthenticatedPrincipal(ctx)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading authenticated principal", "/authn/me", err)...)
 		return

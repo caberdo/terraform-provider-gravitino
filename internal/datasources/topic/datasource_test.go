@@ -9,6 +9,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/topic"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -286,4 +287,20 @@ func TestTopicDataSource_SchemaAttributes(t *testing.T) {
 			t.Errorf("missing attribute %q", name)
 		}
 	}
+}
+
+// TestTopicDataSourceModelsMatchSchema keeps the model in lockstep with the
+// gravitino_topic schema.
+func TestTopicDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewTopicDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.TopicDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+// TestTopicsDataSourceModelsMatchSchema keeps the model in lockstep with the
+// gravitino_topics schema.
+func TestTopicsDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewTopicsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.TopicsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

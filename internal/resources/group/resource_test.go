@@ -11,6 +11,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/group"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
@@ -109,6 +110,23 @@ func newServer(t *testing.T, handler http.HandlerFunc) *res.GroupResource {
 	r := res.New()
 	r.(*res.GroupResource).SetClient(c)
 	return r.(*res.GroupResource)
+}
+
+// TestGroupResourceModelMatchesSchema keeps the Terraform model and the nested
+// audit object in lockstep with the schema.
+func TestGroupResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	res.New().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.GroupResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	audit, ok := resp.Schema.Attributes["audit"].(schema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want schema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
 }
 
 func TestGroupResource_Metadata(t *testing.T) {

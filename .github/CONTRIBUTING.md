@@ -4,7 +4,7 @@ The Terraform provider for Apache Gravitino, published as
 `registry.terraform.io/caberdo/gravitino`. Plugin protocol 6.0, built on
 `terraform-plugin-framework` v1.19.0. Go module
 `github.com/gravitino/terraform-provider-gravitino`, Apache-2.0, default branch `main`.
-The provider currently exposes 23 resources and 54 data sources.
+The provider currently exposes 25 resources and 55 data sources.
 
 | Document | Contents |
 |---|---|
@@ -76,13 +76,13 @@ The suite is deliberately layered; each layer catches what the previous one cann
 
 | Layer | Prefix | Count | Needs | Command |
 |---|---|---|---|---|
-| Unit and mock | `Test*` | 700 `Test*` functions across 122 `*_test.go` files | nothing | `make test` |
-| Acceptance through Terraform Core | `TestAcc*` | 66 | nothing beyond Go (mock server) | `make testacc` |
-| Container acceptance matrix | `TestAcc*` | same 66 | Docker | `make testacc-matrix` |
+| Unit and mock | `Test*` | about 870 `Test*` functions across 139 `*_test.go` files | nothing | `make test` |
+| Acceptance through Terraform Core | `TestAcc*` | 72 | nothing beyond Go (mock server) | `make testacc` |
+| Container acceptance matrix | `TestAcc*` | same 72 | Docker | `make testacc-matrix` |
 | Live acceptance against a real server | `TestLiveAcc*` | 26 | Podman | `make testacc-live` |
 
 - **Unit tests** run the resource and client code directly. Provider HTTP interaction is
-  served by `httptest.NewServer`; 79 files across the suite start one. There is no fuzzing.
+  served by `httptest.NewServer`; about 89 files across the suite start one. There is no fuzzing.
 - **`TestAcc*` tests** exercise the provider the way Terraform does: they call
   `resource.Test` with providers built by `providerserver.NewProtocol6WithError`, so the
   requests really travel through Terraform Core in-process and the mock Gravitino server is
@@ -138,24 +138,23 @@ To raise a floor: update the `measured_*` and `floor_*` values in
 [`.github/coverage-baseline.txt`](./coverage-baseline.txt), run `make coverage-readme` to refresh
 the README block, and run `make coverage-gate` in the same pull request that adds the tests.
 
-Measured at revision `c2fc783` on the committed tooling (`go 1.27.2`, Gravitino 1.3.0), and
-reproduced on Gravitino 1.3.1 — the server the `Coverage` job runs:
+Take the figures from the profile the command prints; the gated numbers are the `measured_*`
+and `floor_*` values in [`.github/coverage-baseline.txt`](./coverage-baseline.txt):
 
 | Command | Statement coverage |
 |---|---|
-| `make coverage` (unit only, per package — `make test`'s shape) | 64.2% (4918/7661) |
-| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | 83.4% (6387/7661) |
+| `make coverage` (unit only, per package — `make test`'s shape) | printed by the command |
+| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | printed by the command |
 
 `make test` produces the per-package number because it passes `-cover`, not `-coverpkg`. CI's test
 job runs `go test -v -race -covermode=atomic -coverprofile=coverage.out ./internal/...`, publishes
 `coverage.out` as a build artifact and in the job summary; the `Coverage` job (pull requests) and
 the acceptance job (main) merge it with the container's profile. Statement counts depend on the Go
-patch release that produced the profile (`go 1.27.1`, the `go.mod` toolchain, sums this tree to
-9766 statements against 7661 for `go 1.27.2`), so compare numbers only within one toolchain, and
+patch release that produced the profile, so compare numbers only within one toolchain, and
 note that a merged profile takes its statement counts from the profile `merge-coverage.sh` reads
-last — the acceptance container's, in CI. The table above is a local run on the recorded toolchain;
-CI's `test` job installs the `go.mod` toolchain (1.27.1), so its own summary prints a different
-denominator for the unit profile — the gated number is always the merged one.
+last — the acceptance container's, in CI. CI's `test` job installs the `go.mod` toolchain, so its
+own summary prints a different denominator for the unit profile — the gated number is always the
+merged one.
 
 ## Code conventions
 

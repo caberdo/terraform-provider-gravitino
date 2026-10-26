@@ -10,6 +10,7 @@ import (
 
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/fileset"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 
@@ -464,4 +465,16 @@ func TestFilesetsDataSource_ReadServerError(t *testing.T) {
 	if !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), `Failed listing filesets "test_schema"`) {
 		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
 	}
+}
+
+func TestFilesetDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewGetDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.FilesetDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+func TestFilesetsDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewListDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.FilesetsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

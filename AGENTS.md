@@ -26,7 +26,7 @@ fails. Resource and data source schema descriptions are the source of the refere
 
 ## Provider surface
 
-25 resources, 54 data sources, 12 schema attributes marked `Sensitive` (credentials,
+25 resources, 55 data sources, 12 schema attributes marked `Sensitive` (credentials,
 tokens and keytab material). Registration lives in `internal/provider/provider.go`;
 schemas are the source of `docs/`.
 
@@ -67,7 +67,7 @@ All resources also have corresponding data sources (list + get) and documentatio
 ```
 main.go                        # Entry point; serves protocol 6
 internal/
-├── client/                    # 35 files: HTTP client + per-resource REST methods
+├── client/                    # 34 files: HTTP client + per-resource REST methods
 │   ├── client.go              # Core client: doRequest, Get, Post, Put, Delete
 │   ├── auth/                  # 12 files: auth providers (AuthProvider interface)
 │   │   ├── provider.go        # AuthProvider + TransportProvider interfaces
@@ -80,7 +80,7 @@ internal/
 │   ├── server_version.go      # DetectServerVersion, ResolveServerVersion, AtLeast
 │   ├── version.go             # GetVersion + the fail-closed Check* version gates
 │   ├── metalake.go, catalog.go, schema.go, fileset.go, topic.go, ...
-├── models/                    # 39 files: JSON-annotated structs (requests & responses)
+├── models/                    # 41 files: JSON-annotated structs (requests & responses)
 │   ├── common.go              # ErrorResponse, Audit, NameIdentifier
 │   ├── metalake.go, catalog.go, schema.go, fileset.go, topic.go, ...
 ├── provider/
@@ -98,8 +98,9 @@ internal/
 ├── tfutil/                    # Plan/state and types helpers shared by both layers
 ```
 
-Tests live beside the code: 295 Go files, 131 of them `*_test.go`; 58 packages under
-`./internal/...`, 56 with tests.
+Tests live beside the code: roughly 312 Go files, 139 of them `*_test.go`, in 60 packages
+under `./internal/...` (59 with tests). Counts move with every test: treat them as approximate
+and rerun the `grep`/`go list` when the exact number matters.
 
 ## API compatibility target
 
@@ -220,7 +221,10 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 - **Update pattern**: Compare plan vs state and send the update requests the API supports. An attribute that cannot be updated in place MUST carry `RequiresReplace()`; never accept a change and silently drop it (that yields a perpetual diff).
 - **Computed attributes**: must be set on *every* code path, or carry `UseStateForUnknown()`. Leaving an unknown value in state fails the apply with "Provider produced inconsistent result after apply".
 - **404 handling**: `client.IsNotFoundError(err)` → `resp.State.RemoveResource(ctx)` (all resources)
-- **Configure**: Casts `req.ProviderData` to `*client.Client`. For auth, the provider builds an `AuthProvider` via `buildAuthProvider()` and passes it to `client.New(uri, authProvider)`
+- **Configure**: Embed `providerbase.Resource` (resources) or `providerbase.DataSource` (data sources) and read the client from its `Client` field. The embedded `Configure` is the only implementation: a package MUST NOT define its own `Configure` or `SetClient`; tests inject through the promoted `SetClient`. For auth, the provider builds an `AuthProvider` via `buildAuthProvider()` and passes it to `client.New(uri, authProvider)`
+- **Nested blocks**: A nested block is `types.List`/`types.Object` at the plan/state boundary, with a separate TFSDK model (`models/table_tfsdk.go`, `models/view.go`) when the schema is nested; never a plain `[]struct` in the TFSDK model.
+- **Unknown values**: One strategy, two helpers in `internal/tfutil`. Before diffing a block, `tfutil.FullyKnown(block, skip...)` decides whether it is fully known — an unknown member means the block is resolved during apply, so nothing is diffed (skip a catalog-assigned name with its `tfsdk` tag). When writing state after apply, `tfutil.StringOrPrevious`, `tfutil.MapOrPrevious` and `tfutil.ObjectOrPrevious` replace an unresolved value with the prior value or null, because a provider-produced state MUST NOT contain unknown values. Never add a per-resource unknown predicate or a `resolveUnknowns` copy.
+- **Model/schema drift**: Every resource and data source test asserts its model against its schema with `modeltest.AssertSchemaMatches(t, Model{}, resp.Schema.Attributes, resp.Schema.Blocks)`, and its nested models with `modeltest.AssertAttributesMatch`. This is the mechanical check for "computed attribute never populated in state".
 - **Auth**: Uses `internal/client/auth/` package. The `AuthProvider` interface has `Header(ctx) (string, string, error)`. The `TransportProvider` (optional) has `WrapTransport(base) http.RoundTripper` for Kerberos SPNEGO.
 - **Tests**: Use `httptest.NewServer` with custom handlers; test schema, create, update, delete, import. Mock payloads MUST be copied from the `examples:` section of the matching OpenAPI spec — hand-written payloads invented from the same Go structs only prove that the struct marshals, not that the API agrees.
 - **End-to-end tests**: for CRUD correctness add a `TF_ACC=1` test using `resource.Test` with `providerserver.NewProtocol6WithError(provider.New("test")())`; that path goes through Terraform Core and catches unknown/inconsistent values that direct framework calls miss.
@@ -235,6 +239,9 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 - [ ] Unit tests: schema, create, update, delete, import (spec-faithful payloads)
 - [ ] Resource registered in `internal/provider/provider.go`
 - [ ] Enum fields have `stringvalidator.OneOf` with all possible values from API docs
+- [ ] `modeltest.AssertSchemaMatches` covers the model and every nested model
+- [ ] The type embeds `providerbase.Resource` (or `providerbase.DataSource`); no local `Configure`/`SetClient`
+- [ ] A `TestAcc*` plans a value only known after apply for every nested block (`TestAccViewResource_PlansUnknownNestedAttributes` is the pattern)
 - [ ] Docs generated via `make generate` (`go generate ./...`) from `templates/` + `examples/`; never edit `docs/` by hand
 
 ### Commands
@@ -271,7 +278,8 @@ unless `GRAVITINO_URI` answers `/api/version`. They never start their own HTTP m
 
 Write `Test*` for mocks, `TestAcc*` when the path must go through Terraform Core
 (`providerserver.NewProtocol6WithError`), and `TestLiveAcc*` only for behaviour that a mock
-cannot prove. 700 `Test*` functions today, 66 of them `TestAcc*` and 26 `TestLiveAcc*`.
+cannot prove. Roughly 870 `Test*` functions today, about 72 of them `TestAcc*` and 26
+`TestLiveAcc*`; the counts are approximate, so take the current numbers from `grep '^func Test'`.
 
 #### Coverage
 
@@ -301,30 +309,29 @@ the version-gated tests. Raise a floor in the same pull request that adds the te
 `make coverage-readme`. The `test` job publishes the unit table in its job summary, the
 `acceptance` job the merged one.
 
-Measured on the committed tooling at revision `c2fc783` (merged profile: Gravitino 1.3.0,
-`go 1.27.2`, one line per block) and reproduced on Gravitino 1.3.1, the server the `Coverage` job
-runs. Always use a distinct profile per run; `-coverpkg=./...` instruments every package, a bare
-`-coverprofile` reports the owning package only. The unit-only row below is that local run; CI's
-`test` job installs the `go.mod` toolchain (1.27.1) and prints a different denominator in its own
-summary — the gated number is always the merged one.
+Numbers come from the profile you just produced: `.github/coverage-baseline.txt` records the
+last measurement (`measured_*`) and the enforced minimum (`floor_*`), and `make coverage-readme`
+renders README from the same file. Always use a distinct profile per run; `-coverpkg=./...`
+instruments every package, a bare `-coverprofile` reports the owning package only. CI's `test` job
+installs the `go.mod` toolchain and prints a different denominator in its own summary — the gated
+number is always the merged one.
 
 | Command | Coverage |
 |---|---|
-| `make coverage` (unit only, per package) | 64.2% (4918/7661) |
-| `make coverage-merge` (unit + acceptance, the profile `make coverage-gate` enforces) | 83.4% (6387/7661) |
+| `make coverage` (unit only, per package) | printed by the command (roughly two thirds of `./internal/...` today) |
+| `make coverage-merge` (unit + acceptance, the profile `make coverage-gate` enforces) | printed by the command; the gated total is `measured_total` in `.github/coverage-baseline.txt` |
 
-Scopes the gate enforces, with the floors currently committed: `internal/client` 79.7% (floor
-79.0), `internal/models` 86.3 (85.5), `internal/provider` 94.6 (94.0), `internal/client/auth` 76.7
-(76.0), `internal/datasources/schema` 94.6 (94.0), `internal/datasources/policy` 86.1 (85.5),
-`internal/datasources/role` 85.6 (85.0), `internal/datasources/fileset` 86.5 (86.0),
-`internal/datasources/partition` 92.2 (91.5), `internal/resources/partition` 92.4 (91.5), `total`
-83.4 (82.5). `internal/datasources/secrets` is deliberately not a scope: it wraps the Gravitino 1.4
-secrets API, which the supported 1.3.0/1.3.1 servers cannot serve.
+Scopes the gate enforces, with the floors currently committed: `internal/client` 79.0,
+`internal/models` 85.5, `internal/provider` 94.0, `internal/client/auth` 76.0,
+`internal/datasources/schema` 94.0, `internal/datasources/policy` 85.5,
+`internal/datasources/role` 85.0, `internal/datasources/fileset` 86.0,
+`internal/datasources/partition` 91.5, `internal/resources/partition` 91.5, `total` 82.5.
+`internal/datasources/secrets` is deliberately not a scope: it wraps the Gravitino 1.4 secrets API,
+which the supported 1.3.0/1.3.1 servers cannot serve.
 
 Statement counts come straight from the cover profile, so they depend on the Go patch release that
-produced it: for this tree `go 1.27.1` — the `go.mod` toolchain, which CI installs — sums
-`./internal/...` to 9766 statements and `go 1.27.2` to 7661 (identical block set, different
-statement counts per block). Compare numbers only within one toolchain, and note that a merged
+produced it: the same block set sums differently under the `go.mod` toolchain (which CI installs)
+and a newer patch release. Compare numbers only within one toolchain, and note that a merged
 profile takes its statement counts from the profile `merge-coverage.sh` reads last (the acceptance
 container's, in CI).
 

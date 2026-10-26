@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -18,15 +19,11 @@ var _ datasource.DataSource = &RolesDataSource{}
 var _ datasource.DataSourceWithConfigure = &RolesDataSource{}
 
 type RolesDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func New() datasource.DataSource {
 	return &RolesDataSource{}
-}
-
-func (d *RolesDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type RolesDataSourceModel struct {
@@ -34,14 +31,6 @@ type RolesDataSourceModel struct {
 	ResourceType types.String `tfsdk:"resource_type"`
 	Resource     types.String `tfsdk:"resource"`
 	Names        types.List   `tfsdk:"names"`
-}
-
-func (d *RolesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *RolesDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -88,7 +77,7 @@ func (d *RolesDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	metalake := config.Metalake.ValueString()
 	resource := config.Resource.ValueString()
 
-	result, err := d.client.ListRoles(ctx, metalake, config.ResourceType.ValueString(), resource)
+	result, err := d.Client.ListRoles(ctx, metalake, config.ResourceType.ValueString(), resource)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("listing roles for", resource, err)...)
 		return

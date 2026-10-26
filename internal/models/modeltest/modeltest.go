@@ -38,6 +38,16 @@ func Keys[V any](values map[string]V) []string {
 	return names
 }
 
+// AssertSchemaMatches fails the test when the model's tfsdk tags differ from
+// the attribute and block names of a resource or data source schema. The
+// framework keeps the resource and data source schema types separate, so the
+// caller passes both name maps and this helper joins them.
+func AssertSchemaMatches[AV, BV any](t *testing.T, model any, attributes map[string]AV, blocks map[string]BV) {
+	t.Helper()
+	names := append(Keys(attributes), Keys(blocks)...)
+	AssertAttributesMatch(t, model, names)
+}
+
 // AssertAttributesMatch fails the test when the model's tfsdk tags differ from
 // want.
 func AssertAttributesMatch(t *testing.T, model any, want []string) {

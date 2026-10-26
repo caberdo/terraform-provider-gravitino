@@ -7,14 +7,17 @@ import (
 	"net/http/httptest"
 	"path"
 	"reflect"
+	"slices"
 	"strconv"
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/model_version"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -454,5 +457,29 @@ func TestModelVersionsDataSource_ReadEmpty(t *testing.T) {
 	resp.Diagnostics.Append(resp.State.Get(ctx, &got)...)
 	if got.Versions.IsNull() || got.Versions.IsUnknown() || len(got.Versions.Elements()) != 0 {
 		t.Fatalf("expected a known empty list, got %v", got.Versions)
+	}
+}
+
+// TestModelVersionDataSourceModelsMatchSchema keeps the model in lockstep with
+// the gravitino_model_version schema.
+func TestModelVersionDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewModelVersionDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.ModelVersionDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+// TestModelVersionsDataSourceModelsMatchSchema keeps the model and the entry
+// attribute types in lockstep with the gravitino_model_versions schema.
+func TestModelVersionsDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewModelVersionsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.ModelVersionsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	versions, ok := resp.Schema.Attributes["versions"].(dsschema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("versions is %T, want a ListNestedAttribute", resp.Schema.Attributes["versions"])
+	}
+	if got, want := modeltest.Keys(versions.NestedObject.Attributes), modeltest.Keys(ds.ModelVersionItemAttrTypes); !slices.Equal(got, want) {
+		t.Errorf("versions entry attributes = %v, ModelVersionItemAttrTypes = %v", got, want)
 	}
 }

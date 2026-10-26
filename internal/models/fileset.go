@@ -74,18 +74,3 @@ func NewRemoveFilesetPropertyRequest(property string) interface{} {
 		Property string `json:"property"`
 	}{Type: "removeProperty", Property: property}
 }
-
-// FilesetFile mirrors the `FileInfo` component returned by the
-// `listFilesetFiles` operation.
-type FilesetFile struct {
-	Name         string `json:"name"`
-	IsDir        bool   `json:"isDir"`
-	Size         int64  `json:"size"`
-	LastModified int64  `json:"lastModified"`
-	Path         string `json:"path"`
-}
-
-type FilesetFileListResponse struct {
-	Code  int32         `json:"code"`
-	Files []FilesetFile `json:"files"`
-}

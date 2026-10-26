@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -24,9 +25,10 @@ import (
 
 var _ resource.Resource = (*MetalakeResource)(nil)
 var _ resource.ResourceWithImportState = (*MetalakeResource)(nil)
+var _ resource.ResourceWithConfigure = (*MetalakeResource)(nil)
 
 type MetalakeResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 type MetalakeResourceModel struct {
@@ -57,10 +59,6 @@ func filterReservedProperties(props map[string]string) map[string]string {
 
 func NewMetalakeResource() resource.Resource {
 	return &MetalakeResource{}
-}
-
-func (r *MetalakeResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 func (r *MetalakeResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -111,14 +109,6 @@ func (r *MetalakeResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 	}
 }
 
-func (r *MetalakeResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
-
 func (r *MetalakeResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan MetalakeResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -140,7 +130,7 @@ func (r *MetalakeResource) Create(ctx context.Context, req resource.CreateReques
 		Properties: props,
 	}
 
-	result, err := r.client.CreateMetalake(ctx, createReq)
+	result, err := r.Client.CreateMetalake(ctx, createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating metalake", plan.Name.ValueString(), err)...)
 		return
@@ -167,7 +157,7 @@ func (r *MetalakeResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	tflog.Debug(ctx, "Reading metalake", map[string]interface{}{"name": state.Name.ValueString()})
 
-	result, err := r.client.GetMetalake(ctx, state.Name.ValueString())
+	result, err := r.Client.GetMetalake(ctx, state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -227,7 +217,7 @@ func (r *MetalakeResource) Update(ctx context.Context, req resource.UpdateReques
 	// Never send an empty update list: it is not a valid payload and would
 	// replace the planned values with an empty response.
 	if len(updates) > 0 {
-		result, err := r.client.UpdateMetalake(ctx, name, updates)
+		result, err := r.Client.UpdateMetalake(ctx, name, updates)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating metalake", name, err)...)
 			return
@@ -260,7 +250,7 @@ func (r *MetalakeResource) Delete(ctx context.Context, req resource.DeleteReques
 
 	tflog.Debug(ctx, "Deleting metalake", map[string]interface{}{"name": state.Name.ValueString()})
 
-	_, err := r.client.DropMetalake(ctx, state.Name.ValueString(), true)
+	_, err := r.Client.DropMetalake(ctx, state.Name.ValueString(), true)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deleting twice is not an error.

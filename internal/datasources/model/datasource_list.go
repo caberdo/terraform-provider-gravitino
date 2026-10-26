@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -27,7 +28,7 @@ var ModelItemAttrTypes = map[string]attr.Type{
 }
 
 type ModelsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 type ModelsDataSourceModel struct {
@@ -39,10 +40,6 @@ type ModelsDataSourceModel struct {
 
 func NewModelsDataSource() datasource.DataSource {
 	return &ModelsDataSource{}
-}
-
-func (d *ModelsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 func (d *ModelsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -99,14 +96,6 @@ func (d *ModelsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 	}
 }
 
-func (d *ModelsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
-
 func (d *ModelsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config ModelsDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -114,7 +103,7 @@ func (d *ModelsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	mods, err := d.client.ListModelsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
+	mods, err := d.Client.ListModelsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("listing models", fmt.Sprintf("%s.%s.%s", config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString()), err)...)
 		return

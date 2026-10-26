@@ -1,5 +1,12 @@
 ## Unreleased
 
+DEPRECATIONS:
+- **`gravitino_roles_list` is deprecated in favour of `gravitino_metalake_roles` (issue #80).**
+  `gravitino_metalake_roles` lists every role in one metalake with the same `metalake` and `names`
+  arguments, and follows the `gravitino_<scope>_<plural>` shape the rest of the surface uses.
+  `gravitino_roles_list` keeps its current behaviour and will be removed in the next major release;
+  migrate by renaming the data source type in the configuration.
+
 FEATURES:
 - **Statistics are writable through Terraform (issue #70, epic #83).**
   `gravitino_statistics` and `gravitino_partition_statistics` manage the custom statistics of a

@@ -16,7 +16,7 @@ as code. This provider speaks the Gravitino REST API directly, so metalakes, cat
 tables, views, functions, models, tags, policies, roles, users, groups and jobs live in the same
 Terraform state as the rest of your infrastructure.
 
-**25 resources and 54 data sources.**
+**25 resources and 55 data sources.**
 
 | | |
 |---|---|

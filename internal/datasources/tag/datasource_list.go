@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -18,15 +19,11 @@ var _ datasource.DataSource = &TagsDataSource{}
 var _ datasource.DataSourceWithConfigure = &TagsDataSource{}
 
 type TagsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewListDataSource() datasource.DataSource {
 	return &TagsDataSource{}
-}
-
-func (d *TagsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type TagsDataSourceModel struct {
@@ -51,14 +48,6 @@ var TagItemAttrTypes = map[string]attr.Type{
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (d *TagsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
 
 func (d *TagsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = "gravitino_tags"
@@ -111,7 +100,7 @@ func (d *TagsDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	result, err := d.client.ListTagsDetailed(ctx, config.Metalake.ValueString())
+	result, err := d.Client.ListTagsDetailed(ctx, config.Metalake.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

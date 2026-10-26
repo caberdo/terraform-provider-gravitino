@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -20,7 +21,7 @@ var _ datasource.DataSourceWithConfigure = &TopicsDataSource{}
 var dslAuditAttrTypes = models.AuditAttrTypes
 
 type TopicsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 type TopicsDataSourceModel struct {
@@ -84,14 +85,6 @@ func (d *TopicsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 	}
 }
 
-func (ds *TopicsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		ds.client = c
-	}
-}
-
 func (ds *TopicsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config TopicsDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -99,7 +92,7 @@ func (ds *TopicsDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	topics, err := ds.client.ListTopicsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
+	topics, err := ds.Client.ListTopicsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

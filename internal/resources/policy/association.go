@@ -8,6 +8,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
@@ -33,15 +34,11 @@ var _ resource.ResourceWithConfigure = &PolicyAssociationResource{}
 // policiesToRemove), so destroy sends one POST that removes every policy
 // recorded in state.
 type PolicyAssociationResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func NewAssociation() resource.Resource {
 	return &PolicyAssociationResource{}
-}
-
-func (r *PolicyAssociationResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type PolicyAssociationResourceModel struct {
@@ -50,14 +47,6 @@ type PolicyAssociationResourceModel struct {
 	ObjectType     types.String `tfsdk:"object_type"`
 	ObjectFullName types.String `tfsdk:"object_full_name"`
 	Policies       types.Set    `tfsdk:"policies"`
-}
-
-func (r *PolicyAssociationResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
 }
 
 func (r *PolicyAssociationResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -140,7 +129,7 @@ func (r *PolicyAssociationResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	if len(names) > 0 {
-		if _, err := r.client.AssociatePolicies(ctx, metalake, objectType, objectFullName, &models.PolicyAssociationRequest{PoliciesToAdd: names}); err != nil {
+		if _, err := r.Client.AssociatePolicies(ctx, metalake, objectType, objectFullName, &models.PolicyAssociationRequest{PoliciesToAdd: names}); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("associating policies with", objectFullName, err)...)
 			return
 		}
@@ -177,7 +166,7 @@ func (r *PolicyAssociationResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
-	result, err := r.client.ListPoliciesForObject(ctx, metalake, objectType, objectFullName)
+	result, err := r.Client.ListPoliciesForObject(ctx, metalake, objectType, objectFullName)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -240,7 +229,7 @@ func (r *PolicyAssociationResource) Update(ctx context.Context, req resource.Upd
 
 	if len(toAdd) > 0 || len(toRemove) > 0 {
 		assocReq := &models.PolicyAssociationRequest{PoliciesToAdd: toAdd, PoliciesToRemove: toRemove}
-		if _, err := r.client.AssociatePolicies(ctx, metalake, objectType, objectFullName, assocReq); err != nil {
+		if _, err := r.Client.AssociatePolicies(ctx, metalake, objectType, objectFullName, assocReq); err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating policies of", objectFullName, err)...)
 			return
 		}
@@ -281,7 +270,7 @@ func (r *PolicyAssociationResource) Delete(ctx context.Context, req resource.Del
 		return
 	}
 
-	if _, err := r.client.AssociatePolicies(ctx, metalake, objectType, objectFullName, &models.PolicyAssociationRequest{PoliciesToRemove: names}); err != nil {
+	if _, err := r.Client.AssociatePolicies(ctx, metalake, objectType, objectFullName, &models.PolicyAssociationRequest{PoliciesToRemove: names}); err != nil {
 		if client.IsNotFoundError(err) {
 			// The object (or one of its policies) is already gone, so the
 			// association is gone with it.
@@ -325,7 +314,7 @@ func (r *PolicyAssociationResource) ImportState(ctx context.Context, req resourc
 // object types before any request is sent, so a 1.3.0 server answers with an
 // explicit "requires Gravitino >= 1.3.1" diagnostic instead of an opaque 400.
 func (r *PolicyAssociationResource) checkObjectTypeSupported(ctx context.Context, objectType string, diags *diag.Diagnostics) bool {
-	if err := r.client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
+	if err := r.Client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
 		diags.AddAttributeError(path.Root("object_type"), "Unsupported object_type value", err.Error())
 		return false
 	}
@@ -347,7 +336,7 @@ func (r *PolicyAssociationResource) checkPoliciesSupportObjectType(ctx context.C
 	var mismatches []string
 
 	for _, name := range names {
-		result, err := r.client.GetPolicy(ctx, metalake, name)
+		result, err := r.Client.GetPolicy(ctx, metalake, name)
 		if err != nil {
 			if client.IsNotFoundError(err) {
 				diags.AddAttributeError(

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -18,7 +19,7 @@ var _ datasource.DataSourceWithConfigure = &ModelDataSource{}
 var AuditAttrTypes = models.AuditAttrTypes
 
 type ModelDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 type ModelDataSourceModel struct {
@@ -34,10 +35,6 @@ type ModelDataSourceModel struct {
 
 func NewModelDataSource() datasource.DataSource {
 	return &ModelDataSource{}
-}
-
-func (d *ModelDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 func (d *ModelDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -86,14 +83,6 @@ func (d *ModelDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 	}
 }
 
-func (d *ModelDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
-
 func (d *ModelDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config ModelDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -101,7 +90,7 @@ func (d *ModelDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	modelResp, err := d.client.GetModel(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
+	modelResp, err := d.Client.GetModel(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString(), config.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading model", config.Name.ValueString(), err)...)
 		return

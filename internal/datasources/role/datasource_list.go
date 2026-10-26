@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -15,28 +16,16 @@ var _ datasource.DataSource = &RolesListDataSource{}
 var _ datasource.DataSourceWithConfigure = &RolesListDataSource{}
 
 type RolesListDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewRolesListDataSource() datasource.DataSource {
 	return &RolesListDataSource{}
 }
 
-func (d *RolesListDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
-
 type RolesListDataSourceModel struct {
 	Metalake types.String `tfsdk:"metalake"`
 	Names    types.List   `tfsdk:"names"`
-}
-
-func (d *RolesListDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *RolesListDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -45,6 +34,8 @@ func (d *RolesListDataSource) Metadata(_ context.Context, _ datasource.MetadataR
 
 func (d *RolesListDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		DeprecationMessage: "Use gravitino_metalake_roles instead. gravitino_roles_list will be removed in the next major release.",
+		Description:        "Deprecated: use gravitino_metalake_roles instead. This data source will be removed in the next major release.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Required:    true,
@@ -66,7 +57,7 @@ func (d *RolesListDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	result, err := d.client.ListAllRoles(ctx, config.Metalake.ValueString())
+	result, err := d.Client.ListAllRoles(ctx, config.Metalake.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("listing roles in", config.Metalake.ValueString(), err)...)
 		return

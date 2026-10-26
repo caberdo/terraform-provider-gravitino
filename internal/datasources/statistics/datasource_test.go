@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/statistics"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -445,4 +447,46 @@ func TestPartitionStatisticsDataSource_Read(t *testing.T) {
 	}
 	assertStringAttribute(t, statisticAttributes(t, items[0]), "value", "1000")
 	assertStringAttribute(t, statisticAttributes(t, items[1]), "value", "500MB")
+}
+
+// TestStatisticsDataSourceModelsMatchSchema keeps the model and the statistic
+// entry attribute types in lockstep with the gravitino_statistics schema.
+func TestStatisticsDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.New().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.StatisticsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	statistics, ok := resp.Schema.Attributes["statistics"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("statistics is %T, want a ListNestedAttribute", resp.Schema.Attributes["statistics"])
+	}
+	if got, want := modeltest.Keys(statistics.NestedObject.Attributes), modeltest.Keys(ds.StatisticItemAttrTypes); !slices.Equal(got, want) {
+		t.Errorf("statistics entry attributes = %v, StatisticItemAttrTypes = %v", got, want)
+	}
+}
+
+// TestPartitionStatisticsDataSourceModelsMatchSchema keeps the model and both
+// levels of entry attribute types in lockstep with the
+// gravitino_partition_statistics schema.
+func TestPartitionStatisticsDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewPartition().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.PartitionStatisticsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	partitionStatistics, ok := resp.Schema.Attributes["partition_statistics"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("partition_statistics is %T, want a ListNestedAttribute", resp.Schema.Attributes["partition_statistics"])
+	}
+	names := modeltest.Keys(partitionStatistics.NestedObject.Attributes)
+	if want := modeltest.Keys(ds.PartitionStatisticItemAttrTypes); !slices.Equal(names, want) {
+		t.Errorf("partition_statistics entry attributes = %v, PartitionStatisticItemAttrTypes = %v", names, want)
+	}
+
+	statistics, ok := partitionStatistics.NestedObject.Attributes["statistics"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("partition_statistics statistics is %T, want a ListNestedAttribute", partitionStatistics.NestedObject.Attributes["statistics"])
+	}
+	if got, want := modeltest.Keys(statistics.NestedObject.Attributes), modeltest.Keys(ds.StatisticItemAttrTypes); !slices.Equal(got, want) {
+		t.Errorf("partition statistic entry attributes = %v, StatisticItemAttrTypes = %v", got, want)
+	}
 }

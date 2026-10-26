@@ -8,6 +8,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -26,15 +27,11 @@ var _ resource.ResourceWithImportState = &OwnerResource{}
 var _ resource.ResourceWithConfigure = &OwnerResource{}
 
 type OwnerResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func NewOwnerResource() resource.Resource {
 	return &OwnerResource{}
-}
-
-func (r *OwnerResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type OwnerResourceModel struct {
@@ -44,14 +41,6 @@ type OwnerResourceModel struct {
 	ObjectFullName types.String `tfsdk:"object_full_name"`
 	OwnerName      types.String `tfsdk:"owner_name"`
 	OwnerType      types.String `tfsdk:"owner_type"`
-}
-
-func (r *OwnerResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
 }
 
 func (r *OwnerResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -125,7 +114,7 @@ func (r *OwnerResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Type: plan.OwnerType.ValueString(),
 	}
 
-	_, err := r.client.SetOwner(ctx,
+	_, err := r.Client.SetOwner(ctx,
 		plan.Metalake.ValueString(),
 		plan.ObjectType.ValueString(),
 		plan.ObjectFullName.ValueString(),
@@ -161,7 +150,7 @@ func (r *OwnerResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		"object_full_name": state.ObjectFullName.ValueString(),
 	})
 
-	result, err := r.client.GetOwner(ctx,
+	result, err := r.Client.GetOwner(ctx,
 		state.Metalake.ValueString(),
 		state.ObjectType.ValueString(),
 		state.ObjectFullName.ValueString(),
@@ -203,7 +192,7 @@ func (r *OwnerResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		Type: plan.OwnerType.ValueString(),
 	}
 
-	_, err := r.client.SetOwner(ctx,
+	_, err := r.Client.SetOwner(ctx,
 		plan.Metalake.ValueString(),
 		plan.ObjectType.ValueString(),
 		plan.ObjectFullName.ValueString(),

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
@@ -24,15 +25,11 @@ var _ resource.ResourceWithImportState = &GroupResource{}
 var _ resource.ResourceWithConfigure = &GroupResource{}
 
 type GroupResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &GroupResource{}
-}
-
-func (r *GroupResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type GroupResourceModel struct {
@@ -44,14 +41,6 @@ type GroupResourceModel struct {
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (r *GroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *GroupResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_group"
@@ -110,7 +99,7 @@ func (r *GroupResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	tflog.Debug(ctx, "Creating group", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "name": plan.Name.ValueString()})
 
-	result, err := r.client.AddGroup(ctx, plan.Metalake.ValueString(), plan.Name.ValueString())
+	result, err := r.Client.AddGroup(ctx, plan.Metalake.ValueString(), plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating group", plan.Name.ValueString(), err)...)
 		return
@@ -120,7 +109,7 @@ func (r *GroupResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	plannedRoles := listFromTF(plan.Roles)
 	if len(plannedRoles) > 0 {
-		grantResult, err := r.client.GrantRolesToGroup(ctx, metalake, plan.Name.ValueString(), plannedRoles)
+		grantResult, err := r.Client.GrantRolesToGroup(ctx, metalake, plan.Name.ValueString(), plannedRoles)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("granting roles to group", plan.Name.ValueString(), err)...)
 			return
@@ -148,7 +137,7 @@ func (r *GroupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 	tflog.Debug(ctx, "Reading group", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	result, err := r.client.GetGroup(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	result, err := r.Client.GetGroup(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -192,7 +181,7 @@ func (r *GroupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	var updatedGroup *models.Group
 
 	if len(rolesToGrant) > 0 {
-		grantResult, err := r.client.GrantRolesToGroup(ctx, metalake, groupName, rolesToGrant)
+		grantResult, err := r.Client.GrantRolesToGroup(ctx, metalake, groupName, rolesToGrant)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("granting roles to group", groupName, err)...)
 			return
@@ -201,7 +190,7 @@ func (r *GroupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 
 	if len(rolesToRevoke) > 0 {
-		revokeResult, err := r.client.RevokeRolesFromGroup(ctx, metalake, groupName, rolesToRevoke)
+		revokeResult, err := r.Client.RevokeRolesFromGroup(ctx, metalake, groupName, rolesToRevoke)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("revoking roles from group", groupName, err)...)
 			return
@@ -235,7 +224,7 @@ func (r *GroupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 	tflog.Debug(ctx, "Deleting group", map[string]interface{}{"metalake": state.Metalake.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.RemoveGroup(ctx, state.Metalake.ValueString(), state.Name.ValueString())
+	_, err := r.Client.RemoveGroup(ctx, state.Metalake.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deletion is idempotent.

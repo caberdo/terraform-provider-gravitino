@@ -7,12 +7,6 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
-func (c *Client) ListCatalogs(ctx context.Context, metalake string) (*models.IdentifiersResponse, error) {
-	var result models.IdentifiersResponse
-	err := c.Get(ctx, metalakePath(metalake)+"/catalogs", &result)
-	return &result, err
-}
-
 func (c *Client) ListCatalogsDetails(ctx context.Context, metalake string) (*models.CatalogInfoListResponse, error) {
 	var result models.CatalogInfoListResponse
 	err := c.Get(ctx, metalakePath(metalake)+"/catalogs?details=true", &result)
@@ -36,17 +30,6 @@ func (c *Client) UpdateCatalog(ctx context.Context, metalake, name string, updat
 	path := catalogPath(metalake, name)
 	err := c.Put(ctx, path, &models.CatalogUpdateRequest{Updates: updates}, &result)
 	return &result, err
-}
-
-// SetCatalogInUse marks a catalog as in-use (or not), via
-// PATCH /metalakes/{metalake}/catalogs/{catalog} with a `CatalogSetRequest` body.
-func (c *Client) SetCatalogInUse(ctx context.Context, metalake, name string, inUse bool) (*models.BaseResponse, error) {
-	path := catalogPath(metalake, name)
-	var result models.BaseResponse
-	if err := c.Patch(ctx, path, &models.CatalogSetRequest{InUse: inUse}, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
 }
 
 func (c *Client) DropCatalog(ctx context.Context, metalake, name string, force bool) (*models.DropResponse, error) {

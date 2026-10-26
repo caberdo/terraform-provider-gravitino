@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -17,15 +18,11 @@ var _ datasource.DataSource = &SecretsDataSource{}
 var _ datasource.DataSourceWithConfigure = &SecretsDataSource{}
 
 type SecretsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func New() datasource.DataSource {
 	return &SecretsDataSource{}
-}
-
-func (d *SecretsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type SecretsDataSourceModel struct {
@@ -33,14 +30,6 @@ type SecretsDataSourceModel struct {
 	ResourceType types.String `tfsdk:"resource_type"`
 	Resource     types.String `tfsdk:"resource"`
 	Secrets      types.Map    `tfsdk:"secrets"`
-}
-
-func (d *SecretsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *SecretsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -84,7 +73,7 @@ func (d *SecretsDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	result, err := d.client.GetSecrets(ctx,
+	result, err := d.Client.GetSecrets(ctx,
 		config.Metalake.ValueString(),
 		config.ResourceType.ValueString(),
 		config.Resource.ValueString(),

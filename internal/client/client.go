@@ -181,7 +181,3 @@ func (c *Client) Delete(ctx context.Context, path string, result interface{}) er
 func (c *Client) Patch(ctx context.Context, path string, body, result interface{}) error {
 	return c.do(ctx, http.MethodPatch, path, body, result)
 }
-
-func (c *Client) BaseURL() string {
-	return c.baseURL
-}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -12,9 +13,10 @@ import (
 )
 
 var _ datasource.DataSource = (*MetalakesDataSource)(nil)
+var _ datasource.DataSourceWithConfigure = (*MetalakesDataSource)(nil)
 
 type MetalakesDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 type MetalakesDataSourceModel struct {
@@ -63,18 +65,10 @@ func (d *MetalakesDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 	}
 }
 
-func (d *MetalakesDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
-
 func (d *MetalakesDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var state MetalakesDataSourceModel
 
-	result, err := d.client.ListMetalakes(ctx)
+	result, err := d.Client.ListMetalakes(ctx)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("listing metalakes", "metalakes", err)...)
 		return

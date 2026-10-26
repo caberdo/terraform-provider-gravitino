@@ -13,6 +13,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/policy"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
@@ -112,6 +113,30 @@ func baseModel() res.PolicyResourceModel {
 		CustomRules:          types.MapValueMust(types.StringType, map[string]attr.Value{"rule1": types.StringValue("123")}),
 		Audit:                types.ObjectNull(res.AuditAttrTypes),
 	}
+}
+
+// TestPolicyResourceModelsMatchSchema keeps both Terraform models and the
+// nested audit object in lockstep with their schemas.
+func TestPolicyResourceModelsMatchSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	res.New().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.PolicyResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	audit, ok := resp.Schema.Attributes["audit"].(schema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want schema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
+
+	association := &resource.SchemaResponse{}
+	res.NewAssociation().Schema(context.Background(), resource.SchemaRequest{}, association)
+	if association.Diagnostics.HasError() {
+		t.Fatalf("unexpected association schema diagnostics: %v", association.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.PolicyAssociationResourceModel{}, association.Schema.Attributes, association.Schema.Blocks)
 }
 
 func TestPolicyResource_Metadata(t *testing.T) {

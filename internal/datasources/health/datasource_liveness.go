@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -14,28 +15,16 @@ var _ datasource.DataSource = (*LivenessDataSource)(nil)
 var _ datasource.DataSourceWithConfigure = &LivenessDataSource{}
 
 type LivenessDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewLivenessDataSource() datasource.DataSource {
 	return &LivenessDataSource{}
 }
 
-func (d *LivenessDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
-
 type LivenessDataSourceModel struct {
 	Status types.String       `tfsdk:"status"`
 	Checks []HealthCheckModel `tfsdk:"checks"`
-}
-
-func (d *LivenessDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *LivenessDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -82,7 +71,7 @@ func (d *LivenessDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.GetLiveness(ctx)
+	result, err := d.Client.GetLiveness(ctx)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading liveness", "liveness", err)...)
 		return

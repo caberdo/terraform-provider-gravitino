@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -35,29 +36,17 @@ const IdpGroupResourceDescription = "Manages a built-in IDP group for local auth
 	"otherwise the endpoint answers HTTP 404."
 
 type IdpGroupResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &IdpGroupResource{}
 }
 
-func (r *IdpGroupResource) SetClient(c *client.Client) {
-	r.client = c
-}
-
 type IdpGroupResourceModel struct {
 	ID    types.String `tfsdk:"id"`
 	Name  types.String `tfsdk:"name"`
 	Users types.Set    `tfsdk:"users"`
-}
-
-func (r *IdpGroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
 }
 
 func (r *IdpGroupResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -106,7 +95,7 @@ func (r *IdpGroupResource) Create(ctx context.Context, req resource.CreateReques
 
 	tflog.Debug(ctx, "Creating IDP group", map[string]interface{}{"name": plan.Name.ValueString()})
 
-	result, err := r.client.AddIdpGroup(ctx, &models.IdpAddGroupRequest{Group: plan.Name.ValueString()})
+	result, err := r.Client.AddIdpGroup(ctx, &models.IdpAddGroupRequest{Group: plan.Name.ValueString()})
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating IDP group", plan.Name.ValueString(), err)...)
 		return
@@ -118,7 +107,7 @@ func (r *IdpGroupResource) Create(ctx context.Context, req resource.CreateReques
 	// membership endpoint, which is the only one that accepts them.
 	users := listToSlice(plan.Users)
 	if len(users) > 0 {
-		membership, err := r.client.ChangeIdpGroupMembership(ctx, plan.Name.ValueString(), &models.IdpGroupMembershipChangeRequest{UsersToAdd: users})
+		membership, err := r.Client.ChangeIdpGroupMembership(ctx, plan.Name.ValueString(), &models.IdpGroupMembershipChangeRequest{UsersToAdd: users})
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("adding IDP group members", plan.Name.ValueString(), err)...)
 			return
@@ -144,7 +133,7 @@ func (r *IdpGroupResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	tflog.Debug(ctx, "Reading IDP group", map[string]interface{}{"name": state.Name.ValueString()})
 
-	result, err := r.client.GetIdpGroup(ctx, state.Name.ValueString())
+	result, err := r.Client.GetIdpGroup(ctx, state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -195,7 +184,7 @@ func (r *IdpGroupResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	if len(toAdd) > 0 || len(toRemove) > 0 {
-		result, err := r.client.ChangeIdpGroupMembership(ctx, state.Name.ValueString(), &models.IdpGroupMembershipChangeRequest{
+		result, err := r.Client.ChangeIdpGroupMembership(ctx, state.Name.ValueString(), &models.IdpGroupMembershipChangeRequest{
 			UsersToAdd:    toAdd,
 			UsersToRemove: toRemove,
 		})
@@ -226,7 +215,7 @@ func (r *IdpGroupResource) Delete(ctx context.Context, req resource.DeleteReques
 
 	// The group owns its members, so it is removed with force=true: deleting a
 	// non-empty group without force is rejected with a 405.
-	_, err := r.client.RemoveIdpGroup(ctx, state.Name.ValueString(), true)
+	_, err := r.Client.RemoveIdpGroup(ctx, state.Name.ValueString(), true)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deleting twice is not an error.

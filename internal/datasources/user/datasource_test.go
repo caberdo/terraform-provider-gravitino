@@ -10,6 +10,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/user"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourcetest"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -270,4 +271,20 @@ func TestUsersDataSource_ReadServerError(t *testing.T) {
 	if !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), `Failed listing users "my_test_metalake"`) {
 		t.Fatalf("unexpected summary: %s", resp.Diagnostics.Errors()[0].Summary())
 	}
+}
+
+// TestUserDataSourceModelsMatchSchema keeps the model in lockstep with the
+// gravitino_user schema.
+func TestUserDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewGetDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.UserDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+// TestUsersDataSourceModelsMatchSchema keeps the model in lockstep with the
+// gravitino_users schema.
+func TestUsersDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewListDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.UsersDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

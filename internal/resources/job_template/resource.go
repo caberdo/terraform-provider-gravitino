@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -31,15 +32,11 @@ var _ resource.ResourceWithValidateConfig = &JobTemplateResource{}
 var jobTypes = []string{"shell", "spark"}
 
 type JobTemplateResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func NewJobTemplateResource() resource.Resource {
 	return &JobTemplateResource{}
-}
-
-func (r *JobTemplateResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type JobTemplateResourceModel struct {
@@ -62,14 +59,6 @@ type JobTemplateResourceModel struct {
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (r *JobTemplateResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *JobTemplateResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_job_template"
@@ -241,14 +230,14 @@ func (r *JobTemplateResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	if _, err := r.client.RegisterJobTemplate(ctx, metalake, registerReq); err != nil {
+	if _, err := r.Client.RegisterJobTemplate(ctx, metalake, registerReq); err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating job template", name, err)...)
 		return
 	}
 
 	// Registering answers with a bare BaseResponse, so read the template back to
 	// learn the server-assigned audit information.
-	result, err := r.client.GetJobTemplate(ctx, metalake, name)
+	result, err := r.Client.GetJobTemplate(ctx, metalake, name)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("reading job template after create", name, err)...)
 		return
@@ -276,7 +265,7 @@ func (r *JobTemplateResource) Read(ctx context.Context, req resource.ReadRequest
 
 	tflog.Debug(ctx, "Reading job template", map[string]interface{}{"metalake": metalake, "name": name})
 
-	result, err := r.client.GetJobTemplate(ctx, metalake, name)
+	result, err := r.Client.GetJobTemplate(ctx, metalake, name)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -335,7 +324,7 @@ func (r *JobTemplateResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	result, err := r.client.UpdateJobTemplate(ctx, metalake, currentName, updates)
+	result, err := r.Client.UpdateJobTemplate(ctx, metalake, currentName, updates)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("updating job template", currentName, err)...)
 		return
@@ -363,7 +352,7 @@ func (r *JobTemplateResource) Delete(ctx context.Context, req resource.DeleteReq
 
 	tflog.Debug(ctx, "Deleting job template", map[string]interface{}{"metalake": metalake, "name": name})
 
-	if _, err := r.client.DeleteJobTemplate(ctx, metalake, name); err != nil {
+	if _, err := r.Client.DeleteJobTemplate(ctx, metalake, name); err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone.
 			return

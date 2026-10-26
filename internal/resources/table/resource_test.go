@@ -267,7 +267,7 @@ func TestTableResource_CreateSendsSpecPayload(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	plan := hivePlan()
@@ -377,7 +377,7 @@ func TestTableResource_CreateSendsEmptyDistributionFuncArgs(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	plan := hivePlan()
@@ -435,7 +435,7 @@ func TestTableResource_CreateOmitsUnsetDistribution(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	plan := hivePlan()
@@ -495,7 +495,7 @@ func TestTableResource_DataSkippingIndexRoundTrip(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	plan := hivePlan()
 	plan.Indexes = []models.IndexTFSDK{
@@ -604,7 +604,7 @@ func TestTableResource_CreateRejectsVersionGatedIndexes(t *testing.T) {
 			})
 
 			r := NewTableResource().(*tableResource)
-			r.client = c
+			r.Client = c
 
 			plan := hivePlan()
 			plan.Indexes = []models.IndexTFSDK{
@@ -652,7 +652,7 @@ func TestTableResource_CreateWithStructuredColumnType(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	plan := hivePlan()
@@ -704,7 +704,7 @@ func TestTableResource_ReadNotFoundRemovesResource(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	state := hivePlan()
@@ -729,7 +729,7 @@ func TestTableResource_DeleteToleratesNotFound(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	state := hivePlan()
@@ -775,7 +775,7 @@ func TestTableResource_UpdateColumnCommentSendsUpdateRequest(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 
@@ -864,7 +864,7 @@ func TestTableResource_UpdateSendsRenameCommentPropertiesAndType(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 
@@ -929,7 +929,7 @@ func TestTableResource_UpdateUnknownPropertiesDoesNotRemove(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 
@@ -970,7 +970,7 @@ func TestTableResource_UpdateRejectsChangedBlock(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 
@@ -1109,7 +1109,7 @@ func TestTableResource_ReadKeepsConfiguredIndexProperties(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	state := hivePlan()
@@ -1353,7 +1353,7 @@ func TestTableResource_ReadNormalisesServerValues(t *testing.T) {
 	})
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	state := hivePlan()
@@ -1496,7 +1496,7 @@ func TestTableResource_CreateRejectsExternalColumnTypeOnOlderServer(t *testing.T
 	detectServerVersion(t, c)
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	plan := singleColumnPlan("custom", `{"catalogString":"user-defined","type":"external"}`)
@@ -1548,7 +1548,7 @@ func TestTableResource_CreateSendsExternalColumnTypeOn131Server(t *testing.T) {
 	detectServerVersion(t, c)
 
 	r := NewTableResource().(*tableResource)
-	r.client = c
+	r.Client = c
 
 	schemaObj := tableSchema(t, r)
 	plan := singleColumnPlan("custom", `{"catalogString":"user-defined","type":"external"}`)
@@ -1573,12 +1573,47 @@ func TestTableResource_CreateSendsExternalColumnTypeOn131Server(t *testing.T) {
 	}
 }
 
-// TestTableResourceModelsMatchSchema keeps the slice model and the framework
-// boundary model in lockstep with the schema: an attribute added to one but not
-// the other is a silent plan/state miss.
+// TestTableResourceModelsMatchSchema keeps the slice model, the framework
+// boundary model and every nested schema object in lockstep with the schema: an
+// attribute added to one but not the other is a silent plan/state miss.
 func TestTableResourceModelsMatchSchema(t *testing.T) {
 	schemaObj := tableSchema(t, NewTableResource())
-	names := append(modeltest.Keys(schemaObj.Attributes), modeltest.Keys(schemaObj.Blocks)...)
-	modeltest.AssertAttributesMatch(t, models.TableResourceModel{}, names)
-	modeltest.AssertAttributesMatch(t, models.TableResourceTFModel{}, names)
+	modeltest.AssertSchemaMatches(t, models.TableResourceModel{}, schemaObj.Attributes, schemaObj.Blocks)
+	modeltest.AssertSchemaMatches(t, models.TableResourceTFModel{}, schemaObj.Attributes, schemaObj.Blocks)
+
+	column, ok := schemaObj.Blocks["column"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("column block = %T, want schema.ListNestedBlock", schemaObj.Blocks["column"])
+	}
+	modeltest.AssertAttributesMatch(t, models.ColumnTFSDK{}, modeltest.Keys(column.NestedObject.Attributes))
+
+	sortOrder, ok := schemaObj.Blocks["sort_order"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("sort_order block = %T, want schema.ListNestedBlock", schemaObj.Blocks["sort_order"])
+	}
+	modeltest.AssertAttributesMatch(t, models.SortOrderTFSDK{}, modeltest.Keys(sortOrder.NestedObject.Attributes))
+
+	distribution, ok := schemaObj.Blocks["distribution"].(schema.SingleNestedBlock)
+	if !ok {
+		t.Fatalf("distribution block = %T, want schema.SingleNestedBlock", schemaObj.Blocks["distribution"])
+	}
+	modeltest.AssertAttributesMatch(t, models.DistributionTFSDK{}, modeltest.Keys(distribution.Attributes))
+
+	partitioning, ok := schemaObj.Blocks["partitioning"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("partitioning block = %T, want schema.ListNestedBlock", schemaObj.Blocks["partitioning"])
+	}
+	modeltest.AssertAttributesMatch(t, models.PartitioningTFSDK{}, modeltest.Keys(partitioning.NestedObject.Attributes))
+
+	index, ok := schemaObj.Blocks["index"].(schema.ListNestedBlock)
+	if !ok {
+		t.Fatalf("index block = %T, want schema.ListNestedBlock", schemaObj.Blocks["index"])
+	}
+	modeltest.AssertAttributesMatch(t, models.IndexTFSDK{}, modeltest.Keys(index.NestedObject.Attributes))
+
+	audit, ok := schemaObj.Attributes["audit"].(schema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want schema.ObjectAttribute", schemaObj.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
 }

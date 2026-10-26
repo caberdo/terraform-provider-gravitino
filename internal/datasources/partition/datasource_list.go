@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -16,7 +17,7 @@ var _ datasource.DataSource = &PartitionsDataSource{}
 var _ datasource.DataSourceWithConfigure = &PartitionsDataSource{}
 
 type PartitionsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 // PartitionsDataSourceModel is the Terraform model of the gravitino_partitions
@@ -109,17 +110,6 @@ func (d *PartitionsDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 }
 
 // SetClient sets the API client of the data source.
-func (d *PartitionsDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
-
-func (d *PartitionsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
 
 func (d *PartitionsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config PartitionsDataSourceModel
@@ -128,7 +118,7 @@ func (d *PartitionsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	partitions, err := d.client.ListPartitions(
+	partitions, err := d.Client.ListPartitions(
 		ctx,
 		config.Metalake.ValueString(),
 		config.Catalog.ValueString(),

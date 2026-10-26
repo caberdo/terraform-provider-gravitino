@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -18,15 +19,11 @@ var _ datasource.DataSource = &CatalogsDataSource{}
 var _ datasource.DataSourceWithConfigure = &CatalogsDataSource{}
 
 type CatalogsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewListDataSource() datasource.DataSource {
 	return &CatalogsDataSource{}
-}
-
-func (d *CatalogsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type CatalogsDataSourceModel struct {
@@ -53,14 +50,6 @@ var CatalogItemAttrTypes = map[string]attr.Type{
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (d *CatalogsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
 
 func (d *CatalogsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = "gravitino_catalogs"
@@ -118,7 +107,7 @@ func (d *CatalogsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.client.ListCatalogsDetails(ctx, config.Metalake.ValueString())
+	result, err := d.Client.ListCatalogsDetails(ctx, config.Metalake.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

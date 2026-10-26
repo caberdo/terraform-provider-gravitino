@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -18,15 +19,11 @@ var _ datasource.DataSource = &OwnerDataSource{}
 var _ datasource.DataSourceWithConfigure = &OwnerDataSource{}
 
 type OwnerDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewOwnerDataSource() datasource.DataSource {
 	return &OwnerDataSource{}
-}
-
-func (d *OwnerDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type OwnerDataSourceModel struct {
@@ -35,14 +32,6 @@ type OwnerDataSourceModel struct {
 	ObjectFullName types.String `tfsdk:"object_full_name"`
 	OwnerName      types.String `tfsdk:"owner_name"`
 	OwnerType      types.String `tfsdk:"owner_type"`
-}
-
-func (d *OwnerDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *OwnerDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -86,7 +75,7 @@ func (d *OwnerDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	result, err := d.client.GetOwner(ctx,
+	result, err := d.Client.GetOwner(ctx,
 		config.Metalake.ValueString(),
 		config.ObjectType.ValueString(),
 		config.ObjectFullName.ValueString(),

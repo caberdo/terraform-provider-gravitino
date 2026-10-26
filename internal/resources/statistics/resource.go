@@ -10,6 +10,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -36,7 +37,7 @@ var _ resource.ResourceWithConfigure = (*StatisticsResource)(nil)
 // the current statistics on every create/update, sends the entries that differ
 // as one update request and the entries that disappeared as one drop request.
 type StatisticsResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 // StatisticsResourceModel is the Terraform model of gravitino_statistics.
@@ -51,19 +52,6 @@ type StatisticsResourceModel struct {
 // New returns the gravitino_statistics resource.
 func New() resource.Resource {
 	return &StatisticsResource{}
-}
-
-// SetClient sets the API client of the resource.
-func (r *StatisticsResource) SetClient(c *client.Client) {
-	r.client = c
-}
-
-func (r *StatisticsResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
 }
 
 func (r *StatisticsResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -282,7 +270,7 @@ func (r *StatisticsResource) Delete(ctx context.Context, req resource.DeleteRequ
 	sort.Strings(names)
 
 	if len(names) > 0 {
-		if _, err := r.client.DeleteStatistics(ctx, metalake, objectType, objectFullName, &models.StatisticsDropRequest{Names: names}); err != nil {
+		if _, err := r.Client.DeleteStatistics(ctx, metalake, objectType, objectFullName, &models.StatisticsDropRequest{Names: names}); err != nil {
 			if client.IsNotFoundError(err) {
 				// The object is gone, so its statistics are gone with it.
 				tflog.Debug(ctx, "Statistics already deleted", map[string]interface{}{
@@ -348,14 +336,14 @@ func (r *StatisticsResource) apply(ctx context.Context, metalake, objectType, ob
 
 	if len(updates) > 0 {
 		tflog.Debug(ctx, "Updating statistic values", map[string]interface{}{"object_full_name": objectFullName, "statistics": sortedKeys(updates)})
-		if _, err := r.client.UpdateStatistics(ctx, metalake, objectType, objectFullName, &models.StatisticsUpdateRequest{Updates: updates}); err != nil {
+		if _, err := r.Client.UpdateStatistics(ctx, metalake, objectType, objectFullName, &models.StatisticsUpdateRequest{Updates: updates}); err != nil {
 			return err
 		}
 	}
 
 	if len(drops) > 0 {
 		tflog.Debug(ctx, "Dropping statistics", map[string]interface{}{"object_full_name": objectFullName, "statistics": drops})
-		if _, err := r.client.DeleteStatistics(ctx, metalake, objectType, objectFullName, &models.StatisticsDropRequest{Names: drops}); err != nil {
+		if _, err := r.Client.DeleteStatistics(ctx, metalake, objectType, objectFullName, &models.StatisticsDropRequest{Names: drops}); err != nil {
 			return err
 		}
 	}
@@ -368,7 +356,7 @@ func (r *StatisticsResource) apply(ctx context.Context, metalake, objectType, ob
 // catalog and cannot be written or dropped through Gravitino, so they are
 // ignored.
 func (r *StatisticsResource) currentStatistics(ctx context.Context, metalake, objectType, objectFullName string) (map[string]string, error) {
-	result, err := r.client.ListStatistics(ctx, metalake, objectType, objectFullName)
+	result, err := r.Client.ListStatistics(ctx, metalake, objectType, objectFullName)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +382,7 @@ func (r *StatisticsResource) currentStatistics(ctx context.Context, metalake, ob
 // checkObjectType rejects the 1.3.1-only VIEW/FUNCTION object types on an older
 // server before any statistics request is sent.
 func (r *StatisticsResource) checkObjectType(ctx context.Context, objectType string, diags *diag.Diagnostics) bool {
-	if err := r.client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
+	if err := r.Client.CheckMetadataObjectTypeSupported(ctx, objectType); err != nil {
 		diags.AddAttributeError(path.Root("object_type"), "Unsupported object_type value", err.Error())
 		return false
 	}

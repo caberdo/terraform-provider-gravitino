@@ -12,6 +12,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/function"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -22,6 +23,55 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
+
+// TestFunctionResourceModelMatchesSchema keeps the Terraform model, the nested
+// definition tree and the audit object in lockstep with the schema.
+func TestFunctionResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	res.New().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.FunctionResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	definitions, ok := resp.Schema.Attributes["definitions"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("definitions attribute = %T, want schema.ListNestedAttribute", resp.Schema.Attributes["definitions"])
+	}
+	definitionAttributes := definitions.NestedObject.Attributes
+	modeltest.AssertAttributesMatch(t, models.FunctionDefinitionTFSDK{}, modeltest.Keys(definitionAttributes))
+
+	parameters, ok := definitionAttributes["parameters"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("parameters attribute = %T, want schema.ListNestedAttribute", definitionAttributes["parameters"])
+	}
+	modeltest.AssertAttributesMatch(t, models.FunctionParamTFSDK{}, modeltest.Keys(parameters.NestedObject.Attributes))
+
+	returnColumns, ok := definitionAttributes["return_columns"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("return_columns attribute = %T, want schema.ListNestedAttribute", definitionAttributes["return_columns"])
+	}
+	modeltest.AssertAttributesMatch(t, models.FunctionColumnTFSDK{}, modeltest.Keys(returnColumns.NestedObject.Attributes))
+
+	impls, ok := definitionAttributes["impls"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("impls attribute = %T, want schema.ListNestedAttribute", definitionAttributes["impls"])
+	}
+	implAttributes := impls.NestedObject.Attributes
+	modeltest.AssertAttributesMatch(t, models.FunctionImplTFSDK{}, modeltest.Keys(implAttributes))
+
+	resources, ok := implAttributes["resources"].(schema.SingleNestedAttribute)
+	if !ok {
+		t.Fatalf("resources attribute = %T, want schema.SingleNestedAttribute", implAttributes["resources"])
+	}
+	modeltest.AssertAttributesMatch(t, models.FunctionResourcesTFSDK{}, modeltest.Keys(resources.Attributes))
+
+	audit, ok := resp.Schema.Attributes["audit"].(schema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want schema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
+}
 
 func TestFunctionResourceMetadata(t *testing.T) {
 	r := res.New()

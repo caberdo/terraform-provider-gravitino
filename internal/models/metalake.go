@@ -25,12 +25,6 @@ type MetalakeCreateRequest struct {
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
-// MetalakeSetRequest mirrors `MetalakeSetRequest`, used by
-// PATCH /metalakes/{metalake} to mark a metalake in-use (or not).
-type MetalakeSetRequest struct {
-	InUse bool `json:"inUse"`
-}
-
 // MetalakeUpdateRequest mirrors `MetalakeUpdatesRequest`.
 type MetalakeUpdateRequest struct {
 	Updates []interface{} `json:"updates"`

@@ -10,6 +10,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	dsfunction "github.com/gravitino/terraform-provider-gravitino/internal/datasources/function"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -380,4 +381,16 @@ func auditAttrTypes(t *testing.T, schemaObj schema.Schema) map[string]attr.Type 
 		t.Fatalf("audit attribute type = %T, want types.ObjectType", schemaObj.Attributes["audit"].GetType())
 	}
 	return auditType.AttrTypes
+}
+
+func TestFunctionDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	dsfunction.NewFunctionDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, dsfunction.FunctionDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+func TestFunctionsDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	dsfunction.NewFunctionsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, dsfunction.FunctionsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

@@ -63,24 +63,6 @@ func (c *Client) ListAllRoles(ctx context.Context, metalake string) (*models.Nam
 	return &result, nil
 }
 
-func (c *Client) GrantPrivilegeToRole(ctx context.Context, metalake, role, objectType, objectFullName string, privileges []models.Privilege) (*models.RoleResponse, error) {
-	path := metalakePath(metalake) + "/permissions/roles/" + url.PathEscape(role) + "/" + url.PathEscape(objectType) + "/" + url.PathEscape(objectFullName) + "/grant"
-	var result models.RoleResponse
-	if err := c.Put(ctx, path, &models.PrivilegesRequest{Privileges: privileges}, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-func (c *Client) RevokePrivilegeFromRole(ctx context.Context, metalake, role, objectType, objectFullName string, privileges []models.Privilege) (*models.RoleResponse, error) {
-	path := metalakePath(metalake) + "/permissions/roles/" + url.PathEscape(role) + "/" + url.PathEscape(objectType) + "/" + url.PathEscape(objectFullName) + "/revoke"
-	var result models.RoleResponse
-	if err := c.Put(ctx, path, &models.PrivilegesRequest{Privileges: privileges}, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
 func (c *Client) OverrideRolePrivileges(ctx context.Context, metalake, role string, overrides []models.SecurableObject) (*models.RoleResponse, error) {
 	path := metalakePath(metalake) + "/permissions/roles/" + url.PathEscape(role)
 

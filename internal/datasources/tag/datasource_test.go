@@ -5,10 +5,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/tag"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -370,3 +372,40 @@ func TestTagsDataSource_Read_NotFound(t *testing.T) {
 }
 
 var _ = attr.Type(nil)
+
+// TestTagDataSourceModelsMatchSchema keeps the models in lockstep with the
+// gravitino_tag, gravitino_tags, gravitino_object_tags and
+// gravitino_tag_objects schemas.
+func TestTagDataSourceModelsMatchSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewGetDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.TagDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	resp = &datasource.SchemaResponse{}
+	ds.NewListDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.TagsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	tags, ok := resp.Schema.Attributes["tags"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("tags is %T, want a ListNestedAttribute", resp.Schema.Attributes["tags"])
+	}
+	if got, want := modeltest.Keys(tags.NestedObject.Attributes), modeltest.Keys(ds.TagItemAttrTypes); !slices.Equal(got, want) {
+		t.Errorf("tags entry attributes = %v, TagItemAttrTypes = %v", got, want)
+	}
+
+	resp = &datasource.SchemaResponse{}
+	ds.NewObjectTagsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.ObjectTagsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	resp = &datasource.SchemaResponse{}
+	ds.NewTagObjectsDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.TagObjectsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	objects, ok := resp.Schema.Attributes["objects"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf("objects is %T, want a ListNestedAttribute", resp.Schema.Attributes["objects"])
+	}
+	if got, want := modeltest.Keys(objects.NestedObject.Attributes), modeltest.Keys(ds.TagObjectItemAttrTypes); !slices.Equal(got, want) {
+		t.Errorf("objects entry attributes = %v, TagObjectItemAttrTypes = %v", got, want)
+	}
+}

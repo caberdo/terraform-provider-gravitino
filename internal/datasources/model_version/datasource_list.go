@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -29,15 +30,11 @@ var ModelVersionItemAttrTypes = map[string]attr.Type{
 }
 
 type ModelVersionsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewModelVersionsDataSource() datasource.DataSource {
 	return &ModelVersionsDataSource{}
-}
-
-func (d *ModelVersionsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type ModelVersionsDataSourceModel struct {
@@ -116,14 +113,6 @@ func (d *ModelVersionsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 	}
 }
 
-func (d *ModelVersionsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
-
 func (d *ModelVersionsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config ModelVersionsDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -136,7 +125,7 @@ func (d *ModelVersionsDataSource) Read(ctx context.Context, req datasource.ReadR
 	schemaName := config.Schema.ValueString()
 	model := config.Model.ValueString()
 
-	versionsResp, err := d.client.ListModelVersions(ctx, metalake, catalog, schemaName, model, true)
+	versionsResp, err := d.Client.ListModelVersions(ctx, metalake, catalog, schemaName, model, true)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("listing model versions", model, err)...)
 		return
@@ -148,7 +137,7 @@ func (d *ModelVersionsDataSource) Read(ctx context.Context, req datasource.ReadR
 	if len(versions) == 0 && len(versionsResp.Versions) > 0 {
 		versions = make([]models.ModelVersion, 0, len(versionsResp.Versions))
 		for _, version := range versionsResp.Versions {
-			result, err := d.client.GetModelVersion(ctx, metalake, catalog, schemaName, model, version)
+			result, err := d.Client.GetModelVersion(ctx, metalake, catalog, schemaName, model, version)
 			if err != nil {
 				resp.Diagnostics.Append(client.NewResourceError("reading model version", fmt.Sprintf("%s version %d", model, version), err)...)
 				return

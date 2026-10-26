@@ -15,6 +15,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -88,6 +89,23 @@ func baseModel() res.MetalakeResourceModel {
 		Properties: types.MapNull(types.StringType),
 		Audit:      types.ObjectNull(models.AuditAttrTypes),
 	}
+}
+
+// TestMetalakeResourceModelMatchesSchema keeps the Terraform model and the
+// nested audit object in lockstep with the schema.
+func TestMetalakeResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	res.NewMetalakeResource().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.MetalakeResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	audit, ok := resp.Schema.Attributes["audit"].(schema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want schema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
 }
 
 func TestMetalakeResource_Metadata(t *testing.T) {

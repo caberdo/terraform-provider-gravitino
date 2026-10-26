@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -25,28 +26,16 @@ var _ datasource.DataSource = (*IcebergRESTServiceDataSource)(nil)
 var _ datasource.DataSourceWithConfigure = (*IcebergRESTServiceDataSource)(nil)
 
 type IcebergRESTServiceDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func New() datasource.DataSource {
 	return &IcebergRESTServiceDataSource{}
 }
 
-func (d *IcebergRESTServiceDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
-
 type IcebergRESTServiceDataSourceModel struct {
 	Metalake types.String `tfsdk:"metalake"`
 	URI      types.String `tfsdk:"uri"`
-}
-
-func (d *IcebergRESTServiceDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *IcebergRESTServiceDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -88,7 +77,7 @@ func (d *IcebergRESTServiceDataSource) Read(ctx context.Context, req datasource.
 		"metalake": metalake,
 	})
 
-	if v, err := d.client.ResolveServerVersion(ctx); err != nil {
+	if v, err := d.Client.ResolveServerVersion(ctx); err != nil {
 		// The endpoint call below fails with the same transport error, so a
 		// failed version lookup must not be reported as a version requirement.
 		tflog.Warn(ctx, "Could not read the Gravitino server version; relying on the endpoint response", map[string]interface{}{
@@ -102,7 +91,7 @@ func (d *IcebergRESTServiceDataSource) Read(ctx context.Context, req datasource.
 		return
 	}
 
-	result, err := d.client.GetIcebergRestServiceURI(ctx, metalake)
+	result, err := d.Client.GetIcebergRestServiceURI(ctx, metalake)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

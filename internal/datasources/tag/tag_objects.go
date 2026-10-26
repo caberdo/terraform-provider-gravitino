@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -19,15 +20,11 @@ var _ datasource.DataSourceWithConfigure = &TagObjectsDataSource{}
 // TagObjectsDataSource lists the metadata objects a tag is directly attached
 // to. Inherited reach is not included: the API lists direct attachments only.
 type TagObjectsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 func NewTagObjectsDataSource() datasource.DataSource {
 	return &TagObjectsDataSource{}
-}
-
-func (d *TagObjectsDataSource) SetClient(c *client.Client) {
-	d.client = c
 }
 
 type TagObjectsDataSourceModel struct {
@@ -44,14 +41,6 @@ type tagObjectItemModel struct {
 var TagObjectItemAttrTypes = map[string]attr.Type{
 	"type":      types.StringType,
 	"full_name": types.StringType,
-}
-
-func (d *TagObjectsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
 }
 
 func (d *TagObjectsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -99,7 +88,7 @@ func (d *TagObjectsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	metalake := config.Metalake.ValueString()
 	tag := config.Tag.ValueString()
 
-	result, err := d.client.ListObjectsForTag(ctx, metalake, tag)
+	result, err := d.Client.ListObjectsForTag(ctx, metalake, tag)
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(

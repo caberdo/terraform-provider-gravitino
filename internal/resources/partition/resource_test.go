@@ -11,6 +11,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -184,6 +185,17 @@ func identityPlan() PartitionResourceModel {
 		Lists:      types.ListNull(types.ListType{ElemType: types.ObjectType{AttrTypes: models.PartitionLiteralAttrTypes}}),
 		Properties: types.MapNull(types.StringType),
 	}
+}
+
+// TestPartitionResourceModelMatchesSchema keeps the Terraform model in
+// lockstep with the schema.
+func TestPartitionResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	NewPartitionResource().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, PartitionResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }
 
 // TestPartitionResource_CreateSendsAddPartitionsRequest asserts the create

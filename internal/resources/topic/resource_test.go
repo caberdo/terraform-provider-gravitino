@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/topic"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -173,6 +175,23 @@ func specTopicResource(t *testing.T, rec *requestRecorder, handler func(w http.R
 	r := res.NewTopicResource()
 	r.(*res.TopicResource).SetClient(c)
 	return r.(*res.TopicResource), server
+}
+
+// TestTopicResourceModelMatchesSchema keeps the Terraform model and the nested
+// audit object in lockstep with the schema.
+func TestTopicResourceModelMatchesSchema(t *testing.T) {
+	resp := &resource.SchemaResponse{}
+	res.NewTopicResource().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected schema diagnostics: %v", resp.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, res.TopicResourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+
+	audit, ok := resp.Schema.Attributes["audit"].(schema.ObjectAttribute)
+	if !ok {
+		t.Fatalf("audit attribute = %T, want schema.ObjectAttribute", resp.Schema.Attributes["audit"])
+	}
+	modeltest.AssertAttributesMatch(t, models.AuditTFSDK{}, modeltest.Keys(audit.AttributeTypes))
 }
 
 func TestTopicResource_Schema(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/job"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -358,4 +359,16 @@ func jobItemsFromState(t *testing.T, ctx context.Context, resp *datasource.ReadR
 		t.Fatalf("failed to decode jobs list: %v", resp.Diagnostics)
 	}
 	return items
+}
+
+func TestJobDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewGetDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.JobDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
+}
+
+func TestJobsDataSource_ModelMatchesSchema(t *testing.T) {
+	resp := &datasource.SchemaResponse{}
+	ds.NewListDataSource().Schema(context.Background(), datasource.SchemaRequest{}, resp)
+	modeltest.AssertSchemaMatches(t, ds.JobsDataSourceModel{}, resp.Schema.Attributes, resp.Schema.Blocks)
 }

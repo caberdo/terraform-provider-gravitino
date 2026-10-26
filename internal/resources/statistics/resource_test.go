@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
+	"github.com/gravitino/terraform-provider-gravitino/internal/models/modeltest"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -158,6 +159,24 @@ func statisticsMap(t *testing.T, value types.Map) map[string]string {
 		t.Fatalf("decoding statistics: %v", diags)
 	}
 	return result
+}
+
+// TestStatisticsResourceModelsMatchSchema keeps both Terraform models in
+// lockstep with their schemas.
+func TestStatisticsResourceModelsMatchSchema(t *testing.T) {
+	statistics := &resource.SchemaResponse{}
+	New().Schema(context.Background(), resource.SchemaRequest{}, statistics)
+	if statistics.Diagnostics.HasError() {
+		t.Fatalf("unexpected statistics schema diagnostics: %v", statistics.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, StatisticsResourceModel{}, statistics.Schema.Attributes, statistics.Schema.Blocks)
+
+	partition := &resource.SchemaResponse{}
+	NewPartition().Schema(context.Background(), resource.SchemaRequest{}, partition)
+	if partition.Diagnostics.HasError() {
+		t.Fatalf("unexpected partition statistics schema diagnostics: %v", partition.Diagnostics)
+	}
+	modeltest.AssertSchemaMatches(t, PartitionStatisticsResourceModel{}, partition.Schema.Attributes, partition.Schema.Blocks)
 }
 
 func TestStatisticsResource_Schema(t *testing.T) {

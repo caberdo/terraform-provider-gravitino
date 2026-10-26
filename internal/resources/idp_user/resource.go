@@ -7,6 +7,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -36,15 +37,11 @@ const IdpUserResourceDescription = "Manages a built-in IDP user for local authen
 	"otherwise the endpoint answers HTTP 404."
 
 type IdpUserResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &IdpUserResource{}
-}
-
-func (r *IdpUserResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type IdpUserResourceModel struct {
@@ -52,14 +49,6 @@ type IdpUserResourceModel struct {
 	Name     types.String `tfsdk:"name"`
 	Password types.String `tfsdk:"password"`
 	Groups   types.Set    `tfsdk:"groups"`
-}
-
-func (r *IdpUserResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
 }
 
 func (r *IdpUserResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -114,7 +103,7 @@ func (r *IdpUserResource) Create(ctx context.Context, req resource.CreateRequest
 		Password: plan.Password.ValueString(),
 	}
 
-	result, err := r.client.AddIdpUser(ctx, createReq)
+	result, err := r.Client.AddIdpUser(ctx, createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating IDP user", plan.Name.ValueString(), err)...)
 		return
@@ -139,7 +128,7 @@ func (r *IdpUserResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	tflog.Debug(ctx, "Reading IDP user", map[string]interface{}{"name": state.Name.ValueString()})
 
-	result, err := r.client.GetIdpUser(ctx, state.Name.ValueString())
+	result, err := r.Client.GetIdpUser(ctx, state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -172,7 +161,7 @@ func (r *IdpUserResource) Update(ctx context.Context, req resource.UpdateRequest
 	// `name` forces replacement, so the only in-place change is the password,
 	// which is exactly what PUT /idp/users/{user} accepts.
 	if !plan.Password.Equal(state.Password) {
-		result, err := r.client.ChangeIdpUserPassword(ctx, state.Name.ValueString(), &models.IdpChangePasswordRequest{
+		result, err := r.Client.ChangeIdpUserPassword(ctx, state.Name.ValueString(), &models.IdpChangePasswordRequest{
 			Password: plan.Password.ValueString(),
 		})
 		if err != nil {
@@ -202,7 +191,7 @@ func (r *IdpUserResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 	tflog.Debug(ctx, "Deleting IDP user", map[string]interface{}{"name": state.Name.ValueString()})
 
-	_, err := r.client.RemoveIdpUser(ctx, state.Name.ValueString())
+	_, err := r.Client.RemoveIdpUser(ctx, state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: deleting twice is not an error.

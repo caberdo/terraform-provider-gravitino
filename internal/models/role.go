@@ -44,13 +44,6 @@ type Privilege struct {
 	Condition string `json:"condition"`
 }
 
-// PrivilegesRequest is the body of the grant and revoke privilege endpoints
-// (permissions.yaml#/components/schemas/PrivilegeGrantRequest and
-// PrivilegeRevokeRequest).
-type PrivilegesRequest struct {
-	Privileges []Privilege `json:"privileges"`
-}
-
 // PrivilegeOverrideRequest is the body of PUT /metalakes/{metalake}/permissions/roles/{role}
 // (permissions.yaml#/components/schemas/PrivilegeOverrideRequest).
 type PrivilegeOverrideRequest struct {

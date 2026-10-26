@@ -11,7 +11,7 @@ actually shipped.
 A Terraform provider for [Apache Gravitino](https://gravitino.apache.org): it manages metalakes,
 catalogs, schemas, tables, filesets, topics, views, functions, models, partitions, statistics, tags, policies,
 jobs, users/groups/roles and owners as Terraform state, through the Gravitino REST API. Today:
-**25 resources and 54 data sources** (`ls docs/resources | wc -l`, `ls docs/data-sources | wc -l`),
+**25 resources and 55 data sources** (`ls docs/resources | wc -l`, `ls docs/data-sources | wc -l`),
 one build supporting Gravitino **1.3.0 and 1.3.1** (`.github/gravitino-versions.txt`), 24 tags with
 `v0.9.0` as the latest release (2026-10-08).
 
@@ -52,18 +52,18 @@ organization also has 2FA enforcement and secret scanning turned off.
 
 ## Next — correctness, coverage and honest compatibility
 
-* **Raise the merged statement coverage to 90%.** `make coverage-merge` reports the number CI
-  publishes: **83.4%** (6387/7661) for the merged unit + acceptance profile — the same covered
-  block set is 86.8% (8481/9766) of the statements the `go.mod` toolchain counts — and
-  `make coverage` reports 64.2% per package for the unit suite alone. `make coverage-gate` enforces
-  a floor per scope from `.github/coverage-baseline.txt` (total 82.5 today) and
-  `make coverage-readme` keeps the README block in step with it, so the number can only move up;
-  the 80% milestone is met and 90% is the tracked target. What remains is concentrated where the
-  tests are acceptance-shaped rather than unit-shaped: the error and drift paths a stock server
-  never reaches, the live-coverage gaps below, and `internal/client`/`internal/models`, whose
-  behaviour the resource and data source tests assert end-to-end. `make coverage` ranks the
-  packages, weakest first. Per-package `go test -cover` numbers understate this badly (the client
-  reads ~14% there because its callers live in other packages); always quote the merged profile.
+* **Raise the merged statement coverage to 90%.** The gated number is the merged unit +
+  acceptance profile from `make coverage-merge`, measured and floored in
+  `.github/coverage-baseline.txt` (the total floor is 82.5 today); `make coverage-gate` fails a pull
+  request below a scope's floor and `make coverage-readme` keeps the README block in step, so the
+  number can only move up. The 80% milestone is met and 90% is the tracked target. Take the exact
+  figures from the profile rather than from prose: statement counts change with the Go patch
+  release. What remains is concentrated where the tests are acceptance-shaped rather than
+  unit-shaped: the error and drift paths a stock server never reaches, the live-coverage gaps
+  below, and `internal/client`/`internal/models`, whose behaviour the resource and data source
+  tests assert end-to-end. `make coverage` ranks the packages, weakest first. Per-package
+  `go test -cover` numbers understate this badly (the client reads ~14% there because its callers
+  live in other packages); always quote the merged profile.
 * **Keep the version matrix honest.** `.github/gravitino-versions.txt` is the single source of truth
   for the acceptance matrix; a new Gravitino release is added there once its REST API is checked
   against the schema, and every version-restricted field keeps its union-schema-plus-runtime-gate
@@ -93,6 +93,10 @@ organization also has 2FA enforcement and secret scanning turned off.
   wrapped; arbitrary API calls are out of scope, and a new endpoint arrives with a resource or data
   source that uses it.
 * **Not a data-plane tool.** The provider manages metadata; it never reads or writes table data.
+* **No OpenLineage event ingestion.** `POST /lineage` carries a stream of run events, not a
+  Terraform-managed object: it has no CRUD shape, no state to drift and nothing to plan. The
+  provider therefore has no lineage client; if that ever changes it must arrive with a resource
+  whose state justifies the model (issue #72).
 * **No breaking schema changes.** Renaming or removing a Terraform type or attribute breaks user
   state, so it only happens with a documented upgrade path and a major version.
 * **No hosted service, paid tier or telemetry.** This repository is the whole product; the provider

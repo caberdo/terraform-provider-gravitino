@@ -6,13 +6,6 @@ import (
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
 )
 
-func (c *Client) ListFilesets(ctx context.Context, metalake, catalog, schema string) (*models.IdentifiersResponse, error) {
-	var result models.IdentifiersResponse
-	path := catalogCollectionPath(metalake, catalog, schema, "filesets")
-	err := c.Get(ctx, path, &result)
-	return &result, err
-}
-
 func (c *Client) GetFileset(ctx context.Context, metalake, catalog, schema, name string) (*models.FilesetResponse, error) {
 	var result models.FilesetResponse
 	path := catalogEntityPath(metalake, catalog, schema, "filesets", name)
@@ -48,8 +41,8 @@ func (c *Client) DropFileset(ctx context.Context, metalake, catalog, schema, nam
 // been deleted in the meantime (404) are skipped rather than failing the whole
 // listing.
 func (c *Client) ListFilesetsDetails(ctx context.Context, metalake, catalog, schema string) ([]models.Fileset, error) {
-	identifiers, err := c.ListFilesets(ctx, metalake, catalog, schema)
-	if err != nil {
+	var identifiers models.IdentifiersResponse
+	if err := c.Get(ctx, catalogCollectionPath(metalake, catalog, schema, "filesets"), &identifiers); err != nil {
 		return nil, err
 	}
 	filesets := make([]models.Fileset, 0, len(identifiers.Identifiers))
@@ -64,13 +57,4 @@ func (c *Client) ListFilesetsDetails(ctx context.Context, metalake, catalog, sch
 		filesets = append(filesets, resp.Fileset)
 	}
 	return filesets, nil
-}
-
-func (c *Client) ListFilesetFiles(ctx context.Context, metalake, catalog, schema, fileset string) (*models.FilesetFileListResponse, error) {
-	path := catalogEntityPath(metalake, catalog, schema, "filesets", fileset) + "/files"
-	var result models.FilesetFileListResponse
-	if err := c.Get(ctx, path, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
 }

@@ -19,7 +19,7 @@ process, and it holds no state of its own beyond the client it is configured wit
 graph LR
   TF["Terraform CLI"] -->|plugin protocol 6.0| P["terraform-provider-gravitino"]
   P --> R["internal/resources<br/>25 resources"]
-  P --> D["internal/datasources<br/>54 data sources"]
+  P --> D["internal/datasources<br/>55 data sources"]
   R --> C["internal/client.Client"]
   D --> C
   C --> AUTH["internal/client/auth"]
@@ -38,9 +38,9 @@ graph LR
 | Provider identity | `internal/provider/provider.go` `Metadata` | `TypeName = "gravitino"`, version from the binary. |
 | Schema | `internal/provider/provider.go` `Schema` | Thirteen optional attributes: `uri`, `auth`, `username`, `password`, `oauth_token`, `oauth_client_id`, `oauth_client_secret`, `oauth_server_uri`, `oauth_token_path`, `oauth_scope`, `kerberos_principal`, `kerberos_keytab`, `kerberos_use_ticket_cache`. `auth` is validated with `stringvalidator.OneOf("simple", "basic", "oauth", "kerberos", "none")`; four attributes are `Sensitive`. |
 | Configure | `internal/provider/provider.go` `Configure` | Each attribute falls back to its `GRAVITINO_*` environment variable; an empty `uri` fails with an explicit diagnostic on `path.Root("uri")`; `buildAuthProvider` maps `auth` to an `auth.AuthProvider`; `client.New` builds the client; `DetectServerVersion` is called once, best effort; the same `*client.Client` is handed to `resp.ResourceData` and `resp.DataSourceData`. The URI is never logged. |
-| Registration | `internal/provider/provider.go` `DataSources()` / `Resources()` | 50 and 21 constructors, one per line in those two lists (`ls docs/data-sources \| wc -l` = 50, `ls docs/resources \| wc -l` = 21). Each lives in its own package under `internal/`, so a resource's schema, state mapping and tests travel together. |
+| Registration | `internal/provider/provider.go` `DataSources()` / `Resources()` | 55 and 25 constructors, one per line in those two lists (`ls docs/data-sources \| wc -l`, `ls docs/resources \| wc -l`). Each lives in its own package under `internal/`, so a resource's schema, state mapping and tests travel together. |
 
-## The client (`internal/client`, 35 Go files)
+## The client (`internal/client`, 34 Go files)
 
 `client.Client` is the only runtime state a resource or data source gets:
 
@@ -66,10 +66,13 @@ type Client struct {
 * `internal/client/paths.go` builds the URL paths and escapes every user-supplied segment with
   `url.PathEscape`, so callers pass raw names.
 * One file per API area (`catalog.go`, `table.go`, `policy.go`, …) holds that area's REST methods;
-  the wire types live in `internal/models` (39 files), written against the Gravitino
+  the wire types live in `internal/models` (41 files), written against the Gravitino
   **v1.3.0** OpenAPI specification and extended with the v1.3.1 additions.
 * `FromProviderData` converts the framework's `any` provider data back into `*Client` and returns
   no diagnostics while the provider is not configured yet.
+* No exported `*Client` method may be left without a call site: `scripts/dead-client-methods.sh`
+  fails CI on one. The check is grep-based because `deadcode -test ./...` treats every exported
+  method of a type that escapes through `any` as reachable and therefore reports none of them.
 
 ## Authentication (`internal/client/auth`, 12 files)
 
@@ -162,7 +165,7 @@ internal/
   acceptance/       live pre-check (real server), proto v6 factories, unique-name helper
   client/           HTTP client, per-area REST methods, path builders, version gates
     auth/           AuthProvider implementations (simple, basic, oauth ×2, kerberos)
-  datasources/      one package per data source area (27 packages, 54 data sources)
+  datasources/      one package per data source area (27 packages, 55 data sources)
   models/           JSON wire types, Terraform value conversion, shared enums
   provider/         provider schema, Configure, resource/data source registration
   resources/        one package per resource area (22 packages hosting 25 resources:
@@ -186,12 +189,13 @@ Change `templates/` or `examples/`, never `docs/` directly.
 
 | Layer | Count | Location | Needs a server | What it proves |
 |---|---|---|---|---|
-| Unit | 700 `Test*` functions overall | `internal/**/*_test.go` | no — `httptest.NewServer` in 79 files | request shape, payload decoding, schema, plan modifiers, error mapping |
+| Unit | roughly 870 `Test*` functions | `internal/**/*_test.go` | no — `httptest.NewServer` in about 89 files | request shape, payload decoding, schema, plan modifiers, error mapping |
 | Acceptance (`TestAcc*`) | 66 | `*_test.go` | no — an `httptest` server, driven by `TF_ACC=1` through Terraform Core (`providerserver.NewProtocol6WithError`) | that the provider produces consistent state end to end, which direct framework calls miss |
 | Live acceptance (`TestLiveAcc*`) | 26 | `*_test.go` + `internal/acceptance` | yes — real Gravitino via podman | that real server behaviour matches the spec; `LivePreCheck` refuses to run against a mock (`contributing/live-acceptance-tests.md`) |
 | Version matrix | 2 server versions | `.github/gravitino-versions.txt` | yes — Docker | the same suite passes on 1.3.0 and 1.3.1 (`make testacc-matrix`) |
 
-Coverage, measured 2026-10-19 (55 of 56 packages under `./internal/...` have tests). `make coverage`
+Coverage (59 of the 60 packages under `./internal/...` have tests; the counts move as packages
+change). `make coverage`
 writes the unit profile, `make coverage-merge` merges it with the profile the acceptance container
 writes (`-coverpkg=./internal/...`), and both print a per-package table that the `test`, `Coverage`
 and `acceptance` jobs publish in their job summaries. `make coverage-gate` fails when a scope of the
@@ -202,14 +206,13 @@ acceptance-matrix cell only, because the older cells skip the version-gated test
 
 | Command | Total |
 |---|---|
-| `make coverage` (unit only, per package) | 64.2% |
-| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | 83.4% |
-| `make coverage-gate` floors | 82.5% total, plus a floor per scope in `.github/coverage-baseline.txt` (`internal/provider` 94.0, `internal/datasources/schema` 94.0, `internal/datasources/partition` 91.5, `internal/client` 79.0, …) |
+| `make coverage` (unit only, per package) | printed by the command |
+| `make coverage-merge` (unit + acceptance; the profile the gate enforces) | printed by the command |
+| `make coverage-gate` floors | `.github/coverage-baseline.txt` (82.5 total, plus a floor per scope such as `internal/provider` 94.0, `internal/datasources/schema` 94.0, `internal/datasources/partition` 91.5, `internal/client` 79.0) |
 
 The merged profile is the number to quote, and the gate is the number that blocks a pull request; a
 bare `-coverprofile` measures each package against its own statements only. Statement counts depend
-on the Go patch release that produced the profile (`go 1.27.1` sums `./internal/...` to 9766
-statements, `go 1.27.2` to 7661) and a merged profile takes them from the profile
+on the Go patch release that produced the profile, and a merged profile takes them from the profile
 `merge-coverage.sh` reads last, so compare within one toolchain.
 
 ## Release pipeline

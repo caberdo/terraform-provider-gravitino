@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
@@ -26,7 +27,7 @@ var _ resource.ResourceWithConfigure = &SchemaResource{}
 var auditAttrTypes = models.AuditAttrTypes
 
 type SchemaResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 type SchemaResourceModel struct {
@@ -100,14 +101,6 @@ func (r *SchemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 	}
 }
 
-func (r *SchemaResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
-
 func (r *SchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan SchemaResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -117,7 +110,7 @@ func (r *SchemaResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	tflog.Debug(ctx, "Creating schema", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "name": plan.Name.ValueString()})
 
-	properties := propertyMap(ctx, plan.Properties, &resp.Diagnostics)
+	properties := tfutil.StringMap(ctx, plan.Properties, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -128,7 +121,7 @@ func (r *SchemaResource) Create(ctx context.Context, req resource.CreateRequest,
 		Properties: properties,
 	}
 
-	schemaResp, err := r.client.CreateSchema(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), createReq)
+	schemaResp, err := r.Client.CreateSchema(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating schema", plan.Name.ValueString(), err)...)
 		return
@@ -153,7 +146,7 @@ func (r *SchemaResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	tflog.Debug(ctx, "Reading schema", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "name": state.Name.ValueString()})
 
-	schemaResp, err := r.client.GetSchema(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Name.ValueString())
+	schemaResp, err := r.Client.GetSchema(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -187,8 +180,8 @@ func (r *SchemaResource) Update(ctx context.Context, req resource.UpdateRequest,
 	var updates []interface{}
 
 	if !plan.Properties.IsUnknown() && !plan.Properties.Equal(state.Properties) {
-		oldProps := propertyMap(ctx, state.Properties, &resp.Diagnostics)
-		newProps := propertyMap(ctx, plan.Properties, &resp.Diagnostics)
+		oldProps := tfutil.StringMap(ctx, state.Properties, &resp.Diagnostics)
+		newProps := tfutil.StringMap(ctx, plan.Properties, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -220,7 +213,7 @@ func (r *SchemaResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	schemaResp, err := r.client.UpdateSchema(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Name.ValueString(), updates)
+	schemaResp, err := r.Client.UpdateSchema(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Name.ValueString(), updates)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("updating schema", state.Name.ValueString(), err)...)
 		return
@@ -245,7 +238,7 @@ func (r *SchemaResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 	tflog.Debug(ctx, "Deleting schema", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.DropSchema(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Name.ValueString())
+	_, err := r.Client.DropSchema(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: the delete is idempotent.
@@ -269,12 +262,6 @@ func (r *SchemaResource) ImportState(ctx context.Context, req resource.ImportSta
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("catalog"), parts[1])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[2])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
-}
-
-// propertyMap converts a Terraform map attribute into a plain Go map, appending
-// any conversion diagnostics. Null and unknown maps yield an empty map.
-func propertyMap(ctx context.Context, v types.Map, diags *diag.Diagnostics) map[string]string {
-	return tfutil.StringMap(ctx, v, diags)
 }
 
 // mergeSchemaResponse copies an API schema response into the Terraform model.

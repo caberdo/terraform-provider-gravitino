@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
@@ -26,15 +27,11 @@ var _ resource.ResourceWithImportState = &FilesetResource{}
 var _ resource.ResourceWithConfigure = &FilesetResource{}
 
 type FilesetResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &FilesetResource{}
-}
-
-func (r *FilesetResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type FilesetResourceModel struct {
@@ -51,14 +48,6 @@ type FilesetResourceModel struct {
 }
 
 var AuditAttrTypes = models.AuditAttrTypes
-
-func (r *FilesetResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
 
 func (r *FilesetResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "gravitino_fileset"
@@ -171,13 +160,13 @@ func (r *FilesetResource) Create(ctx context.Context, req resource.CreateRequest
 		Comment:         plan.Comment.ValueString(),
 		Type:            plan.Type.ValueString(),
 		StorageLocation: plan.StorageLocation.ValueString(),
-		Properties:      propertyMap(ctx, plan.Properties, &resp.Diagnostics),
+		Properties:      tfutil.StringMap(ctx, plan.Properties, &resp.Diagnostics),
 	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	result, err := r.client.CreateFileset(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
+	result, err := r.Client.CreateFileset(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating fileset", plan.Name.ValueString(), err)...)
 		return
@@ -202,7 +191,7 @@ func (r *FilesetResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	tflog.Debug(ctx, "Reading fileset", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	result, err := r.client.GetFileset(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	result, err := r.Client.GetFileset(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -256,8 +245,8 @@ func (r *FilesetResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	if !plan.Properties.IsUnknown() && !plan.Properties.Equal(state.Properties) {
-		oldProps := propertyMap(ctx, state.Properties, &resp.Diagnostics)
-		newProps := propertyMap(ctx, plan.Properties, &resp.Diagnostics)
+		oldProps := tfutil.StringMap(ctx, state.Properties, &resp.Diagnostics)
+		newProps := tfutil.StringMap(ctx, plan.Properties, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -278,13 +267,13 @@ func (r *FilesetResource) Update(ctx context.Context, req resource.UpdateRequest
 		// Nothing to send: every value that must be written to state is already
 		// known, so the plan (with the unknowns filled from the prior state) is the
 		// new state.
-		resolveUnknowns(&plan, &state)
+		resolveUnknowns(ctx, &plan, &state)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 		tflog.Debug(ctx, "Updated fileset", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
 		return
 	}
 
-	result, err := r.client.UpdateFileset(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), oldName, updates)
+	result, err := r.Client.UpdateFileset(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), oldName, updates)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("updating fileset", oldName, err)...)
 		return
@@ -311,7 +300,7 @@ func (r *FilesetResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 	tflog.Debug(ctx, "Deleting fileset", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.DropFileset(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	_, err := r.Client.DropFileset(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			// Already gone: the delete is idempotent.
@@ -450,46 +439,18 @@ func projectProperties(ctx context.Context, current types.Map, server map[string
 
 // resolveUnknowns replaces every unknown value in the new state with the prior
 // state's value (or null when the prior value is not usable). Terraform rejects a
-// state that still contains unknown values after apply.
-func resolveUnknowns(model, prior *FilesetResourceModel) {
-	model.ID = resolveUnknownString(model.ID, prior.ID)
-	model.Name = resolveUnknownString(model.Name, prior.Name)
-	model.Comment = resolveUnknownString(model.Comment, prior.Comment)
-	model.Type = resolveUnknownString(model.Type, prior.Type)
-	model.StorageLocation = resolveUnknownString(model.StorageLocation, prior.StorageLocation)
-
-	if model.Properties.IsUnknown() {
-		if prior.Properties.IsNull() || prior.Properties.IsUnknown() {
-			model.Properties = types.MapNull(types.StringType)
-		} else {
-			model.Properties = prior.Properties
-		}
-	}
-	if model.Audit.IsUnknown() {
-		if prior.Audit.IsNull() || prior.Audit.IsUnknown() {
-			model.Audit = types.ObjectNull(AuditAttrTypes)
-		} else {
-			model.Audit = prior.Audit
-		}
-	}
-}
-
-func resolveUnknownString(plan, prior types.String) types.String {
-	if !plan.IsUnknown() {
-		return plan
-	}
-	if prior.IsNull() || prior.IsUnknown() {
-		return types.StringNull()
-	}
-	return prior
+// state that still contains unknown values after apply; the tfutil helpers are
+// the shared half of that rule.
+func resolveUnknowns(ctx context.Context, model, prior *FilesetResourceModel) {
+	model.ID = tfutil.StringOrPrevious(model.ID, prior.ID)
+	model.Name = tfutil.StringOrPrevious(model.Name, prior.Name)
+	model.Comment = tfutil.StringOrPrevious(model.Comment, prior.Comment)
+	model.Type = tfutil.StringOrPrevious(model.Type, prior.Type)
+	model.StorageLocation = tfutil.StringOrPrevious(model.StorageLocation, prior.StorageLocation)
+	model.Properties = tfutil.MapOrPrevious(ctx, model.Properties, prior.Properties)
+	model.Audit = tfutil.ObjectOrPrevious(ctx, model.Audit, prior.Audit)
 }
 
 func auditToObjectValue(ctx context.Context, audit *models.Audit) (types.Object, diag.Diagnostics) {
 	return models.AuditToObjectValue(ctx, audit)
-}
-
-// propertyMap converts a Terraform map attribute into a plain Go map, appending
-// any conversion diagnostics. Null and unknown maps yield an empty map.
-func propertyMap(ctx context.Context, m types.Map, diags *diag.Diagnostics) map[string]string {
-	return tfutil.StringMap(ctx, m, diags)
 }

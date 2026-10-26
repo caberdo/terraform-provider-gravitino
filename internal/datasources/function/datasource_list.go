@@ -5,6 +5,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -19,7 +20,7 @@ var _ datasource.DataSourceWithConfigure = &FunctionsDataSource{}
 var dslAuditAttrTypes = models.AuditAttrTypes
 
 type FunctionsDataSource struct {
-	client *client.Client
+	providerbase.DataSource
 }
 
 type FunctionsDataSourceModel struct {
@@ -34,9 +35,6 @@ func NewFunctionsDataSource() datasource.DataSource {
 }
 
 // SetClient injects the API client; used by tests.
-func (d *FunctionsDataSource) SetClient(c *client.Client) {
-	d.client = c
-}
 
 func (d *FunctionsDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = "gravitino_functions"
@@ -92,14 +90,6 @@ func (d *FunctionsDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 	}
 }
 
-func (d *FunctionsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		d.client = c
-	}
-}
-
 func (d *FunctionsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config FunctionsDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -107,7 +97,7 @@ func (d *FunctionsDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	functions, err := d.client.ListFunctionsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
+	functions, err := d.Client.ListFunctionsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("listing functions", config.Schema.ValueString(), err)...)
 		return

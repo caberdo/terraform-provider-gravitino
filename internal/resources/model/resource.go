@@ -6,6 +6,7 @@ import (
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
+	"github.com/gravitino/terraform-provider-gravitino/internal/providerbase"
 	"github.com/gravitino/terraform-provider-gravitino/internal/resources/resourceutil"
 	"github.com/gravitino/terraform-provider-gravitino/internal/tfutil"
 
@@ -27,15 +28,11 @@ var _ resource.ResourceWithConfigure = &ModelResource{}
 var AuditAttrTypes = models.AuditAttrTypes
 
 type ModelResource struct {
-	client *client.Client
+	providerbase.Resource
 }
 
 func New() resource.Resource {
 	return &ModelResource{}
-}
-
-func (r *ModelResource) SetClient(c *client.Client) {
-	r.client = c
 }
 
 type ModelResourceModel struct {
@@ -115,14 +112,6 @@ func (r *ModelResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 	}
 }
 
-func (r *ModelResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	c, diags := client.FromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	if c != nil {
-		r.client = c
-	}
-}
-
 func (r *ModelResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan ModelResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -132,7 +121,7 @@ func (r *ModelResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	tflog.Debug(ctx, "Creating model", map[string]interface{}{"metalake": plan.Metalake.ValueString(), "catalog": plan.Catalog.ValueString(), "schema": plan.Schema.ValueString(), "name": plan.Name.ValueString()})
 
-	properties := propertiesFromTF(ctx, plan.Properties, &resp.Diagnostics)
+	properties := tfutil.StringMap(ctx, plan.Properties, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -143,7 +132,7 @@ func (r *ModelResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Properties: properties,
 	}
 
-	modelResp, err := r.client.CreateModel(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
+	modelResp, err := r.Client.CreateModel(ctx, plan.Metalake.ValueString(), plan.Catalog.ValueString(), plan.Schema.ValueString(), createReq)
 	if err != nil {
 		resp.Diagnostics.Append(client.NewResourceError("creating model", plan.Name.ValueString(), err)...)
 		return
@@ -168,7 +157,7 @@ func (r *ModelResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 	tflog.Debug(ctx, "Reading model", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	modelResp, err := r.client.GetModel(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	modelResp, err := r.Client.GetModel(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -215,14 +204,14 @@ func (r *ModelResource) Update(ctx context.Context, req resource.UpdateRequest, 
 
 	var modelResp *models.ModelResponse
 	if len(updates) > 0 {
-		result, err := r.client.UpdateModel(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
+		result, err := r.Client.UpdateModel(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString(), updates)
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("updating model", state.Name.ValueString(), err)...)
 			return
 		}
 		modelResp = result
 	} else {
-		result, err := r.client.GetModel(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+		result, err := r.Client.GetModel(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 		if err != nil {
 			resp.Diagnostics.Append(client.NewResourceError("reading model after update", state.Name.ValueString(), err)...)
 			return
@@ -249,7 +238,7 @@ func (r *ModelResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 	tflog.Debug(ctx, "Deleting model", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
-	_, err := r.client.DropModel(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
+	_, err := r.Client.DropModel(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
 	if err != nil {
 		if client.IsNotFoundError(err) {
 			tflog.Debug(ctx, "Model already deleted", map[string]interface{}{"name": state.Name.ValueString()})
@@ -321,15 +310,11 @@ func mapValueFrom(ctx context.Context, props map[string]string, current types.Ma
 	return types.MapNull(types.StringType)
 }
 
-func propertiesFromTF(ctx context.Context, value types.Map, diags *diag.Diagnostics) map[string]string {
-	return tfutil.StringMap(ctx, value, diags)
-}
-
 // modelPropertyUpdates diffs the old and new property maps into the setProperty
 // and removeProperty updates Gravitino understands.
 func modelPropertyUpdates(ctx context.Context, oldValue, newValue types.Map, diags *diag.Diagnostics) []interface{} {
-	oldProps := propertiesFromTF(ctx, oldValue, diags)
-	newProps := propertiesFromTF(ctx, newValue, diags)
+	oldProps := tfutil.StringMap(ctx, oldValue, diags)
+	newProps := tfutil.StringMap(ctx, newValue, diags)
 	if diags.HasError() {
 		return nil
 	}
