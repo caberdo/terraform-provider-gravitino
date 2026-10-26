@@ -45,7 +45,7 @@ responsibilities and the workflows in `.github/workflows/` do the mechanical par
 
 | Check | Workflow | Runs on | Blocks what |
 |---|---|---|---|
-| `Lint & Security` — golangci-lint (pinned v2.13.2) and gosec (SARIF → code scanning, job fails on findings) | `test.yml` | every pull request, every push to `main` | a red run is treated as blocking; see the note below |
+| `Lint & Security` — golangci-lint (pinned v2.15.0) and gosec (SARIF → code scanning, job fails on findings) | `test.yml` | every pull request, every push to `main` | a red run is treated as blocking; see the note below |
 | `Test` — build, `go vet`, `go mod tidy`/`verify`, cross-platform build, `make validate-examples`, generated-docs drift, `go test -race` with coverage | `test.yml` | every pull request, every push to `main` | same |
 | `Dependency Review` | `test.yml` | pull requests | vulnerable dependency introduced by the pull request |
 | `Coverage` — the acceptance container's profile merged with the unit profile, checked against `.github/coverage-baseline.txt` by `scripts/coverage-gate.sh`, plus the README/baseline drift check (`scripts/coverage-readme.sh --check`) | `test.yml` | pull requests | a change that drops a scope below its coverage floor, or a README coverage block that no longer matches the enforced baseline (the gate exits 2, not 0, when the profile or a floor is missing) |

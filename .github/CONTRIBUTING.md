@@ -65,7 +65,7 @@ Every command below is a target in [`GNUmakefile`](../GNUmakefile):
 
 `GRAVITINO_VERSION` defaults to `1.3.0` and selects the `apache/gravitino` image tag; pass
 `GRAVITINO_VERSION=1.3.1` on the `make` command line to run against the other supported
-server. CI pins golangci-lint v2.13.2 with the config committed at
+server. CI pins golangci-lint v2.15.0 with the config committed at
 [`.github/golangci.yml`](./golangci.yml) (errcheck, govet with `enable-all` minus
 `fieldalignment` and `shadow`, ineffassign, staticcheck, unused, bodyclose, noctx, unconvert)
 and runs gosec v2.29.0 as a separate job that fails on findings.

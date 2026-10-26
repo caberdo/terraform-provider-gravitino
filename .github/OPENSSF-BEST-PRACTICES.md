@@ -193,7 +193,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `vulnerability_report_credit` | N/A | No vulnerability report has been resolved in the last 12 months; `SECURITY.md` states the credit policy for when one is. | `blob/.github/SECURITY.md` |
 | `vulnerability_response_process` | Met | `SECURITY.md` documents the process and timelines: acknowledge within 48 hours, assess within 7 days, fix within 14 days. | `blob/.github/SECURITY.md` |
 | `coding_standards` | Met | Identified and required: `gofmt`, `go vet`, the repository's golangci-lint configuration, and the provider-specific rules (error handling, 404 handling, logging, plan modifiers, enum validators) in `CONTRIBUTING.md` and `AGENTS.md`. | `blob/.github/CONTRIBUTING.md` |
-| `coding_standards_enforced` | Met | Enforced by CI with pinned versions: golangci-lint v2.13.2 with `-race` tests, `go vet`, and the docs-drift gate. | `blob/.github/golangci.yml`, `blob/.github/workflows/test.yml` |
+| `coding_standards_enforced` | Met | Enforced by CI with pinned versions: golangci-lint v2.15.0 with `-race` tests, `go vet`, and the docs-drift gate. | `blob/.github/golangci.yml`, `blob/.github/workflows/test.yml` |
 | `build_standard_variables` | N/A | No C toolchain: pure Go with `CGO_ENABLED=0`, so `CC`/`CFLAGS`/`LDFLAGS` do not apply. | `blob/.github/goreleaser.yml` |
 | `build_non_recursive` | N/A | One Go module and a flat makefile with no recursion; `go build ./...` walks the packages. | `blob/GNUmakefile` |
 | `build_repeatable` | Met | See §4.2 and §6.5. | `blob/.github/goreleaser.yml` |
