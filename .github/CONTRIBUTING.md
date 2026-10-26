@@ -68,7 +68,9 @@ Every command below is a target in [`GNUmakefile`](../GNUmakefile):
 server. CI pins golangci-lint v2.15.0 with the config committed at
 [`.github/golangci.yml`](./golangci.yml) (errcheck, govet with `enable-all` minus
 `fieldalignment` and `shadow`, ineffassign, staticcheck, unused, bodyclose, noctx, unconvert)
-and runs gosec v2.29.0 as a separate job that fails on findings.
+and runs gosec v2.30.0 as a separate job that fails on findings. The job installs
+gosec with `go install` rather than using its container image, so the analyser
+and the code it checks are built with the same Go toolchain.
 
 ## Test layers
 
