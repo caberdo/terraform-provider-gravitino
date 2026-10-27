@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 0.13.0 (2026-10-27)
+
 BREAKING CHANGES:
 - **`gravitino_metalake` and `gravitino_catalog` no longer force-drop by default (issue #78, epic #84).**
   Both resources gain `force_destroy`, defaulting to `false`. A destroy now sends `force=false`.
@@ -102,6 +104,36 @@ ENHANCEMENTS:
   now fails with an error naming the configured duration, and every request carries
   `User-Agent: terraform-provider-gravitino/<version>` so a server operator can identify provider
   traffic.
+
+## 0.12.0 (2026-10-22)
+
+BUG FIXES:
+- **`gravitino_table` plans with unknown nested blocks.** The resource and data source models now
+  represent `column`, `sort_order`, `distribution`, `partitioning` and `index` with the Plugin
+  Framework list/object types instead of Go slices, so a plan whose block value is not known yet
+  (for example a `dynamic` block over an apply-time value) no longer fails with
+  `Value Conversion Error ... Target Type: []models.ColumnTFSDK` (issue #66). A regression test
+  plans an unknown `column` block through Terraform Core, and a schema/model test keeps the slice
+  model and the framework boundary model in lockstep.
+- **`gravitino_view` plans with unknown columns and representations.** The resource and data source
+  models use the same framework list types, so an unknown `column` or `representation` list no
+  longer fails with the same conversion error; a regression test plans both through Terraform
+  Core.
+
+## 0.11.0 (2026-10-22)
+
+BUG FIXES:
+- **`gravitino_table` always sends `distribution.funcArgs`.** Gravitino's
+  `JsonUtils.DistributionDeserializer` dereferences `node.get("funcArgs")` without a null
+  check, so a create request that omitted the member failed with `400 Malformed json
+  request` and a `NullPointerException`, as reported for a `lakehouse-iceberg` (REST)
+  catalog in issue #64. `models.Distribution` now marshals a nil argument list as the
+  schema default `[]`, and regression tests pin both that payload (a distribution with
+  only `number`) and the server-default path where the block is omitted.
+
+## 0.10.0 (2026-10-19)
+
+ENHANCEMENTS:
 - **The README coverage badge and block are generated.** `scripts/coverage-readme.sh` renders the
   badge and the per-scope block from `.github/coverage-baseline.txt` (`make coverage-readme`), so
   the number the README publishes is the one the coverage gate enforces; `make coverage-readme-check`
@@ -150,19 +182,6 @@ ENHANCEMENTS:
   the version `.github/gravitino-versions.txt` drives. The gosec summary step no longer trips
   `actionlint` (shellcheck `SC2086`/`SC2129`), so the workflow passes the linter cleanly.
 
-BUG FIXES:
-- **`gravitino_table` plans with unknown nested blocks.** The resource and data source models now
-  represent `column`, `sort_order`, `distribution`, `partitioning` and `index` with the Plugin
-  Framework list/object types instead of Go slices, so a plan whose block value is not known yet
-  (for example a `dynamic` block over an apply-time value) no longer fails with
-  `Value Conversion Error ... Target Type: []models.ColumnTFSDK` (issue #66). A regression test
-  plans an unknown `column` block through Terraform Core, and a schema/model test keeps the slice
-  model and the framework boundary model in lockstep.
-- **`gravitino_view` plans with unknown columns and representations.** The resource and data source
-  models use the same framework list types, so an unknown `column` or `representation` list no
-  longer fails with the same conversion error; a regression test plans both through Terraform
-  Core.
-
 DOCUMENTATION:
 - **Documentation pack.** `ARCHITECTURE.md` describes the package layout, request flow,
   authentication and version-gating layers; `GOVERNANCE.md` records roles, decision making and
@@ -185,13 +204,6 @@ FEATURES:
   resource (`gravitino_policies` lists them); docs and an example are generated.
 
 BUG FIXES:
-- **`gravitino_table` always sends `distribution.funcArgs`.** Gravitino's
-  `JsonUtils.DistributionDeserializer` dereferences `node.get("funcArgs")` without a null
-  check, so a create request that omitted the member failed with `400 Malformed json
-  request` and a `NullPointerException`, as reported for a `lakehouse-iceberg` (REST)
-  catalog in issue #64. `models.Distribution` now marshals a nil argument list as the
-  schema default `[]`, and regression tests pin both that payload (a distribution with
-  only `number`) and the server-default path where the block is omitted.
 - **`gravitino_table` no longer drops properties on an unrelated update.** `properties`
   now carries `UseStateForUnknown` and the update path skips property reconciliation when
   the planned map is unknown, so changing another attribute with `properties` left

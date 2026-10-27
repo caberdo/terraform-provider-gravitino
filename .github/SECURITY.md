@@ -11,13 +11,13 @@ License: Apache-2.0. Repository: <https://github.com/caberdo/terraform-provider-
 
 ## Supported versions
 
-The provider currently ships as the 0.x line. The latest release is `v0.12.0`
-(published 2026-10-22); there are 27 tags in the repository. Security fixes land
+The provider currently ships as the 0.x line. The latest release is `v0.13.0`
+(published 2026-10-27); there are 28 tags in the repository. Security fixes land
 on `main` and in the next release from that line.
 
 | Version | Supported |
 |---------|-----------|
-| 0.x (latest `v0.12.0`) | Yes |
+| 0.x (latest `v0.13.0`) | Yes |
 | Anything older than the most recent release | No |
 
 Because the 0.x line has no long-term-support branches, only the most recent
