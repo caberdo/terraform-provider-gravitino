@@ -621,4 +621,5 @@ and is read by both the CI matrix and `make testacc-matrix`.
 
 ## License
 
-Apache 2.0 — see the [LICENSE](LICENSE) file.
+MIT — see the [LICENSE](LICENSE) file, and [`NOTICE`](./NOTICE) for the upstream
+works this project derives from and the licence carve-outs that apply to them.

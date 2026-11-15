@@ -1,21 +1,20 @@
 # NOTICE
 
 terraform-provider-gravitino
-Copyright 2026 The terraform-provider-gravitino contributors
+Copyright (c) 2026 Dennis de Jong
 
-This product is licensed under the Apache License, Version 2.0 (see `LICENSE`).
+This product is licensed under the MIT License (see `LICENSE`).
 
 ## Upstream material
 
-This project derives material from the following upstream works. Licences are
-stated as verified for the versions actually used; the SPDX-JSON SBOM attached to
-each GitHub release names the complete dependency inventory of the released
-binary.
+This project derives from the following upstream works. Licences are stated as
+verified for the versions actually used; the SPDX-JSON SBOM attached to each
+GitHub release names the complete dependency inventory of the released binary.
 
 | Upstream work | Licence | What is derived | Distribution |
 |---|---|---|---|
-| HashiCorp `terraform-provider-scaffolding-framework` | MPL-2.0 | Entry point (`main.go`) and the provider build/serve pattern | Source and binary |
-| `aminueza/terraform-provider-minio` (commit `0bce044`) | AGPL-3.0 | `.github/` CI and release YAML (workflow configuration only; no Go source code taken) | Repository configuration only, not compiled into the binary |
+| HashiCorp `terraform-provider-scaffolding-framework` | MPL-2.0 | The provider build-and-serve pattern. `main.go` is written against the public `providerserver` API; no MPL-2.0 source is copied into it. | Build pattern only |
+| `aminueza/terraform-provider-minio` (commit `0bce044`) | AGPL-3.0 | `.github/workflows/` CI and release YAML (workflow configuration only; no Go source code taken) | Repository configuration only, not compiled into the binary |
 | Apache Gravitino OpenAPI specification (`docs/open-api/`) | Apache-2.0 | `internal/models` request/response shapes and the example payloads used in tests | Source and binary |
 | HashiCorp Terraform plugin libraries | MPL-2.0 | `terraform-plugin-framework`, `terraform-plugin-framework-validators`, `terraform-plugin-go`, `terraform-plugin-log` and `terraform-plugin-testing` are compiled into the provider and its tests; `terraform-plugin-docs` is used at build time to generate `docs/` | Binary and build tooling |
 | `github.com/jcmturner/gokrb5/v8` | Apache-2.0 | Kerberos SPNEGO authentication | Binary |
@@ -23,9 +22,19 @@ binary.
 `github.com/ProtonMail/go-crypto` appears in `go.mod` but not in `go list -deps .`: it is build
 tooling only and is not linked into the released binary.
 
-The `.github/` workflow configuration adapted from the AGPL-3.0 project above is
-configuration, not linked or combined with the provider binary; the Go source of
-this provider is not a derivative work of it.
+## Licence scope
+
+The MIT licence in `LICENSE` covers this project's own source, documentation and
+configuration. It does not relicense third-party material:
+
+- The workflow configuration under `.github/workflows/` adapted from the AGPL-3.0
+  project above remains under AGPL-3.0. It is repository configuration, is not
+  linked or combined with the provider binary, and is scheduled to be replaced by
+  the shared reusable workflows from `caberdo/terraform-provider-kit`. The Go
+  source of this provider is not a derivative work of it.
+- `internal/models` shapes derived from the Apache-2.0 Gravitino OpenAPI
+  specification remain available under Apache-2.0; the NOTICE and the release
+  SBOM carry that attribution.
 
 The published identifiers are the Go module path
 `github.com/gravitino/terraform-provider-gravitino` and the Terraform Registry

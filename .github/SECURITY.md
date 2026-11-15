@@ -7,7 +7,7 @@ source.
 
 Module: `github.com/gravitino/terraform-provider-gravitino`
 Registry: `registry.terraform.io/caberdo/gravitino`
-License: Apache-2.0. Repository: <https://github.com/caberdo/terraform-provider-gravitino>
+License: MIT. Repository: <https://github.com/caberdo/terraform-provider-gravitino>
 
 ## Supported versions
 
@@ -133,7 +133,7 @@ Secure-design principles mapped to the code that implements them:
   safe to repeat (`GET`, `PUT`, `PATCH`, `DELETE` and the read-only connection probes) and are
   bounded in both attempts and delay, so an unresponsive or hostile server cannot amplify one
   Terraform operation without limit.
-- Open design. The provider source is public and Apache-2.0 licensed; the threat
+- Open design. The provider source is public and MIT licensed; the threat
   model and limitations below are published rather than implied.
 
 ## Common weakness classes
