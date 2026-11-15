@@ -3,7 +3,7 @@
 The Terraform provider for Apache Gravitino, published as
 `registry.terraform.io/caberdo/gravitino`. Plugin protocol 6.0, built on
 `terraform-plugin-framework` v1.19.0. Go module
-`github.com/gravitino/terraform-provider-gravitino`, Apache-2.0, default branch `main`.
+`github.com/gravitino/terraform-provider-gravitino`, MIT, default branch `main`.
 The provider currently exposes 25 resources and 55 data sources.
 
 | Document | Contents |
@@ -251,11 +251,12 @@ thread resolution — reviewers must therefore block on red CI and open threads 
 
 ## Licensing
 
-All contributions are accepted under the Apache License 2.0 and must be compatible with it;
+All contributions are accepted under the MIT License and must be compatible with it;
 third-party code or assets you add must carry a licence that allows redistribution under
-Apache-2.0. See [LICENSE](../LICENSE) and [NOTICE](../NOTICE) for the project licence and the
-upstream works it derives from. By opening a pull request you confirm you have the right to
-submit the change under those terms. Contributions are subject to
+MIT. See [LICENSE](../LICENSE) and [NOTICE](../NOTICE) for the project licence, the
+upstream works it derives from and the licence carve-outs that apply to them. By opening
+a pull request you confirm you have the right to submit the change under those terms.
+Contributions are subject to
 [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) (Contributor Covenant 2.0).
 
 ## Questions

@@ -58,7 +58,7 @@ there, and no amount of code satisfies them.
      Gravitino metadata (metalakes, catalogs, schemas, tables, filesets, topics, views, functions,
      models, partitions, tags, policies, jobs, users/groups/roles, owners) as code: 25 resources and
      55 data sources against the Gravitino REST API.
-   * **License:** `Apache-2.0` (the SPDX identifier; `LICENSE` and GitHub agree).
+   * **License:** `MIT` (the SPDX identifier; `LICENSE` and GitHub agree).
 3. Answer from §4. Criteria answered `Met` need a justification and, where the table says so, a URL.
 4. Submit at **Passing** first, then re-answer §4.3/§4.4 as §5 items close.
 5. Paste the badge (next section) into the README and merge it.
@@ -90,9 +90,9 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `interact` | Met | README shows how to obtain the provider, configure it (block or `GRAVITINO_*` environment variables) and apply a configuration; `SUPPORT.md` and the issue forms say how to get help and report bugs; `CONTRIBUTING.md` says how to contribute. | `blob/README.md`, `blob/SUPPORT.md`, `blob/.github/CONTRIBUTING.md` |
 | `contribution` | Met | `CONTRIBUTING.md` documents prerequisites, the `make` targets, the four test layers, the coding standards, the testing policy, the documentation rule and the pull request process. | `blob/.github/CONTRIBUTING.md` |
 | `contribution_requirements` | Met | Same file states the requirements a change must meet: conventions, tests, regenerated docs, one logical change per pull request. | `blob/.github/CONTRIBUTING.md` |
-| `floss_license` | Met | Apache-2.0, an OSI-approved licence; `LICENSE` holds the licence text and the GitHub API reports `Apache-2.0`. | `blob/LICENSE` |
-| `floss_license_osi` | Met | Apache-2.0 is OSI-approved. | `blob/LICENSE` |
-| `license_location` | Met | The licence is in the standard root location, linked from the README, and `NOTICE` records what the project derives from. | `blob/LICENSE`, `blob/NOTICE` |
+| `floss_license` | Met | MIT, an OSI-approved licence; `LICENSE` holds the licence text and the GitHub API reports `MIT`. | `blob/LICENSE` |
+| `floss_license_osi` | Met | MIT is OSI-approved. | `blob/LICENSE` |
+| `license_location` | Met | The licence is in the standard root location, linked from the README, and `NOTICE` records what the project derives from and which third-party material the MIT licence does not cover. | `blob/LICENSE`, `blob/NOTICE` |
 | `documentation_basics` | Met | README (requirements, provider configuration, resource/data-source inventory, testing), the generated reference in `docs/`, `examples/` (provider, one per resource and data source, and `complete/`), plus `ARCHITECTURE.md`, `ROADMAP.md`, `GOVERNANCE.md`. | `blob/README.md`, `blob/docs/index.md`, `blob/examples/complete/main.tf` |
 | `documentation_interface` | Met | Every resource and data source has a generated page listing every attribute with its type, whether it is required/optional/computed, and its import syntax. | `blob/docs/resources`, `blob/docs/data-sources` |
 | `sites_https` | Met | Every project site is HTTPS: GitHub, the Terraform Registry, `gravitino.apache.org` and the links from the README. | `https://github.com/caberdo/terraform-provider-gravitino` |
@@ -159,7 +159,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | Criterion | Answer | Justification |
 |---|---|---|
 | `contribution_requirements` | Met | `CONTRIBUTING.md` states the standards, the tests, the docs regeneration and the one-change-per-pull-request rule. |
-| `dco` | N/A | A Developer Certificate of Origin is not required; contributions are licensed under Apache-2.0 by the terms in `CONTRIBUTING.md`. |
+| `dco` | N/A | A Developer Certificate of Origin is not required; contributions are licensed under MIT by the terms in `CONTRIBUTING.md`. |
 | `bus_factor` (SHOULD at this level) | **Unmet** | One maintainer — see §5. |
 | `accessibility_best_practices` | N/A | The project produces no graphical user interface; the documentation is plain Markdown. |
 | `internationalization` | N/A | A provider/CLI context: error strings and documentation are English-only by convention, which the `english` criterion expects. |
@@ -232,7 +232,7 @@ true.
 | `achieve_silver` | Met once Silver is awarded | §4.1 and §4.3 are complete except for the items in §5. | `https://www.bestpractices.dev/projects/PROJECT_ID` |
 | `bus_factor` | **Unmet** | One maintainer: `dennismdejong` (137 commits) plus `dependabot[bot]`; the organization has one member. A second person with repository access and the release secrets is required. | `blob/GOVERNANCE.md#access-and-continuity` |
 | `contributors_unassociated` | **Unmet** | Every contribution to date comes from one person (or Dependabot). A contributor outside `caberdo` is needed; a bot approving pull requests would make the claim untrue. | `https://github.com/caberdo/terraform-provider-gravitino/graphs/contributors` |
-| `copyright_per_file` | **Unmet — out of scope for this change** | No per-file copyright statement. The licence is repository-wide (`LICENSE`, `NOTICE`) and issue #50 explicitly places per-file Apache-2.0 headers out of scope; a separate change can add them. | `blob/LICENSE`, `blob/NOTICE` |
+| `copyright_per_file` | **Unmet — out of scope for this change** | No per-file copyright statement. The licence is repository-wide (`LICENSE`, `NOTICE`) and issue #50 explicitly places per-file MIT headers out of scope; a separate change can add them. | `blob/LICENSE`, `blob/NOTICE` |
 | `license_per_file` | **Unmet — out of scope for this change** | Same as `copyright_per_file`: no `SPDX-License-Identifier` header in each source file. | `blob/LICENSE` |
 | `repo_distributed` | Met | Git. | `https://github.com/caberdo/terraform-provider-gravitino` |
 | `small_tasks` | **Unmet** | The `good first issue` label exists, but no open issue currently carries it. The four open issues (#47–#50) are maintainer-sized work. Labelling two or three genuinely beginner-sized issues is the fix, and only the maintainer can do it. | `https://github.com/caberdo/terraform-provider-gravitino/labels` |
@@ -265,7 +265,7 @@ true.
 | 6 | `small_tasks` (Gold) | Label two or three beginner-sized issues `good first issue` so newcomers have an entry point. | Maintainer |
 | 7 | `require_2FA` (Gold) | Turn on the organization's 2FA requirement for members with write access, and enable secret scanning with push protection while there. | Organization owner |
 | 8 | `security_review` (Gold) | Perform and date a security review against the requirements and boundary already written in `SECURITY.md`; a self-review by the maintainer against the threat model satisfies the criterion. | Maintainer |
-| 9 | `copyright_per_file` / `license_per_file` (Gold) | Add a copyright line and `SPDX-License-Identifier: Apache-2.0` to every source file. Deliberately out of scope of issue #50. | Code work |
+| 9 | `copyright_per_file` / `license_per_file` (Gold) | Add a copyright line and `SPDX-License-Identifier: MIT` to every source file. Deliberately out of scope of issue #50. | Code work |
 | 10 | `warnings_fixed`, `test_continuous_integration` hardening (Passing/Silver) | Add required status checks (`Lint & Security`, `Vulnerability Scan`, `Test`, `Coverage`) to the `main` ruleset so a red run cannot be merged, instead of relying on the maintainer's discipline. | Maintainer (repository settings) |
 
 **Realistic target.** Items 1–2 and 10 unlock **Silver (7)**; items 3–9 are the price of
