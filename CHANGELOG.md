@@ -1,5 +1,14 @@
 ## Unreleased
 
+SECURITY:
+- **The module now requires Go 1.27.4, which closes GO-2026-6859.** `net/http` in Go 1.27.3 has a
+  header race in `MaxBytesReader` that a remote peer can turn into an HTTP/1 server crash. The
+  provider and its acceptance harness both reach the affected code through `net/http`, so the
+  `Vulnerability Scan` job failed on a module declaring Go 1.27.3 even though the dependency set was
+  unchanged. `go.mod` now declares `go 1.27.4`, the version the other providers in the family
+  already build with, and `govulncheck ./...` reports no reachable vulnerability. No provider
+  behaviour, schema or state changes.
+
 LICENSE:
 - **The project moves from Apache-2.0 to the MIT License.** `LICENSE` now holds the MIT text;
   `NOTICE` records the upstream works the project derives from and which third-party material the
