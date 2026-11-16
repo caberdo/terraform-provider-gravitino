@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.10.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.13.0
     # GitHub validates a caller's grant against every job of the called workflow
     # before any `if:` or input is evaluated, so these are the union of what
     # provider-ci declares, not what this run happens to execute:
@@ -64,10 +64,16 @@ jobs:
       # (the old display name was `Supported Gravitino Versions`); only `main`
       # consumes the matrix, as before.
       versions-job: true
-      # There is no VERSION file: releases are cut by dispatch or by pushing a
-      # signed tag, so there is no release metadata to check here.
-      changelog: false
-      version-file: ""
+      # There is no version file: the newest CHANGELOG.md section names the
+      # version, and a merge is not a release. `changelog: true` runs the check
+      # that compares that section with the README install constraint and
+      # reports the last tag beside the verdict (pending release / released),
+      # so a release pull request passes; `tfkit release check` runs the same
+      # check locally.
+      changelog: true
+      # Every pull request that can change what a user sees carries a fragment
+      # in changelog.d/ instead of editing CHANGELOG.md.
+      changelog-fragments: true
       # Keep dependency scanning in its own `Vulnerability Scan` job, as it is
       # today, instead of moving it into `Lint & Security`.
       govuln-mode: action
@@ -149,7 +155,7 @@ jobs:
   acceptance:
     needs: ci
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.10.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.13.0
     permissions:
       contents: read
     with:

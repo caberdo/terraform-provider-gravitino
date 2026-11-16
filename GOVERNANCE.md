@@ -29,13 +29,16 @@ responsibilities and the workflows in `.github/workflows/` do the mechanical par
 3. **The maintainer decides.** Where an issue reaches no consensus, the maintainer records the
    decision and its rationale in the issue and moves on. Disagreement is expressed in the issue,
    not by re-litigating a merged change.
-4. **Releases are cut, not continuous.** `Create Release Tag` computes the next version from `main`,
-   signs and pushes the tag, and invokes the `Release` workflow, which builds with GoReleaser,
-   signs the checksums, attests build provenance, attaches the SPDX SBOM and publishes to the
-   Terraform Registry; the public verification steps are in
-   [`README.md`](./README.md#verifying-a-release). A failed release is republished by dispatching
-   `Release` with the existing tag. `CHANGELOG.md` is updated per release; breaking changes are
-   called out in it.
+4. **Releases are cut, not continuous.** A release is a signed `v*` tag cut after the release
+   pull request merges: the newest `CHANGELOG.md` section names the version, and the repository
+   carries no `VERSION` file. The release pull request assembles the changelog from the
+   `changelog.d/` fragments. A maintainer cuts and pushes the signed tag;
+   the `Release` workflow builds with GoReleaser, signs the checksums, attests build provenance,
+   attaches the SPDX SBOM and publishes to the Terraform Registry. The public verification steps
+   are in [`README.md`](./README.md#verifying-a-release). A failed release is republished by
+   dispatching `Release` with the existing tag. Every user-visible change lands with a fragment
+   under `changelog.d/` instead of an edit to `CHANGELOG.md`; `CHANGELOG.md` itself is written by
+   the release pull request, and breaking changes are called out there.
 5. **Backwards compatibility is a commitment.** Terraform type and attribute names are public API:
    renaming `gravitino_metalake` or an attribute silently breaks user state. An attribute the API
    cannot change in place carries `RequiresReplace()` (over 80 uses today) instead of silently doing

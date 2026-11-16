@@ -30,7 +30,7 @@ terraform {
   required_providers {
     gravitino = {
       source  = "caberdo/gravitino"
-      version = "~> 0.9"
+      version = "~> 0.13"
     }
   }
 }

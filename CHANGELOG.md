@@ -20,7 +20,7 @@ LICENSE:
   replaced by the shared MIT-licensed reusable workflows from `caberdo/terraform-provider-kit`, so
   no AGPL-3.0 material remains. No provider behaviour, schema or state changes.
 
-## 0.13.0 (2026-10-27)
+## [0.13.0] - 2026-10-27
 
 BREAKING CHANGES:
 - **`gravitino_metalake` and `gravitino_catalog` no longer force-drop by default (issue #78, epic #84).**
@@ -125,7 +125,7 @@ ENHANCEMENTS:
   `User-Agent: terraform-provider-gravitino/<version>` so a server operator can identify provider
   traffic.
 
-## 0.12.0 (2026-10-22)
+## [0.12.0] - 2026-10-22
 
 BUG FIXES:
 - **`gravitino_table` plans with unknown nested blocks.** The resource and data source models now
@@ -140,7 +140,7 @@ BUG FIXES:
   longer fails with the same conversion error; a regression test plans both through Terraform
   Core.
 
-## 0.11.0 (2026-10-22)
+## [0.11.0] - 2026-10-22
 
 BUG FIXES:
 - **`gravitino_table` always sends `distribution.funcArgs`.** Gravitino's
@@ -151,7 +151,7 @@ BUG FIXES:
   schema default `[]`, and regression tests pin both that payload (a distribution with
   only `number`) and the server-default path where the block is omitted.
 
-## 0.10.0 (2026-10-19)
+## [0.10.0] - 2026-10-19
 
 ENHANCEMENTS:
 - **The README coverage badge and block are generated.** `scripts/coverage-readme.sh` renders the
@@ -215,7 +215,7 @@ DOCUMENTATION:
 - **`README.md` links the documentation set** from a new `Project documents` section and reports the
   coverage construction the floor enforces, per scope, with the measured numbers.
 
-## 0.9.0 (2026-10-08)
+## [0.9.0] - 2026-10-08
 
 FEATURES:
 - **`gravitino_policy` data source.** Reads a single policy by `metalake` and `name`,
@@ -276,7 +276,7 @@ INTERNAL / TOOLING:
 - Repository hygiene: aligned the repository and registry URLs, added `.editorconfig` and
   `CODEOWNERS`.
 
-## 0.8.0 (2026-10-02)
+## [0.8.0] - 2026-10-02
 
 FEATURES:
 - **Catalog connection testing:** New `gravitino_catalog_connection_test` data source. It
@@ -372,7 +372,7 @@ FIXES:
   instead of failing. Structural types must be written as a JSON object, for
   example `type = jsonencode({ type = "external", catalogString = "..." })`.
 
-## 0.7.0 (2026-09-25)
+## [0.7.0] - 2026-09-25
 
 _Releases 0.5.0 through 0.6.2 were tagged without changelog entries._
 
@@ -613,7 +613,7 @@ ENHANCEMENTS:
 
 - `client.GetVersion()` and `models.VersionResponse` for server-version verification.
 
-## 0.4.6 (2026-09-09)
+## [0.4.6] - 2026-09-09
 
 FIXES:
 - **Fix "inconsistent result after apply" for `gravitino_role` securable objects.**
@@ -629,7 +629,7 @@ ENHANCEMENTS:
   test `TestSecurableObjectsToTF_NormalizesToUppercase` guarding against the
   case-mismatch regression.
 
-## 0.4.5 (2026-09-09)
+## [0.4.5] - 2026-09-09
 
 FIXES:
 - **Fix update failure "Property in-use is immutable or reserved, cannot be
@@ -645,7 +645,7 @@ ENHANCEMENTS:
 - Documentation notes that the reserved `in-use` property is managed by
   Gravitino and filtered out.
 
-## 0.4.4 (2026-09-09)
+## [0.4.4] - 2026-09-09
 
 FIXES:
 - **Fix provider panic "assignment to entry in nil map"** in `gravitino_metalake`
@@ -658,7 +658,7 @@ ENHANCEMENTS:
   `mapTableResponseToState`, plus an import acceptance test with server-only
   properties.
 
-## 0.4.3 (2026-09-09)
+## [0.4.3] - 2026-09-09
 
 FIXES:
 - **Fix perpetual drift on `properties` when the server drops a configured key**
@@ -676,7 +676,7 @@ ENHANCEMENTS:
   property removal on update), `TestAccTableResource_NoDriftWithServerDroppedProperty`,
   and `TestAccTableResource_CreateWithEmptyProperties`.
 
-## 0.4.2 (2026-09-09)
+## [0.4.2] - 2026-09-09
 
 FIXES:
 - **Fix "Provider produced inconsistent result after apply: .audit was absent,
@@ -704,7 +704,7 @@ ENHANCEMENTS:
   `TestAccMetalakeResource_CreateWithEmptyProperties`, and
   `TestAccTableResource_CreateWithAudit`.
 
-## 0.4.0 (2026-09-02)
+## [0.4.0] - 2026-09-02
 
 BREAKING CHANGES:
 - **Policy resource rewritten** for the Gravitino 1.3.0 policy model. The old
@@ -745,7 +745,7 @@ FIXES:
   - role privilege override now a single bulk call at `/permissions/roles/{role}`
 - Added the `COLUMN` metadata object type.
 
-## 0.3.1 (2026-07-27)
+## [0.3.1] - 2026-07-27
 
 BREAKING CHANGES: None
 
@@ -759,7 +759,7 @@ ENHANCEMENTS:
 - **Complete deployment example:** New `examples/complete/main.tf` showing all resources working together in a realistic data platform scenario
 - **AGENTS.md:** Updated with auth architecture, missing resources (model_version, job_template), and gokrb5 dependency
 
-## 0.3.0 (2026-07-27)
+## [0.3.0] - 2026-07-27
 
 BREAKING CHANGES: None
 
