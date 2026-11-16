@@ -33,7 +33,7 @@ services:
         # and point the library at it (TF_ACC_TERRAFORM_PATH below). Skipped
         # when the image already ships a terraform binary.
         if ! command -v terraform >/dev/null 2>&1; then
-          terraform_version="1.9.8"
+          terraform_version="1.11.4"
           # The release filenames are linux_amd64 and linux_arm64, and an amd64
           # binary cannot execute on the arm64 images Apple Silicon runs.
           terraform_arch="$$(dpkg --print-architecture)"
