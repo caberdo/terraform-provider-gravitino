@@ -7,6 +7,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/caberdo/terraform-provider-gravitino/badge)](https://scorecard.dev/viewer/?uri=github.com/caberdo/terraform-provider-gravitino)
 [![Release](https://img.shields.io/github/v/release/caberdo/terraform-provider-gravitino?label=release)](https://github.com/caberdo/terraform-provider-gravitino/releases)
 [![Terraform Registry](https://img.shields.io/badge/registry-caberdo%2Fgravitino-7b42bc)](https://registry.terraform.io/providers/caberdo/gravitino)
+[![OpenTofu](https://img.shields.io/badge/OpenTofu-available-ffda18)](https://search.opentofu.org/provider/caberdo/gravitino)
 [![Go](https://img.shields.io/github/go-mod/go-version/caberdo/terraform-provider-gravitino)](https://golang.org/doc/devel/release.html)
 [![License](https://img.shields.io/github/license/caberdo/terraform-provider-gravitino)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/caberdo/terraform-provider-gravitino)](https://github.com/caberdo/terraform-provider-gravitino/commits/main)
@@ -30,17 +31,15 @@ Terraform state as the rest of your infrastructure.
 
 - [Quick start](#quick-start)
 - [Requirements and compatibility](#requirements-and-compatibility)
-- [Supported Gravitino versions](#supported-gravitino-versions)
-- [Provider configuration](#provider-configuration)
 - [Authentication](#authentication)
+- [Provider configuration](#provider-configuration)
 - [Resources](#resources)
 - [Data sources](#data-sources)
 - [Examples](#examples)
 - [Verifying a release](#verifying-a-release)
-- [Testing](#testing)
+- [Testing and coverage](#testing-and-coverage)
 - [Development](#development)
 - [Troubleshooting and FAQ](#troubleshooting-and-faq)
-- [Project documents](#project-documents)
 - [Security, contributing and support](#security-contributing-and-support)
 - [License](#license)
 
@@ -139,7 +138,7 @@ and groups on the IDP plugin, jobs on a configured job executor. Until then the 
 its own error (HTTP 405 or 404), which the provider surfaces. See
 [Troubleshooting and FAQ](#troubleshooting-and-faq).
 
-## Supported Gravitino versions
+### Supported Gravitino versions
 
 The provider targets the Apache Gravitino **v1.3.0** REST API and supports **v1.3.1** from the
 same build. It asks the server for its version once, when it is configured (`GET /api/version`),
@@ -158,27 +157,6 @@ Version-restricted attributes and data sources say so in their schema descriptio
 | `gravitino_iceberg_rest_service` data source | endpoint does not exist | returns `uri`, or `null` when the service is unavailable |
 | `gravitino_catalog_connection_test`, existing-catalog variant | endpoint does not exist | supported |
 | `gravitino_catalog_connection_test`, proposed-configuration variant | supported | supported |
-
-## Provider configuration
-
-The provider supports the following arguments; each one can also be set through its environment
-variable, and the environment wins when both are set.
-
-| Attribute | Type | Env Variable | Description |
-|-----------|------|-------------|-------------|
-| `uri` | `string` | `GRAVITINO_URI` | Gravitino server URI |
-| `auth` | `string` | `GRAVITINO_AUTH` | Auth method: `none`, `simple`, `basic`, `oauth`, or `kerberos` |
-| `username` | `string` | `GRAVITINO_USERNAME` | Username (simple/basic auth) |
-| `password` | `string` (sensitive) | `GRAVITINO_PASSWORD` | Password (basic auth) |
-| `oauth_token` | `string` (sensitive) | `GRAVITINO_OAUTH_TOKEN` | Static OAuth2 bearer token |
-| `oauth_client_id` | `string` | `GRAVITINO_OAUTH_CLIENT_ID` | OAuth2 client ID (client credentials flow) |
-| `oauth_client_secret` | `string` (sensitive) | `GRAVITINO_OAUTH_CLIENT_SECRET` | OAuth2 client secret |
-| `oauth_server_uri` | `string` | `GRAVITINO_OAUTH_SERVER_URI` | OAuth2 server URI |
-| `oauth_token_path` | `string` | `GRAVITINO_OAUTH_TOKEN_PATH` | OAuth2 token endpoint path |
-| `oauth_scope` | `string` | `GRAVITINO_OAUTH_SCOPE` | OAuth2 scope |
-| `kerberos_principal` | `string` | `GRAVITINO_KERBEROS_PRINCIPAL` | Kerberos principal |
-| `kerberos_keytab` | `string` (sensitive) | `GRAVITINO_KERBEROS_KEYTAB` | Path to keytab file |
-| `kerberos_use_ticket_cache` | `bool` | `GRAVITINO_KERBEROS_USE_TICKET_CACHE` | Use OS ticket cache |
 
 ## Authentication
 
@@ -261,6 +239,27 @@ provider "gravitino" {
   kerberos_use_ticket_cache = true
 }
 ```
+
+## Provider configuration
+
+The provider supports the following arguments; each one can also be set through its environment
+variable, and the environment wins when both are set.
+
+| Attribute | Type | Env Variable | Description |
+|-----------|------|-------------|-------------|
+| `uri` | `string` | `GRAVITINO_URI` | Gravitino server URI |
+| `auth` | `string` | `GRAVITINO_AUTH` | Auth method: `none`, `simple`, `basic`, `oauth`, or `kerberos` |
+| `username` | `string` | `GRAVITINO_USERNAME` | Username (simple/basic auth) |
+| `password` | `string` (sensitive) | `GRAVITINO_PASSWORD` | Password (basic auth) |
+| `oauth_token` | `string` (sensitive) | `GRAVITINO_OAUTH_TOKEN` | Static OAuth2 bearer token |
+| `oauth_client_id` | `string` | `GRAVITINO_OAUTH_CLIENT_ID` | OAuth2 client ID (client credentials flow) |
+| `oauth_client_secret` | `string` (sensitive) | `GRAVITINO_OAUTH_CLIENT_SECRET` | OAuth2 client secret |
+| `oauth_server_uri` | `string` | `GRAVITINO_OAUTH_SERVER_URI` | OAuth2 server URI |
+| `oauth_token_path` | `string` | `GRAVITINO_OAUTH_TOKEN_PATH` | OAuth2 token endpoint path |
+| `oauth_scope` | `string` | `GRAVITINO_OAUTH_SCOPE` | OAuth2 scope |
+| `kerberos_principal` | `string` | `GRAVITINO_KERBEROS_PRINCIPAL` | Kerberos principal |
+| `kerberos_keytab` | `string` (sensitive) | `GRAVITINO_KERBEROS_KEYTAB` | Path to keytab file |
+| `kerberos_use_ticket_cache` | `bool` | `GRAVITINO_KERBEROS_USE_TICKET_CACHE` | Use OS ticket cache |
 
 ## Resources
 
@@ -445,7 +444,7 @@ Terraform itself verifies the checksums when it installs a provider and records 
 The release tag carries the **Verified** badge on GitHub because it is signed by the key
 registered to the releasing account.
 
-## Testing
+## Testing and coverage
 
 | Command | What it runs |
 |---|---|
@@ -597,24 +596,21 @@ instead of erroring.
 CI exercises `1.3.0` and `1.3.1`; `.github/gravitino-versions.txt` is the single source of truth
 and is read by both the CI matrix and `make testacc-matrix`.
 
-## Project documents
-
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — package layout, request flow, authentication, the
-  Gravitino version gates, the test layers and the release pipeline.
-- [`GOVERNANCE.md`](./GOVERNANCE.md) — who maintains the provider, how decisions are made, what CI
-  enforces and how continuity is handled.
-- [`ROADMAP.md`](./ROADMAP.md) — what is planned next, and what is explicitly out of scope.
-- [`.github/OPENSSF-BEST-PRACTICES.md`](./.github/OPENSSF-BEST-PRACTICES.md) — the OpenSSF Best
-  Practices evidence pack, criterion by criterion, with the command behind every figure.
-- [`NOTICE`](./NOTICE) — the upstream works this provider derives from and their licences.
-
 ## Security, contributing and support
 
 - [`SECURITY.md`](./.github/SECURITY.md) — how to report a vulnerability.
 - [`CONTRIBUTING.md`](./.github/CONTRIBUTING.md) — how to get a change merged.
 - [`SUPPORT.md`](./SUPPORT.md) — where to ask questions.
 - [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) — the ground rules for the community.
+- [`GOVERNANCE.md`](./GOVERNANCE.md) — who maintains the provider, how decisions are made, what CI
+  enforces and how continuity is handled.
+- [`ROADMAP.md`](./ROADMAP.md) — what is planned next, and what is explicitly out of scope.
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — package layout, request flow, authentication, the
+  Gravitino version gates, the test layers and the release pipeline.
+- [`.github/OPENSSF-BEST-PRACTICES.md`](./.github/OPENSSF-BEST-PRACTICES.md) — the OpenSSF Best
+  Practices evidence pack, criterion by criterion, with the command behind every figure.
 - [`CHANGELOG.md`](./CHANGELOG.md) — what changed in every release.
+- [`NOTICE`](./NOTICE) — the upstream works this provider derives from and their licences.
 - [Provider documentation](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs)
   — the generated resource and data source reference.
 
