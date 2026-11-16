@@ -16,7 +16,7 @@ Read these before changing behaviour; each states a constraint this file only su
 | `.github/OPENSSF-BEST-PRACTICES.md` | OpenSSF Best Practices criteria and the evidence for each |
 | `.github/CONTRIBUTING.md` | Development setup, conventions, pull request process |
 | `.github/SECURITY.md` | Supported versions, vulnerability reporting, security model |
-| `CHANGELOG.md` | Release history; add an entry under `## Unreleased` |
+| `CHANGELOG.md` | Release history; the release pull request writes it from the `changelog.d/` fragments |
 | `NOTICE` | Upstream works and their licences |
 
 `docs/` is **generated** by tfplugindocs from `templates/` plus `examples/`

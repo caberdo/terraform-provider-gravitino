@@ -235,14 +235,10 @@ container both use Go 1.27.3.
 ## Release pipeline
 
 ```
-release.yml (workflow_dispatch: patch|minor|major or X.Y.Z, or an existing
-             inputs.tag to republish; also a v* tag push)
-        └─► provider-release.yml@v0.8.0 (the reusable workflow in
+release.yml (a pushed signed v* tag; workflow_dispatch with inputs.tag
+             republishes an existing tag)
+        └─► provider-release.yml@v0.12.0 (the reusable workflow in
             terraform-provider-kit)
-              ├─ tag job
-              │    ├─ import GPG key (secrets GPG_PRIVATE_KEY, PASSPHRASE)
-              │    ├─ git tag -s vX.Y.Z + git tag -v, then push the signed tag
-              │    └─► goreleaser job
               └─ goreleaser job
                         ├─ goreleaser "~> v2", config .github/goreleaser.yml
                         ├─ CGO_ENABLED=0, -trimpath, -s -w, mod_timestamp = commit time
@@ -255,11 +251,13 @@ release.yml (workflow_dispatch: patch|minor|major or X.Y.Z, or an existing
                         └─ GitHub release with the registry install snippet (caberdo/gravitino)
 ```
 
-The GPG private key and passphrase live in the repository's Actions secrets
-(`GPG_PRIVATE_KEY`, `PASSPHRASE`) and are imported only by that workflow; the public half is
-committed as `.github/release-signing-key.asc`, and `README.md#verifying-a-release` documents the
-`gpg --verify` and `gh attestation verify` steps. Two details of the wiring are deliberate: tags
-pushed with the default `GITHUB_TOKEN` do not trigger other workflows, so the reusable workflow's
-tag job hands its own tag to the release job (with `id-token` and `attestations` write to mint the
-provenance identity), and because GoReleaser runs with `release.mode: replace`, dispatching
-`release.yml` with an existing tag republishes it idempotently instead of calculating a new version.
+The released version is the last git tag; the repository has no `VERSION` file, and the release
+pull request assembles `CHANGELOG.md` from the `changelog.d/` fragments instead of bumping one.
+A maintainer cuts and pushes the signed tag, so the reusable workflow's tag-creation job is
+skipped on every path here and nothing derives a version from a file. The GPG private key and
+passphrase live in the repository's Actions secrets (`GPG_PRIVATE_KEY`, `PASSPHRASE`) and are
+imported only by that workflow; the public half is committed as
+`.github/release-signing-key.asc`, and `README.md#verifying-a-release` documents the
+`gpg --verify` and `gh attestation verify` steps. Because GoReleaser runs with
+`release.mode: replace`, dispatching `release.yml` with an existing tag republishes it
+idempotently instead of calculating a new version.

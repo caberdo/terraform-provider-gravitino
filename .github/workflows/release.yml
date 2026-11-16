@@ -1,24 +1,19 @@
 # Releasing is delegated to the reusable release workflow in
 # caberdo/terraform-provider-kit.
 #
-# The old tag-creation workflow and release workflow are one file now, because
-# the kit's `provider-release.yml` owns both jobs: `tag` creates the signed tag
-# and `goreleaser` publishes the release. The tag job hands its own tag to the
-# release job, so a tag pushed with the default GITHUB_TOKEN (which does not
-# trigger other workflows) is still published.
+# The released version is the last git tag; this repository does not carry a
+# version file. Two entry points share this workflow:
 #
-# Triggers preserved from the two files it replaces:
+# - Pushing a signed `v*` tag from a maintainer machine publishes that tag.
+#   Tags pushed with the default GITHUB_TOKEN do not trigger other workflows, so
+#   cut the tag from a developer machine (or with a token that does).
+# - A `workflow_dispatch` with `tag` set republishes an existing tag, or
+#   publishes a tag whose push produced no run.
 #
-# - `push: tags: ["v*"]` for signed tags pushed from a maintainer machine.
-# - `workflow_dispatch` with `version`, `release_type` and `tag`, the union of
-#   the old tag-creation inputs and the old republish input. A dispatch with
-#   `tag` set republishes that tag; a dispatch without it calculates the next
-#   version, as the old tag-creation workflow did.
-#
-# There is no `VERSION` file and no push-to-main trigger, so a merge to `main`
-# cannot create a tag by itself. There is also no concurrency group here: the
-# two workflows this replaces had none, so a manual dispatch can still race a
-# merge exactly as it could before.
+# There is deliberately no `push: branches: [main]` trigger: a merge is not a
+# release, and without a version file no file change could identify one. There
+# is also no concurrency group here: the pre-migration workflows had none, so a
+# manual dispatch can still race a tag push exactly as it could before.
 name: Release
 
 on:
@@ -27,36 +22,21 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to release (leave empty to auto-calculate from release_type)"
-        required: false
-        type: string
-        default: ""
-      release_type:
-        description: "Type of release (used when version is empty)"
-        required: true
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
-        default: "patch"
       tag:
-        description: "Existing tag to publish (or republish), e.g. v0.9.0"
-        required: false
+        description: "Existing tag to publish (or republish), e.g. v0.13.0"
+        required: true
         type: string
-        default: ""
 
 permissions:
   contents: read
 
 jobs:
   release:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.10.0
-    # `contents: write` creates the tag and uploads the release; `id-token:
-    # write` mints the OIDC identity `actions/attest` signs the provenance
-    # with; `attestations: write` stores that provenance in the repository's
-    # attestation record. Nothing else needs write access.
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.12.0
+    # `contents: write` uploads the release; `id-token: write` mints the OIDC
+    # identity `actions/attest` signs the provenance with; `attestations: write`
+    # stores that provenance in the repository's attestation record. Nothing
+    # else needs write access.
     permissions:
       contents: write
       id-token: write
@@ -65,15 +45,7 @@ jobs:
     with:
       provider: gravitino
       dist-prefix: terraform-provider-gravitino
-      # No VERSION file: the tag job must not look for one. A merge to main
-      # cannot create a tag either, because this workflow has no push-to-main
-      # trigger; only a dispatch or an existing tag does.
-      version-file: ""
-      changelog-check: false
-      # An existing tag on another commit is an error, as it was in the old
-      # tag-creation workflow; a re-run of the same commit is not a release
-      # path here because nothing pushes to main to start one.
-      tag-exists: fail
-      version: ${{ github.event.inputs.version }}
-      release-type: ${{ github.event.inputs.release_type || 'patch' }}
+      # No version file: the tag is the version. The kit's tag job is skipped
+      # on a tag-driven caller, and `changelog-check` lives in that job; the
+      # changelog is checked by `tfkit release check` against the last tag.
       tag: ${{ github.event.inputs.tag }}
