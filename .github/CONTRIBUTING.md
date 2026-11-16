@@ -56,10 +56,10 @@ Every command below is a target in [`GNUmakefile`](../GNUmakefile):
 | `make fmt` | `go fmt ./...` |
 | `make vet` | `go vet ./...` |
 | `make generate` | `go generate ./...` (regenerates `docs/`) |
-| `make validate-examples` | `./scripts/validate-examples.sh` |
-| `make coverage` | Unit profile (`coverage.out`) plus the per-package table |
+| `make validate-examples` | `./scripts/validate-examples.sh` (provider-specific: concatenates the snippet fragments into one module) |
+| `make coverage` | Unit profile (`coverage.out`) plus the per-function table (`go tool cover -func`) |
 | `make coverage-html` | `make coverage`, then `go tool cover -html=coverage.out` |
-| `make coverage-merge` | Merges `coverage.out` and `coverage-acceptance.out` into `coverage-union.out` and prints the table |
+| `make coverage-merge` | Merges `coverage.out` and `coverage-acceptance.out` into `coverage-union.out` and prints the per-function table |
 | `make coverage-gate` | Fails when a scope of `coverage-union.out` is below its floor in [`.github/coverage-baseline.txt`](./coverage-baseline.txt) |
 | `make coverage-readme` / `make coverage-readme-check` | Renders README.md's coverage badge and block from that baseline / fails when they have drifted from it |
 
@@ -106,20 +106,20 @@ The suite is deliberately layered; each layer catches what the previous one cann
 ## Coverage
 
 `make coverage` writes the unit profile (`coverage.out`, `TestAcc*`/`TestLiveAcc*` skipped) and
-prints a per-package table, weakest first; `make coverage-html` opens it as HTML.
+prints the per-function table (`go tool cover -func`); `make coverage-html` opens it as HTML.
 `make coverage-merge` merges it with the profile the acceptance container writes
 (`coverage-acceptance.out`, `-coverpkg=./internal/...`) into `coverage-union.out` and prints the
-same table. `merge-coverage.sh` keys blocks by position, so the union has one line per block
-however the inputs were instrumented, and `coverage-summary.sh` refuses a profile that repeats a
-block (exit 2) rather than printing a wrong number. CI publishes both tables in its job summaries:
+same table. `tfkit coverage merge` keys blocks by position, so the union has one line per block
+however the inputs were instrumented. CI publishes both tables in its job summaries:
 the `test` job for the unit profile, the `Coverage` job on a pull request and the `acceptance` job
 on `main` for the merged one.
 
-Merged (unit + acceptance) statement coverage is enforced. `make coverage-gate`
-(`scripts/coverage-gate.sh`) compares `coverage-union.out` against
-[`.github/coverage-baseline.txt`](./coverage-baseline.txt) — the file `scripts/coverage-readme.sh`
+Merged (unit + acceptance) statement coverage is enforced. `make coverage-gate` compares
+`coverage-union.out` against
+[`.github/coverage-baseline.txt`](./coverage-baseline.txt) — the file `make coverage-readme`
 renders README.md's badge and block from — and fails, naming each scope below its `floor_*`. The
-`Coverage` job runs both scripts on every pull request, after running the acceptance container on
+`Coverage` job runs the gate and the README check on every pull request, after running the
+acceptance container on
 the newest supported server (`GRAVITINO_VERSION` read from `.github/gravitino-versions.txt`), so
 the floor is never compared against a unit-only number or a 1.3.0 run, and the published block
 cannot drift. On `main` the same gate runs again inside the newest (`1.3.1`) acceptance-matrix
@@ -130,7 +130,7 @@ named in the baseline that the profile does not report, and a missing, misspelle
 `floor_*` are configuration errors (exit 2), never a pass.
 
 ```bash
-make coverage            # unit profile + per-package table
+make coverage            # unit profile + per-function table
 make testacc-docker      # writes coverage-acceptance.out
 make coverage-merge      # merge both into coverage-union.out
 make coverage-gate       # fail when below the floor
@@ -153,7 +153,7 @@ job runs `go test -v -race -covermode=atomic -coverprofile=coverage.out ./intern
 `coverage.out` as a build artifact and in the job summary; the `Coverage` job (pull requests) and
 the acceptance job (main) merge it with the container's profile. Statement counts depend on the Go
 patch release that produced the profile, so compare numbers only within one toolchain, and
-note that a merged profile takes its statement counts from the profile `merge-coverage.sh` reads
+note that a merged profile takes its statement counts from the profile `tfkit coverage merge` reads
 last — the acceptance container's, in CI. CI's `test` job installs the `go.mod` toolchain, so its
 own summary prints a different denominator for the unit profile — the gated number is always the
 merged one. `go.mod` and the acceptance container both use Go 1.27.3.

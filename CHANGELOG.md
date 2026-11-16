@@ -16,9 +16,9 @@ LICENSE:
   `.github/OPENSSF-BEST-PRACTICES.md` state MIT. Releases up to and including `0.13.0` stay
   available under Apache-2.0; this applies from the next release onward. `main.go` was rewritten
   against the public `providerserver` API so no MPL-2.0 source remains in the entry point. The
-  workflow configuration under `.github/workflows/` adapted from an AGPL-3.0 project stays outside
-  the MIT licence until it is replaced by the shared reusable workflows. No provider behaviour,
-  schema or state changes.
+  workflow configuration under `.github/workflows/` adapted from an AGPL-3.0 project has been
+  replaced by the shared MIT-licensed reusable workflows from `caberdo/terraform-provider-kit`, so
+  no AGPL-3.0 material remains. No provider behaviour, schema or state changes.
 
 ## 0.13.0 (2026-10-27)
 

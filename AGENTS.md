@@ -284,25 +284,23 @@ cannot prove. Over 900 `Test*` functions today, roughly 75 of them `TestAcc*` an
 #### Coverage
 
 `make coverage` runs the unit suite alone (`TestAcc*` and `TestLiveAcc*` skip themselves, so the
-profile cannot depend on the environment), writes `coverage.out` and prints a per-package table,
-weakest first (`scripts/coverage-summary.sh`); `make coverage-html` opens the same profile as HTML.
+profile cannot depend on the environment), writes `coverage.out` and prints the per-function table
+(`go tool cover -func`); `make coverage-html` opens the same profile as HTML.
 Because packages such as `internal/resources/*` assert most of their behaviour end-to-end, the
 acceptance container also writes `coverage-acceptance.out` (`-covermode=atomic
 -coverpkg=./internal/...`), and `make coverage-merge` merges both profiles into `coverage-union.out`
-and prints the same table. `merge-coverage.sh` keys blocks by position, so the union has one line
-per block however the inputs were instrumented; `coverage-summary.sh` sums the statement column and
-therefore rejects a profile that repeats a block (a raw `-coverpkg` profile) with exit 2 instead of
-printing a wrong number.
+and prints the same table. `tfkit coverage merge` keys blocks by position, so the union has one line
+per block however the inputs were instrumented.
 
-**The floor.** `make coverage-gate` (`scripts/coverage-gate.sh`) compares `coverage-union.out`
+**The floor.** `make coverage-gate` compares `coverage-union.out`
 against [`.github/coverage-baseline.txt`](.github/coverage-baseline.txt) — the same file
-`scripts/coverage-readme.sh` renders README.md's badge and block from — and exits non-zero for
+`tfkit coverage readme` renders README.md's badge and block from — and exits non-zero for
 every scope below its `floor_*`. The `Coverage` job runs it on every pull request, after running
 the acceptance container on the newest supported server (`GRAVITINO_VERSION` from
 `.github/gravitino-versions.txt`), so the gate never sees a unit-only number or a 1.3.0 run, and it
-also runs `coverage-readme.sh --check` so the published block cannot drift. A scope named in the
+also runs `tfkit coverage readme --check` so the published block cannot drift. A scope named in the
 baseline that drops out of the profile, a missing, misspelled or stray `floor_*`, and an absent
-profile are configuration errors (exit 2), never a pass. On `main` the same script runs again
+profile are configuration errors (exit 2), never a pass. On `main` the same gate runs again
 inside the newest (`1.3.1`) acceptance-matrix cell — `latest`, read from
 `.github/gravitino-versions.txt` — and the older cells are deliberately not gated because they skip
 the version-gated tests. Raise a floor in the same pull request that adds the tests and run
@@ -332,7 +330,7 @@ which the supported 1.3.0/1.3.1 servers cannot serve.
 Statement counts come straight from the cover profile, so they depend on the Go patch release that
 produced it: the same block set sums differently under the `go.mod` toolchain (which CI installs)
 and a newer patch release. Compare numbers only within one toolchain, and note that a merged
-profile takes its statement counts from the profile `merge-coverage.sh` reads last (the acceptance
+profile takes its statement counts from the profile `tfkit coverage merge` reads last (the acceptance
 container's, in CI); both currently use Go 1.27.3.
 
 ### Logging
