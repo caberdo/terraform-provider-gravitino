@@ -13,7 +13,7 @@ GRAVITINO_VERSIONS := $(shell tr '\n' ' ' < .github/gravitino-versions.txt)
 # workflows install their own tfkit, so they do not follow it. `go run` rewrites
 # a child exit 2 to 1, so CI (which installs the binary) is where exit codes are
 # meaningful.
-TFKIT ?= go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.8.0
+TFKIT ?= go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.10.0
 
 build:
 	go build -o bin/$(BINARY_NAME) -ldflags "-X main.version=$(VERSION)" .
