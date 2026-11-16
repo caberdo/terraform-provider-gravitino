@@ -102,7 +102,7 @@ Trust boundaries and what crosses each one:
 | Provider → OAuth2 token endpoint | Client id and secret, bearer token in the response | Separate 30 s HTTP client; token cached with a refresh margin; refreshes serialised (`internal/client/auth/oauth_credentials.go`) |
 | Provider → Kerberos KDC | Principal, keytab material or cached ticket | `gokrb5/v8` SPNEGO; keytab path read from disk; ticket cache optional (`internal/client/auth/kerberos.go`) |
 | Provider → local filesystem | The keytab file at the configured path | Read-only access to the keytab path; no other filesystem access, no `os/exec` anywhere in the provider |
-| Release supply chain: Actions → GoReleaser → signed checksums + provenance → Terraform Registry | Release artifacts | `create-release-tag.yml` imports the release GPG key from secrets `GPG_PRIVATE_KEY`/`PASSPHRASE` and pushes a **signed** tag; `release.yml` builds with GoReleaser, detach-signs `..._SHA256SUMS`, attests SLSA v1.0 build provenance over the checksum file with an OIDC identity (`actions/attest-build-provenance`), and attaches the SPDX-JSON SBOM and the provenance bundle. The public key is committed at `.github/release-signing-key.asc` and the verification steps are in `README.md#verifying-a-release` |
+| Release supply chain: Actions → GoReleaser → signed checksums + provenance → Terraform Registry | Release artifacts | `release.yml` (the reusable `provider-release.yml` in `terraform-provider-kit`) imports the release GPG key from secrets `GPG_PRIVATE_KEY`/`PASSPHRASE` and pushes a **signed** tag, then builds with GoReleaser, detach-signs `..._SHA256SUMS`, attests SLSA v1.0 build provenance over the checksum file with an OIDC identity (`actions/attest-build-provenance`), and attaches the SPDX-JSON SBOM and the provenance bundle. The public key is committed at `.github/release-signing-key.asc` and the verification steps are in `README.md#verifying-a-release` |
 
 ## Assurance case
 
@@ -162,7 +162,7 @@ Secure-design principles mapped to the code that implements them:
   set (`.github/golangci.yml`), plus `gosec` whose findings are uploaded to
   code scanning and fail the job.
 - `dependency-review` runs on pull requests.
-- `docs.yml` runs the markdown link check (`tcort/markdown-link-check`) on pull
+- `test.yml` runs the markdown link check (`tcort/markdown-link-check`) on pull
   requests.
 - Release artifacts are built from a clean `CGO_ENABLED=0`, `-trimpath`, `-s -w`
   GoReleaser configuration with the commit timestamp as `mod_timestamp`; the tag

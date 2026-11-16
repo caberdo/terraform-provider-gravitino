@@ -522,11 +522,11 @@ Measured on `c2fc783` (unit + acceptance) on 2026-10-19.
 <!-- coverage:end -->
 
 The block above is generated from `.github/coverage-baseline.txt` by
-`scripts/coverage-readme.sh`: `make coverage-readme` rewrites it and
+`tfkit coverage readme`: `make coverage-readme` rewrites it and
 `make coverage-readme-check` fails when it drifts from the baseline. The same file carries the
 enforced floor, so the badge, the block and the gate all publish one number.
 
-`make coverage-gate` (`scripts/coverage-gate.sh`) compares `coverage-union.out` against those
+`make coverage-gate` compares `coverage-union.out` against those
 floors and fails, naming every scope below its floor. The `Coverage` job runs it on every pull
 request, after the acceptance container has written its profile, so a change cannot make the
 project less tested than it was. The gate fails closed: an absent profile, a scope named in the

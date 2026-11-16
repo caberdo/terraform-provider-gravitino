@@ -1,8 +1,22 @@
+# CI is delegated to the reusable workflows in caberdo/terraform-provider-kit.
+#
+# The triggers, the concurrency group and the token scopes stay here: a
+# `workflow_call` file cannot declare triggers, and a called workflow can only
+# narrow the token its caller grants. Everything else — the job steps, the
+# versions-matrix parser, the coverage gate — lives in the kit.
+#
+# The old separate docs workflow is folded in here: the kit keeps the docs job
+# and the Markdown link check inside `provider-ci.yml`, and calling it twice
+# would run lint, test and the vulnerability scan twice. Its `tags: ["v*"]`
+# trigger is kept on this file so a signed tag pushed from a maintainer machine
+# still gets the Markdown link check it got before; the docs job itself only
+# opens a pull request on a push to `main`, exactly as the old workflow did.
 name: Test
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -14,13 +28,98 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint & Security
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  ci:
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.6.0
+    # GitHub validates a caller's grant against every job of the called workflow
+    # before any `if:` or input is evaluated, so these are the union of what
+    # provider-ci declares, not what this run happens to execute:
+    #
+    # - `contents: write` + `pull-requests: write`: requested unconditionally by
+    #   the called `docs` job. Omitting them rejects the whole run with "The
+    #   nested job 'docs' is requesting 'contents: write, pull-requests: write'"
+    #   — even when `docs-mode: autopr` only uses them on a push to main.
+    # - `security-events: write`: the `Lint & Security` job uploads gosec SARIF
+    #   to code scanning.
+    #
+    # This does not widen the token any other job runs with: every other job in
+    # provider-ci.yml re-declares `contents: read` (and nothing else), and a
+    # called job can narrow the caller's grant, never widen it. It is also the
+    # grant the old docs workflow's `generate-docs` job had, and nothing more.
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
       security-events: write
+    with:
+      provider: gravitino
+      provider-display: Gravitino
+      # Gravitino's module path is outside the caberdo organisation; the called
+      # workflow verifies it against `go list -m` before the build starts.
+      module: github.com/gravitino/terraform-provider-gravitino
+      packages: ./internal/...
+      golangci-config: .github/golangci.yml
+      # The matrix source of truth, named here so it cannot drift from the
+      # acceptance call below.
+      versions-file: .github/gravitino-versions.txt
+      # Keep a versions job. Its context is the kit's static `Supported Versions`
+      # (the old display name was `Supported Gravitino Versions`); only `main`
+      # consumes the matrix, as before.
+      versions-job: true
+      # There is no VERSION file: releases are cut by dispatch or by pushing a
+      # signed tag, so there is no release metadata to check here.
+      changelog: false
+      version-file: ""
+      # Keep dependency scanning in its own `Vulnerability Scan` job, as it is
+      # today, instead of moving it into `Lint & Security`.
+      govuln-mode: action
+      # Keep `./scripts/dead-client-methods.sh` in the lint job.
+      lint-extra-script: ./scripts/dead-client-methods.sh
+      # The kit's `tfkit examples validate` treats every directory under
+      # `examples/` as a standalone module. Gravitino's snippets are fragments
+      # that reference a metalake/catalog/schema declared by a sibling snippet, so
+      # they only validate when concatenated into one synthetic module — which is
+      # what `scripts/validate-examples.sh` (and its Python validator) does, and
+      # what the old Test job ran. Disable the kit's examples step and keep that
+      # validator in the local `examples` job below until the kit can take a
+      # provider-specific command.
+      examples: false
+      # The generated docs must not drift; the drift check stays in the Test job
+      # on every run, as it does today.
+      docs: true
+      # On a push to main, regenerate `docs/` and open a pull request instead of
+      # failing, which is what the old docs workflow's `generate-docs` job did.
+      docs-mode: autopr
+      docs-drift-in-test: true
+      docs-untracked-check: false
+      # The old docs workflow's `mdvalidate` job ran the same link checker.
+      markdown: true
+      # The old `Coverage` job ran on pull requests only, after the acceptance
+      # container on the newest supported server; the floor is calibrated on that
+      # merged profile, so the job must keep producing and gating it.
+      coverage-job: pull_request
+      coverage-merged: true
+      coverage-timeout: 40
+      # The Test job only publishes the unit table; the gate lives in Coverage.
+      coverage-gate-in-test: false
+      coverage-readme: true
+      coverage-readme-in-test: false
+      unit-skip-regex: ^(TestAcc|TestLiveAcc)
+      # `GRAVITINO_VERSION` must name the newest supported server, not the
+      # compose default: a 1.3.0 server skips the 1.3.1-gated tests and must not
+      # be measured against a 1.3.1-calibrated floor.
+      acceptance-compose: GRAVITINO_VERSION=$(grep -v '^[[:space:]]*$' .github/gravitino-versions.txt | sort -V | tail -n 1) docker compose run --rm test
+      dependency-review: true
+      # Keeps the Coverage section of the job summary in the same shape as the
+      # retired per-package summary paragraph.
+      coverage-note: "Unit tests only: the per-package profile `TestAcc*` and `TestLiveAcc*` leave out (`TF_ACC`, a real server). The `Coverage` job on a pull request, and the `acceptance` job on `main`, report the merged unit + acceptance profile that `.github/coverage-baseline.txt` measures and `make coverage-gate` enforces."
+
+  # Provider-specific until the kit can take a custom examples command: the old
+  # Test job's `Validate examples` step, unchanged, on the same triggers as `ci`.
+  # It is not a caller because `provider-ci.yml`'s examples step is the
+  # standalone-module validator described above.
+  examples:
+    name: Validate Examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,108 +129,6 @@ jobs:
         with:
           go-version-file: "go.mod"
           cache: true
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          version: v2.15.0
-          args: --config .github/golangci.yml
-
-      - name: Check for unreferenced client methods
-        run: ./scripts/dead-client-methods.sh
-
-      # The published gosec image is built with Go 1.27.2, whose go/types
-      # cannot decode the export data of the 1.27.3 toolchain in go.mod:
-      # gosec then reports type errors and exits non-zero even with no finding.
-      # Building the pinned gosec release with the job's own toolchain keeps the
-      # analyser and the compiled code on the same Go version.
-      - name: Install Gosec Security Scanner
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
-
-      - name: Run Gosec Security Scanner
-        id: gosec
-        continue-on-error: true
-        run: |
-          "$(go env GOPATH)/bin/gosec" -fmt sarif -out gosec.sarif -exclude-dir=vendor -tests=false ./
-
-      - name: Upload security scan results
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-        if: always() && hashFiles('gosec.sarif') != ''
-        with:
-          sarif_file: gosec.sarif
-
-      - name: Fail on Gosec findings
-        if: always() && steps.gosec.outcome == 'failure'
-        run: |
-          {
-            echo "## Gosec Security Scanner Found Issues"
-            echo ""
-            if [ -f gosec.sarif ]; then
-              echo "| Rule | File | Line | Description |"
-              echo "|------|------|------|-------------|"
-              jq -r '.runs[0].results[] | "| \(.ruleId) | \(.locations[0].physicalLocation.artifactLocation.uri) | \(.locations[0].physicalLocation.region.startLine) | \(.message.text) |"' gosec.sarif
-            fi
-            echo ""
-            echo "See the **Security** tab for full details."
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit 1
-
-  # The released binary's module graph is scanned for advisories that its own
-  # code can reach: a dependency bump is not enough on its own, because a
-  # transitive module can be introduced by an unrelated change. Both the
-  # toolchain and golang.org/x/net are kept above the fixed versions in go.mod;
-  # this job fails the pull request that lowers either of them back below.
-  vuln:
-    name: Vulnerability Scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Run govulncheck
-        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
-        with:
-          # An empty go-version-input is required: the action defaults it to
-          # `stable` and setup-go prefers it over go-version-file, which would
-          # silently ignore the toolchain from go.mod.
-          go-version-input: ""
-          # The Go version from go.mod, not the action's default `stable`, so
-          # the scan uses the toolchain the release binary is built with.
-          go-version-file: go.mod
-          repo-checkout: false
-          go-package: ./...
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [lint, vuln]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: "go.mod"
-          cache: true
-
-      - name: Build and vet
-        run: |
-          go build ./...
-          go vet ./...
-
-      - name: Verify go.mod is tidy and module hashes match
-        run: |
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum
-          go mod verify
-
-      - name: Cross-platform build
-        run: |
-          GOOS=windows GOARCH=amd64 go build ./...
-          GOOS=darwin GOARCH=arm64 go build ./...
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
@@ -144,193 +141,29 @@ jobs:
           REQUIRE_TERRAFORM: "1"
         run: ./scripts/validate-examples.sh
 
-      - name: Check generated docs are up to date
-        run: |
-          go generate ./...
-          git diff --exit-code -- docs/
-
-      - name: Run tests
-        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./internal/...
-
-      - name: Coverage summary
-        if: always()
-        run: |
-          if [[ ! -f coverage.out ]]; then
-            echo "No coverage profile: the test step failed before writing one." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          {
-            echo "## Coverage"
-            echo ""
-            echo "Unit tests only: the per-package profile \`TestAcc*\` and \`TestLiveAcc*\` leave"
-            echo "out (\`TF_ACC\`, a real server). The \`Coverage\` job on a pull request, and the"
-            echo "\`acceptance\` job on \`main\`, report the merged unit + acceptance profile that"
-            echo "\`.github/coverage-baseline.txt\` measures and \`scripts/coverage-gate.sh\` enforces."
-            echo ""
-            ./scripts/coverage-summary.sh coverage.out
-          } >> "$GITHUB_STEP_SUMMARY"
-          ./scripts/coverage-summary.sh coverage.out
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: coverage
-          path: coverage.out
-          if-no-files-found: ignore
-
-  # A pull request cannot make the project less tested than it was: run the same
-  # acceptance container `main` runs, merge its profile with the unit profile and
-  # fail when a scope in .github/coverage-baseline.txt is below its floor. The
-  # floor is calibrated on the merged profile, so the gate is never handed a
-  # unit-only number, and it exits 2 (not 0) when the profile or a floor is
-  # missing. README.md's badge and block come from the same baseline, so they are
-  # checked for drift in the same job.
-  coverage:
-    name: Coverage
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    needs: test
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: "go.mod"
-          cache: true
-
-      # README's badge and coverage block are generated from the same baseline the
-      # gate enforces, so a dropped floor or a stale README fails here.
-      - name: README in sync with the coverage baseline
-        run: ./scripts/coverage-readme.sh --check
-
-      - name: Unit-test coverage
-        run: go test -count=1 -skip '^(TestAcc|TestLiveAcc)' -covermode=atomic -coverprofile=coverage.out ./internal/...
-
-      # The container writes coverage-acceptance.out into the mounted worktree. The
-      # floor is calibrated on the newest supported server, so run that one, not the
-      # compose default: a 1.3.0 server skips the 1.3.1-gated tests and must not be
-      # gated against a 1.3.1-calibrated floor.
-      - name: Run acceptance tests
-        run: |
-          GRAVITINO_VERSION="$(grep -v '^[[:space:]]*$' .github/gravitino-versions.txt | sort -V | tail -n 1)" \
-            docker compose run --rm test
-
-      - name: Coverage gate (unit + acceptance)
-        run: |
-          ./scripts/merge-coverage.sh coverage-union.out coverage.out coverage-acceptance.out
-          ./scripts/coverage-gate.sh coverage-union.out
-          {
-            echo "## Coverage (unit + acceptance)"
-            echo ""
-            echo "\`coverage.out\` and \`coverage-acceptance.out\` merged by \`scripts/merge-coverage.sh\`"
-            echo "and checked against the floors in \`.github/coverage-baseline.txt\` by"
-            echo "\`scripts/coverage-gate.sh\`."
-            echo ""
-            ./scripts/coverage-summary.sh coverage-union.out
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+  # The old acceptance matrix ran on a push to main only, after `test`; a caller
+  # cannot express `needs.<job>.result` across a reusable-workflow boundary, so
+  # `needs: ci` is the only faithful spelling. The `if:` keeps the same
+  # trigger-level restriction the old docs workflow and the old acceptance job
+  # had: no acceptance legs on pull requests or tag pushes.
+  acceptance:
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.6.0
     permissions:
       contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-
-  gravitino_versions:
-    name: Supported Gravitino Versions
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # Only the acceptance job consumes this, and that job only runs on main.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    outputs:
-      list: ${{ steps.read.outputs.list }}
-      latest: ${{ steps.read.outputs.latest }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Read the supported versions into a JSON array
-        id: read
-        run: |
-          # Both sides filter on non-whitespace so a blank or whitespace-only line cannot
-          # make the matrix non-empty while `latest` is empty, which would skip every
-          # cell's coverage gate without failing a step.
-          list=$(jq -R -s -c 'split("\n") | map(select(test("\\S")))' .github/gravitino-versions.txt)
-          latest=$(grep -v '^[[:space:]]*$' .github/gravitino-versions.txt | sort -V | tail -n 1)
-          if [[ -z "$latest" ]]; then
-            echo "no supported Gravitino version found in .github/gravitino-versions.txt" >&2
-            exit 1
-          fi
-          echo "list=$list" >> "$GITHUB_OUTPUT"
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
-
-  acceptance:
-    name: Acceptance Tests (Gravitino ${{ matrix.gravitino }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs:
-      - test
-      - gravitino_versions
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        # Single source of truth: .github/gravitino-versions.txt, also read by `make testacc-matrix`.
-        gravitino: ${{ fromJSON(needs.gravitino_versions.outputs.list) }}
-    env:
-      GRAVITINO_VERSION: ${{ matrix.gravitino }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: "go.mod"
-          cache: true
-
-      # The acceptance container writes coverage-acceptance.out into the mounted
-      # worktree; the unit profile is produced here so both can be merged into the
-      # one statement-coverage number the project publishes.
-      - name: Unit-test coverage
-        run: go test -count=1 -skip '^(TestAcc|TestLiveAcc)' -covermode=atomic -coverprofile=coverage.out ./internal/...
-
-      - name: Run acceptance tests
-        run: docker compose run --rm test
-
-      - name: Combined coverage (unit + acceptance)
-        if: always()
-        run: |
-          if [[ ! -f coverage.out || ! -f coverage-acceptance.out ]]; then
-            echo "Incomplete coverage profiles: unit \`coverage.out\` and acceptance" >> "$GITHUB_STEP_SUMMARY"
-            echo "\`coverage-acceptance.out\` are both required; one is missing." >> "$GITHUB_STEP_SUMMARY"
-            # Fail here, with the missing input named, rather than leaving the gate
-            # below to report "profile not found" and mask the cause. The gate still
-            # fails closed (exit 2) if it is ever invoked without a profile.
-            exit 1
-          fi
-          ./scripts/merge-coverage.sh coverage-union.out coverage.out coverage-acceptance.out
-          {
-            echo "## Coverage (unit + acceptance)"
-            echo ""
-            echo "\`coverage.out\` and \`coverage-acceptance.out\` merged by \`scripts/merge-coverage.sh\`."
-            echo ""
-            ./scripts/coverage-summary.sh coverage-union.out
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # `main` repeats the pull-request gate in the newest cell only: the older
-      # cells legitimately skip version-gated tests, so a floor calibrated on the
-      # newest server would fail them for the wrong reason.
-      - name: Coverage gate (unit + acceptance)
-        if: matrix.gravitino == needs.gravitino_versions.outputs.latest
-        run: ./scripts/coverage-gate.sh coverage-union.out
+    with:
+      provider: gravitino
+      provider-display: Gravitino
+      packages: ./internal/...
+      versions-file: .github/gravitino-versions.txt
+      version-env: GRAVITINO_VERSION
+      # One compose project per version so the matrix cannot share containers,
+      # volumes or port bindings.
+      compose-project-prefix: gravitino
+      max-parallel: 2
+      acceptance-timeout: 30
+      unit-skip-regex: ^(TestAcc|TestLiveAcc)
+      # The floor is calibrated on the newest server, so only that cell gates;
+      # older cells legitimately skip the version-gated tests.
+      gate-cell: newest

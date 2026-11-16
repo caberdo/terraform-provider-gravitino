@@ -7,6 +7,11 @@ VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GRAVITINO_VERSION ?= 1.3.0
 # Supported versions, single-sourced with the CI matrix in .github/workflows/test.yml.
 GRAVITINO_VERSIONS := $(shell tr '\n' ' ' < .github/gravitino-versions.txt)
+# The shared tooling for the caberdo providers: the coverage merge, gate and
+# README targets. Keep this pin equal to the `uses:` refs in
+# .github/workflows/*.yml: one version for the local targets and the reusable
+# workflows, so they cannot drift apart.
+TFKIT ?= go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.6.0
 
 build:
 	go build -o bin/$(BINARY_NAME) -ldflags "-X main.version=$(VERSION)" .
@@ -19,7 +24,7 @@ test:
 coverage:
 	go test -count=1 -skip '^(TestAcc|TestLiveAcc)' -covermode=atomic -coverprofile=coverage.out ./internal/...
 	@echo
-	@./scripts/coverage-summary.sh coverage.out
+	@go tool cover -func=coverage.out
 
 coverage-html: coverage
 	go tool cover -html=coverage.out
@@ -27,24 +32,24 @@ coverage-html: coverage
 # Unit coverage (coverage.out) plus the acceptance profile written by
 # docker-compose.yml (coverage-acceptance.out) as one number.
 coverage-merge:
-	./scripts/merge-coverage.sh coverage-union.out coverage.out coverage-acceptance.out
+	$(TFKIT) coverage merge --output coverage-union.out coverage.out coverage-acceptance.out
 	@echo
-	@./scripts/coverage-summary.sh coverage-union.out
+	@go tool cover -func=coverage-union.out
 
 # Regenerate the coverage badge and block in README.md from
 # .github/coverage-baseline.txt; `make coverage-readme-check` is what CI runs to
 # fail when the committed README has drifted from the baseline.
 coverage-readme:
-	./scripts/coverage-readme.sh
+	$(TFKIT) coverage readme
 
 coverage-readme-check:
-	./scripts/coverage-readme.sh --check
+	$(TFKIT) coverage readme --check
 
 # Fail when coverage-union.out, the merged unit + acceptance profile, is below a
-# floor in .github/coverage-baseline.txt. CI runs the same script in the
+# floor in .github/coverage-baseline.txt. CI runs the same command in the
 # `Coverage` job on every pull request, after the acceptance container.
 coverage-gate:
-	./scripts/coverage-gate.sh coverage-union.out
+	$(TFKIT) coverage gate --profile coverage-union.out
 
 testacc:
 	TF_ACC=1 go test -v -cover ./internal/...
