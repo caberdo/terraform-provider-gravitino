@@ -1,8 +1,9 @@
 # Releasing is delegated to the reusable release workflow in
 # caberdo/terraform-provider-kit.
 #
-# The released version is the last git tag; this repository does not carry a
-# version file. Two entry points share this workflow:
+# A release is a signed tag cut after the release pull request merges; the
+# newest CHANGELOG.md section names the version, and this repository does not
+# carry a version file. Two entry points share this workflow:
 #
 # - Pushing a signed `v*` tag from a maintainer machine publishes that tag.
 #   Tags pushed with the default GITHUB_TOKEN do not trigger other workflows, so
@@ -32,7 +33,7 @@ permissions:
 
 jobs:
   release:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.12.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.13.0
     # `contents: write` uploads the release; `id-token: write` mints the OIDC
     # identity `actions/attest` signs the provenance with; `attestations: write`
     # stores that provenance in the repository's attestation record. Nothing
@@ -45,7 +46,9 @@ jobs:
     with:
       provider: gravitino
       dist-prefix: terraform-provider-gravitino
-      # No version file: the tag is the version. The kit's tag job is skipped
-      # on a tag-driven caller, and `changelog-check` lives in that job; the
-      # changelog is checked by `tfkit release check` against the last tag.
+      # No version file: the newest CHANGELOG.md section names the version.
+      # The kit's tag job is skipped on a tag-driven caller, and
+      # `changelog-check` lives in that job; `tfkit release check` compares the
+      # changelog with the README install constraint and reports the tag beside
+      # the verdict.
       tag: ${{ github.event.inputs.tag }}

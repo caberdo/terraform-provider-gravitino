@@ -237,7 +237,7 @@ container both use Go 1.27.3.
 ```
 release.yml (a pushed signed v* tag; workflow_dispatch with inputs.tag
              republishes an existing tag)
-        └─► provider-release.yml@v0.12.0 (the reusable workflow in
+        └─► provider-release.yml@v0.13.0 (the reusable workflow in
             terraform-provider-kit)
               └─ goreleaser job
                         ├─ goreleaser "~> v2", config .github/goreleaser.yml
@@ -251,13 +251,13 @@ release.yml (a pushed signed v* tag; workflow_dispatch with inputs.tag
                         └─ GitHub release with the registry install snippet (caberdo/gravitino)
 ```
 
-The released version is the last git tag; the repository has no `VERSION` file, and the release
-pull request assembles `CHANGELOG.md` from the `changelog.d/` fragments instead of bumping one.
-A maintainer cuts and pushes the signed tag, so the reusable workflow's tag-creation job is
-skipped on every path here and nothing derives a version from a file. The GPG private key and
-passphrase live in the repository's Actions secrets (`GPG_PRIVATE_KEY`, `PASSPHRASE`) and are
-imported only by that workflow; the public half is committed as
-`.github/release-signing-key.asc`, and `README.md#verifying-a-release` documents the
+The newest `CHANGELOG.md` section names the version; the repository has no `VERSION` file, and
+the release pull request assembles the changelog from the `changelog.d/` fragments instead of
+bumping one. A maintainer cuts and pushes the signed tag after that pull request merges, so the
+reusable workflow's tag-creation job is skipped on every path here and nothing derives a version
+from a file. The GPG private key and passphrase live in the repository's Actions secrets
+(`GPG_PRIVATE_KEY`, `PASSPHRASE`) and are imported only by that workflow; the public half is
+committed as `.github/release-signing-key.asc`, and `README.md#verifying-a-release` documents the
 `gpg --verify` and `gh attestation verify` steps. Because GoReleaser runs with
 `release.mode: replace`, dispatching `release.yml` with an existing tag republishes it
 idempotently instead of calculating a new version.

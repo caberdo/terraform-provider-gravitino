@@ -29,9 +29,10 @@ responsibilities and the workflows in `.github/workflows/` do the mechanical par
 3. **The maintainer decides.** Where an issue reaches no consensus, the maintainer records the
    decision and its rationale in the issue and moves on. Disagreement is expressed in the issue,
    not by re-litigating a merged change.
-4. **Releases are cut, not continuous.** A release is a signed `v*` tag, and the tag is the
-   version: the repository carries no `VERSION` file. The release pull request assembles
-   `CHANGELOG.md` from the `changelog.d/` fragments. A maintainer cuts and pushes the signed tag;
+4. **Releases are cut, not continuous.** A release is a signed `v*` tag cut after the release
+   pull request merges: the newest `CHANGELOG.md` section names the version, and the repository
+   carries no `VERSION` file. The release pull request assembles the changelog from the
+   `changelog.d/` fragments. A maintainer cuts and pushes the signed tag;
    the `Release` workflow builds with GoReleaser, signs the checksums, attests build provenance,
    attaches the SPDX SBOM and publishes to the Terraform Registry. The public verification steps
    are in [`README.md`](./README.md#verifying-a-release). A failed release is republished by

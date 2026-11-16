@@ -43,7 +43,8 @@ effect on existing state when behaviour changes.
 The release pull request is the only place that edits `CHANGELOG.md`. Before
 tagging, it groups every fragment by kind, sorts each group by issue number,
 inserts a dated section below the always-empty `## Unreleased` heading and
-deletes the processed fragments. The tag is the version: this repository has no
-`VERSION` file, and the release pull request does not edit one. A change that
-no user can observe needs no fragment; label such a pull request
-`skip-changelog` instead.
+deletes the processed fragments. The newest `CHANGELOG.md` section names the
+version, and the tag is cut from the merge commit after this pull request
+merges; the repository has no `VERSION` file, and the release pull request does
+not edit one. A change that no user can observe needs no fragment; label such a
+pull request `skip-changelog` instead.
