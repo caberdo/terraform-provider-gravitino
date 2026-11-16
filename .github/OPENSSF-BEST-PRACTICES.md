@@ -266,7 +266,7 @@ true.
 | 7 | `require_2FA` (Gold) | Turn on the organization's 2FA requirement for members with write access, and enable secret scanning with push protection while there. | Organization owner |
 | 8 | `security_review` (Gold) | Perform and date a security review against the requirements and boundary already written in `SECURITY.md`; a self-review by the maintainer against the threat model satisfies the criterion. | Maintainer |
 | 9 | `copyright_per_file` / `license_per_file` (Gold) | Add a copyright line and `SPDX-License-Identifier: MIT` to every source file. Deliberately out of scope of issue #50. | Code work |
-| 10 | `warnings_fixed`, `test_continuous_integration` hardening (Passing/Silver) | Add required status checks (`Lint & Security`, `Vulnerability Scan`, `Test`, `Coverage`) to the `main` ruleset so a red run cannot be merged, instead of relying on the maintainer's discipline. | Maintainer (repository settings) |
+| 10 | `warnings_fixed`, `test_continuous_integration` hardening (Passing/Silver) | Add required status checks (`ci / Lint & Security`, `ci / Vulnerability Scan`, `ci / Test`, `ci / Coverage`) to the `main` ruleset so a red run cannot be merged, instead of relying on the maintainer's discipline. | Maintainer (repository settings) |
 
 **Realistic target.** Items 1–2 and 10 unlock **Silver (7)**; items 3–9 are the price of
 **Gold (10)** and are mostly about people, not code.

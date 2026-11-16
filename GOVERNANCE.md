@@ -59,8 +59,10 @@ checks**, and GitHub's classic branch protection is not enabled on top of it. CI
 on every change, but a merge is not mechanically blocked by a red run; that is the maintainer's
 commitment, not an enforced rule. Two related gaps are recorded here rather than papered over:
 
-* Required status checks should be added to the ruleset (`Lint & Security`, `Test`, `Coverage`) so
-  the gate is enforced instead of trusted.
+* Required status checks should be added to the ruleset: `ci / Lint & Security`, `ci / Test`,
+  `ci / Coverage`, and `ci / Generate Docs` (which only does work on a push to `main`).
+  Gravitino's ruleset currently requires none of them, so the gate is trusted rather than
+  enforced.
 * `.github/CODEOWNERS` reads `* @caberdo` — the *organization*, while GitHub resolves code owners
   to users or teams with write access. The ruleset's `require_code_owner_review` therefore has no
   effective owner today. Naming the maintainer directly is not a free fix: GitHub does not let an

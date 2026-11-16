@@ -483,17 +483,17 @@ make testacc-live-filter F=TestLiveAccRoleResource
 ### Coverage
 
 `make coverage` runs the unit suite alone (`TestAcc*` and `TestLiveAcc*` skip themselves), writes
-`coverage.out` and prints a per-package table, weakest package first; `make coverage-html` opens
+`coverage.out` and prints the per-function table (`go tool cover -func`); `make coverage-html` opens
 the same profile as HTML. Because packages whose behaviour is asserted end-to-end read low on the
 unit suite alone, the acceptance container also writes `coverage-acceptance.out`
 (`-covermode=atomic -coverpkg=./internal/...`), and `make coverage-merge` merges both profiles into
 `coverage-union.out` and prints the same table.
 
 ```sh
-make coverage             # unit profile + per-package table
+make coverage             # unit profile + per-function table
 make coverage-html        # same run, then the HTML report
 make testacc-docker       # acceptance container, writes coverage-acceptance.out
-make coverage-merge       # merged profile + per-package table
+make coverage-merge       # merged profile + per-function table
 make coverage-gate        # fail when a scope is below its floor
 ```
 
@@ -515,8 +515,7 @@ total                           ████████████████
 ```
 
 Merged statement coverage from `coverage.out` (unit) and `coverage-acceptance.out`
-(acceptance, `-covermode=atomic -coverpkg=./internal/...`) via `scripts/merge-coverage.sh`
-(`make coverage-merge`).
+(acceptance, `-covermode=atomic -coverpkg=./internal/...`) via `make coverage-merge`.
 
 Measured on `c2fc783` (unit + acceptance) on 2026-10-19.
 <!-- coverage:end -->

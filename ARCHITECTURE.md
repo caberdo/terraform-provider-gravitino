@@ -211,12 +211,12 @@ Change `templates/` or `examples/`, never `docs/` directly.
 | Version matrix | 2 server versions | `.github/gravitino-versions.txt` | yes — Docker | the same suite passes on 1.3.0 and 1.3.1 (`make testacc-matrix`) |
 
 Coverage (59 of the 60 packages under `./internal/...` have tests; the counts move as packages
-change). `make coverage`
-writes the unit profile, `make coverage-merge` merges it with the profile the acceptance container
-writes (`-coverpkg=./internal/...`), and both print a per-package table that the `test`, `Coverage`
-and `acceptance` jobs publish in their job summaries. `make coverage-gate` fails when a scope of the
-merged profile is below a floor in `.github/coverage-baseline.txt`, the same file
-`make coverage-readme` renders README.md's badge and block from. The `Coverage` job runs it on
+change). `make coverage` writes the unit profile, `make coverage-merge` merges it with the profile
+the acceptance container writes (`-coverpkg=./internal/...`), and both print the per-function table
+(`go tool cover -func`) that the `test`, `Coverage` and `acceptance` jobs publish in their job
+summaries. `make coverage-gate` fails when a scope of the merged profile is below a floor in
+`.github/coverage-baseline.txt`, the same file `make coverage-readme` renders README.md's badge and
+block from. The `Coverage` job runs it on
 every pull request; on `main` the acceptance job repeats it in the newest (`1.3.1`)
 acceptance-matrix cell only, because the older cells skip the version-gated tests.
 
@@ -237,7 +237,7 @@ container both use Go 1.27.3.
 ```
 release.yml (workflow_dispatch: patch|minor|major or X.Y.Z, or an existing
              inputs.tag to republish; also a v* tag push)
-        └─► provider-release.yml@v0.6.0 (the reusable workflow in
+        └─► provider-release.yml@v0.8.0 (the reusable workflow in
             terraform-provider-kit)
               ├─ tag job
               │    ├─ import GPG key (secrets GPG_PRIVATE_KEY, PASSPHRASE)

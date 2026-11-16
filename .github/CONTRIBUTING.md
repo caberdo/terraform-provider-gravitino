@@ -57,9 +57,9 @@ Every command below is a target in [`GNUmakefile`](../GNUmakefile):
 | `make vet` | `go vet ./...` |
 | `make generate` | `go generate ./...` (regenerates `docs/`) |
 | `make validate-examples` | `./scripts/validate-examples.sh` (provider-specific: concatenates the snippet fragments into one module) |
-| `make coverage` | Unit profile (`coverage.out`) plus the per-package table |
+| `make coverage` | Unit profile (`coverage.out`) plus the per-function table (`go tool cover -func`) |
 | `make coverage-html` | `make coverage`, then `go tool cover -html=coverage.out` |
-| `make coverage-merge` | Merges `coverage.out` and `coverage-acceptance.out` into `coverage-union.out` and prints the table |
+| `make coverage-merge` | Merges `coverage.out` and `coverage-acceptance.out` into `coverage-union.out` and prints the per-function table |
 | `make coverage-gate` | Fails when a scope of `coverage-union.out` is below its floor in [`.github/coverage-baseline.txt`](./coverage-baseline.txt) |
 | `make coverage-readme` / `make coverage-readme-check` | Renders README.md's coverage badge and block from that baseline / fails when they have drifted from it |
 
@@ -106,7 +106,7 @@ The suite is deliberately layered; each layer catches what the previous one cann
 ## Coverage
 
 `make coverage` writes the unit profile (`coverage.out`, `TestAcc*`/`TestLiveAcc*` skipped) and
-prints a per-package table, weakest first; `make coverage-html` opens it as HTML.
+prints the per-function table (`go tool cover -func`); `make coverage-html` opens it as HTML.
 `make coverage-merge` merges it with the profile the acceptance container writes
 (`coverage-acceptance.out`, `-coverpkg=./internal/...`) into `coverage-union.out` and prints the
 same table. `tfkit coverage merge` keys blocks by position, so the union has one line per block
@@ -130,7 +130,7 @@ named in the baseline that the profile does not report, and a missing, misspelle
 `floor_*` are configuration errors (exit 2), never a pass.
 
 ```bash
-make coverage            # unit profile + per-package table
+make coverage            # unit profile + per-function table
 make testacc-docker      # writes coverage-acceptance.out
 make coverage-merge      # merge both into coverage-union.out
 make coverage-gate       # fail when below the floor

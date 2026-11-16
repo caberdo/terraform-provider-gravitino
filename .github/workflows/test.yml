@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.6.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.8.0
     # GitHub validates a caller's grant against every job of the called workflow
     # before any `if:` or input is evaluated, so these are the union of what
     # provider-ci declares, not what this run happens to execute:
@@ -110,7 +110,7 @@ jobs:
       dependency-review: true
       # Keeps the Coverage section of the job summary in the same shape as the
       # retired per-package summary paragraph.
-      coverage-note: "Unit tests only: the per-package profile `TestAcc*` and `TestLiveAcc*` leave out (`TF_ACC`, a real server). The `Coverage` job on a pull request, and the `acceptance` job on `main`, report the merged unit + acceptance profile that `.github/coverage-baseline.txt` measures and `make coverage-gate` enforces."
+      coverage-note: "Unit tests only: the per-function profile `TestAcc*` and `TestLiveAcc*` leave out (`TF_ACC`, a real server). The `Coverage` job on a pull request, and the `acceptance` job on `main`, report the merged unit + acceptance profile that `.github/coverage-baseline.txt` measures and `make coverage-gate` enforces."
 
   # Provider-specific until the kit can take a custom examples command: the old
   # Test job's `Validate examples` step, unchanged, on the same triggers as `ci`.
@@ -149,7 +149,7 @@ jobs:
   acceptance:
     needs: ci
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.6.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.8.0
     permissions:
       contents: read
     with:

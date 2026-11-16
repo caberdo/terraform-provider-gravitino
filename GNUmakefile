@@ -8,10 +8,12 @@ GRAVITINO_VERSION ?= 1.3.0
 # Supported versions, single-sourced with the CI matrix in .github/workflows/test.yml.
 GRAVITINO_VERSIONS := $(shell tr '\n' ' ' < .github/gravitino-versions.txt)
 # The shared tooling for the caberdo providers: the coverage merge, gate and
-# README targets. Keep this pin equal to the `uses:` refs in
-# .github/workflows/*.yml: one version for the local targets and the reusable
-# workflows, so they cannot drift apart.
-TFKIT ?= go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.6.0
+# README targets. This pin matches the `uses:` refs in .github/workflows/*.yml
+# and governs only the `tfkit` calls this file makes; the kit's reusable
+# workflows install their own tfkit, so they do not follow it. `go run` rewrites
+# a child exit 2 to 1, so CI (which installs the binary) is where exit codes are
+# meaningful.
+TFKIT ?= go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.8.0
 
 build:
 	go build -o bin/$(BINARY_NAME) -ldflags "-X main.version=$(VERSION)" .
