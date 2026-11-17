@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.13.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.15.0
     # GitHub validates a caller's grant against every job of the called workflow
     # before any `if:` or input is evaluated, so these are the union of what
     # provider-ci declares, not what this run happens to execute:
@@ -155,7 +155,7 @@ jobs:
   acceptance:
     needs: ci
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.13.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.15.0
     permissions:
       contents: read
     with:

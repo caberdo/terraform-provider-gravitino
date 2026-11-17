@@ -19,7 +19,7 @@ permissions: read-all
 
 jobs:
   scorecard:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-scorecard.yml@v0.13.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-scorecard.yml@v0.15.0
     # `security-events: write` uploads the SARIF result to code scanning and
     # `id-token: write` lets publish_results sign it through OIDC; the rest is
     # read-only. A called workflow cannot widen this grant.
