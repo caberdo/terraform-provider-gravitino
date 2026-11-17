@@ -167,6 +167,11 @@ jobs:
       # One compose project per version so the matrix cannot share containers,
       # volumes or port bindings.
       compose-project-prefix: gravitino
+      # Docker Compose accepts only lowercase alphanumerics, hyphens and
+      # underscores in a project name, so the dotted matrix version must become
+      # `1-3-0`: without this the assembled `gravitino-acc-1.3.0` is rejected
+      # with "invalid project name" before any container starts.
+      compose-dot-to-dash: true
       max-parallel: 2
       acceptance-timeout: 30
       unit-skip-regex: ^(TestAcc|TestLiveAcc)
