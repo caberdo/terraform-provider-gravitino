@@ -1,0 +1,50 @@
+# Monitors the Gravitino maintenance window: compares the supported matrix with
+# the upstream releases, canaries the newest release the matrix does not cover,
+# and checks this repository's kit pin. Each job reports at most one labelled
+# issue and closes it when the finding goes away. The workflow never edits the
+# matrix or the pin: the bump stays a decision.
+#
+# The canary is meant to run weekly, but one caller cannot bind two cron
+# schedules to different jobs, and a second workflow file is deliberately out
+# of scope here. It therefore runs on this monthly schedule for now; split it
+# out (or gate the jobs on `github.event.schedule`) when weekly matters.
+name: Version maintenance
+
+on:
+  schedule:
+    # Monthly, on the first day at 06:00 UTC.
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  freshness:
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-freshness.yml@v0.14.0
+    # `issues: write` opens or updates one labelled issue per category;
+    # `actions: read` lets the canary report read the failing job's log.
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    with:
+      provider-display: Gravitino
+      versions-file: .github/gravitino-versions.txt
+      upstream: apache/gravitino
+      # Apache tags the stable releases `v1.3.1` while the matrix holds bare
+      # `1.3.1`, so the leading `v` is removed before comparing.
+      strip-v: true
+      canary: true
+      version-env: GRAVITINO_VERSION
+      # Empty on purpose: docker-compose.yml derives GRAVITINO_EXPECT_VERSION
+      # from the same GRAVITINO_VERSION the suite reads, so asserting it here
+      # would only repeat the input.
+      expect-version-env: ""
+      kit-check: true
