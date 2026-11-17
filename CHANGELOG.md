@@ -1,5 +1,7 @@
 ## Unreleased
 
+## [0.14.0] - 2026-11-17
+
 SECURITY:
 - **The module now requires Go 1.27.4, which closes GO-2026-6859.** `net/http` in Go 1.27.3 has a
   header race in `MaxBytesReader` that a remote peer can turn into an HTTP/1 server crash. The
@@ -9,16 +11,25 @@ SECURITY:
   already build with, and `govulncheck ./...` reports no reachable vulnerability. No provider
   behaviour, schema or state changes.
 
-LICENSE:
+CHORES:
 - **The project moves from Apache-2.0 to the MIT License.** `LICENSE` now holds the MIT text;
   `NOTICE` records the upstream works the project derives from and which third-party material the
   MIT licence does not cover; `README.md`, `.github/CONTRIBUTING.md`, `.github/SECURITY.md` and
   `.github/OPENSSF-BEST-PRACTICES.md` state MIT. Releases up to and including `0.13.0` stay
-  available under Apache-2.0; this applies from the next release onward. `main.go` was rewritten
-  against the public `providerserver` API so no MPL-2.0 source remains in the entry point. The
-  workflow configuration under `.github/workflows/` adapted from an AGPL-3.0 project has been
-  replaced by the shared MIT-licensed reusable workflows from `caberdo/terraform-provider-kit`, so
-  no AGPL-3.0 material remains. No provider behaviour, schema or state changes.
+  available under Apache-2.0; this applies from this release onward. `main.go` was rewritten against
+  the public `providerserver` API so no MPL-2.0 source remains in the entry point. The workflow
+  configuration under `.github/workflows/` adapted from an AGPL-3.0 project has been replaced by the
+  shared MIT-licensed reusable workflows from `caberdo/terraform-provider-kit`, so no AGPL-3.0
+  material remains. No provider behaviour, schema or state changes.
+- The CI, release and coverage tooling now comes from `caberdo/terraform-provider-kit` at
+  `v0.16.0`. The released version is the last git tag rather than a `VERSION` file, every pull
+  request that changes code, workflows, docs or examples adds a fragment under `changelog.d/`, and
+  the README install constraint and changelog headings were repaired where they disagreed.
+- The repository now runs a **weekly maintenance pipeline**: it reports which upstream release the
+  supported-versions matrix does not cover, runs the acceptance suite against that release as a
+  canary so a version bump can be judged as a matrix edit or a code change, and reports when the
+  repository is behind the shared CI kit or pins two different kit versions. Findings appear as one
+  issue per category and close themselves when resolved; nothing is bumped automatically.
 
 ## [0.13.0] - 2026-10-27
 
