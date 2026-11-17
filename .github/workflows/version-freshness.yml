@@ -1,0 +1,55 @@
+# Monitors the Gravitino maintenance window: compares the supported matrix with
+# the upstream releases, canaries the newest release the matrix does not cover,
+# and checks this repository's kit pin. Each job reports at most one labelled
+# issue and closes it when the finding goes away. The workflow never edits the
+# matrix or the pin: the bump stays a decision.
+#
+# One weekly cron (Monday 06:00 UTC) drives all three jobs. A caller file cannot
+# bind two crons to different jobs, and the maintainer chose weekly for the
+# canary. Re-checking the version window weekly costs one API call and updates
+# the existing issue in place, so the quieter monthly cadence buys nothing.
+name: Version maintenance
+
+on:
+  schedule:
+    # Weekly, Monday at 06:00 UTC.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  freshness:
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-freshness.yml@v0.16.0
+    # `issues: write` opens or updates one labelled issue per category;
+    # `actions: read` lets the canary report read the failing job's log.
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    with:
+      provider-display: Gravitino
+      versions-file: .github/gravitino-versions.txt
+      upstream: apache/gravitino
+      # Apache tags the stable releases `v1.3.1` while the matrix holds bare
+      # `1.3.1`, so the leading `v` is removed before comparing.
+      strip-v: true
+      # No suffix is stripped: Apache tags are `v1.3.1`.
+      strip-suffix: ""
+      canary: true
+      version-env: GRAVITINO_VERSION
+      # Empty on purpose: docker-compose.yml derives GRAVITINO_EXPECT_VERSION
+      # from the same GRAVITINO_VERSION the suite reads, so asserting it here
+      # would only repeat the input.
+      expect-version-env: ""
+      # The canary's unit profile must cover the same packages the Test
+      # workflow does.
+      packages: ./internal/...
+      kit-check: true

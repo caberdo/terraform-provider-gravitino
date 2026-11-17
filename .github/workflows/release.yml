@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   release:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.13.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.16.0
     # `contents: write` uploads the release; `id-token: write` mints the OIDC
     # identity `actions/attest` signs the provenance with; `attestations: write`
     # stores that provenance in the repository's attestation record. Nothing
