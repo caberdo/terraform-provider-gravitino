@@ -30,7 +30,9 @@ var _ resource.ResourceWithConfigure = &IdpUserResource{}
 // `gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`
 // and a service admin from `gravitino.authorization.serviceAdmins`. Without
 // that configuration every IDP endpoint answers HTTP 404.
-const IdpUserResourceDescription = "Manages a built-in IDP user for local authentication; the built-in IDP REST API needs " +
+const IdpUserResourceDescription = "Manages a built-in IDP user for local authentication. " +
+	"Requires Gravitino >= 1.3.0, which introduced the built-in identity provider. " +
+	"The built-in IDP REST API also needs " +
 	"`gravitino.authenticators = basic` (without `simple`) and " +
 	"`gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`, " +
 	"and calls must come from a `gravitino.authorization.serviceAdmins` service admin, " +
@@ -89,10 +91,25 @@ func (r *IdpUserResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	}
 }
 
+// checkServerVersion rejects a server that predates Gravitino 1.3.0, which
+// introduced the built-in identity provider. An unknown version stays
+// permissive, matching client.AtLeast.
+func (r *IdpUserResource) checkServerVersion(diags *diag.Diagnostics) bool {
+	if err := r.Client.CheckMinimumVersion(1, 3, 0, "the gravitino_idp_user resource"); err != nil {
+		diags.AddError("Gravitino 1.3.0 or newer required", err.Error())
+		return false
+	}
+	return true
+}
+
 func (r *IdpUserResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdpUserResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !r.checkServerVersion(&resp.Diagnostics) {
 		return
 	}
 
@@ -126,6 +143,10 @@ func (r *IdpUserResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
+	if !r.checkServerVersion(&resp.Diagnostics) {
+		return
+	}
+
 	tflog.Debug(ctx, "Reading IDP user", map[string]interface{}{"name": state.Name.ValueString()})
 
 	result, err := r.Client.GetIdpUser(ctx, state.Name.ValueString())
@@ -153,6 +174,10 @@ func (r *IdpUserResource) Update(ctx context.Context, req resource.UpdateRequest
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !r.checkServerVersion(&resp.Diagnostics) {
 		return
 	}
 

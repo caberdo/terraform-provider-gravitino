@@ -48,7 +48,7 @@ Every command below is a target in [`GNUmakefile`](../GNUmakefile):
 | `make test` | `go test -v -cover ./internal/...` (unit tests; no server needed) |
 | `make testacc` | `TF_ACC=1 go test -v -cover ./internal/...` (acceptance tests through Terraform Core) |
 | `make testacc-docker` | `docker compose run --rm test` — Go 1.27 test container plus Gravitino 1.3.0 (`docker-compose.yml`) |
-| `make testacc-matrix` | `make testacc-docker` once per version in [`.github/gravitino-versions.txt`](./gravitino-versions.txt), tearing each compose project down between versions |
+| `make testacc-matrix` | `make testacc-docker` once per version in [`.github/gravitino-versions.txt`](./gravitino-versions.txt), tearing each compose project down between versions; the 1.2.1 cell aliases the published `1.2.1-rc2` image |
 | `make testacc-live` | `podman compose up -d gravitino` then `podman compose run --rm acc` in `docker-compose.yml` |
 | `make testacc-live-filter F=<TestName>` | Same as above with `GO_TEST_FILTER` set; the target fails fast when `F` is empty |
 | `make lint` | `golangci-lint run --config .github/golangci.yml ./...` |
@@ -64,8 +64,8 @@ Every command below is a target in [`GNUmakefile`](../GNUmakefile):
 | `make coverage-readme` / `make coverage-readme-check` | Renders README.md's coverage badge and block from that baseline / fails when they have drifted from it |
 
 `GRAVITINO_VERSION` defaults to `1.3.0` and selects the `apache/gravitino` image tag; pass
-`GRAVITINO_VERSION=1.3.1` on the `make` command line to run against the other supported
-server. CI pins golangci-lint v2.15.0 with the config committed at
+`GRAVITINO_VERSION=1.1.1` (or any other entry in the versions file) on the `make` command line
+to run against another supported server. CI pins golangci-lint v2.15.0 with the config committed at
 [`.github/golangci.yml`](./golangci.yml) (errcheck, govet with `enable-all` minus
 `fieldalignment` and `shadow`, ineffassign, staticcheck, unused, bodyclose, noctx, unconvert)
 and runs gosec v2.30.0 as a separate job that fails on findings. The job installs
@@ -97,11 +97,11 @@ The suite is deliberately layered; each layer catches what the previous one cann
   Gravitino version. The individual cases are documented in
   [contributing/live-acceptance-tests.md](../contributing/live-acceptance-tests.md).
 - **The version matrix** runs the acceptance suite once per entry in
-  [`.github/gravitino-versions.txt`](./gravitino-versions.txt) — currently Gravitino `1.3.0`
-  and `1.3.1`. Adding a supported server version is a one-line change there. Tests for
-  features that only exist in a newer server (for example
-  `TestLiveAccCatalogConnectionTestExisting`, which needs 1.3.1) skip themselves on older
-  versions instead of failing.
+  [`.github/gravitino-versions.txt`](./gravitino-versions.txt) — currently Gravitino `1.1.1`,
+  `1.2.0`, `1.2.1`, `1.3.0` and `1.3.1`. Adding a supported server version is a one-line change
+  there. Tests for features that only exist in a newer server (for example
+  `TestLiveAccCatalogConnectionTestExisting`, which needs 1.3.1, or the principal/health data
+  sources, which need 1.3.0) skip themselves on older versions instead of failing.
 
 ## Coverage
 

@@ -2,12 +2,12 @@
 page_title: "gravitino_function Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Retrieves a single Gravitino function by name.
+  Retrieves a single Gravitino function by name. Requires Gravitino >= 1.2.0.
 ---
 
 # gravitino_function Data Source
 
-Retrieves a single Gravitino function by name.
+Retrieves a single Gravitino function by name. Requires Gravitino >= 1.2.0.
 
 ## Example Usage
 

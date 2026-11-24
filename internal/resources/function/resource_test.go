@@ -504,6 +504,57 @@ func TestFunctionResourceCreate_RegisterPayloadMatchesSpecExample(t *testing.T) 
 	}
 }
 
+// TestFunctionResourceCreate_RejectsServerBefore120 asserts the functions API
+// is refused with a version diagnostic on the last server release that predates
+// it (Gravitino 1.1.1).
+func TestFunctionResourceCreate_RejectsServerBefore120(t *testing.T) {
+	var posts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/version":
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.1.1"}}`))
+		case r.Method == http.MethodPost:
+			posts++
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("client.New() error = %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	schemaObj := functionResourceSchema(t)
+	plan := modelFromRegisterRequest(t, schemaObj, "probe_ml", "probe_cat", "probe_sch", specRegisterRequest)
+
+	r := res.New()
+	r.(*res.FunctionResource).SetClient(c)
+
+	response := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(context.Background(), resource.CreateRequest{Plan: planFor(t, schemaObj, plan)}, response)
+
+	if !response.Diagnostics.HasError() {
+		t.Fatal("expected a version diagnostic before the functions API is called")
+	}
+	first := response.Diagnostics[0]
+	if !strings.Contains(first.Summary(), "1.2.0") {
+		t.Errorf("summary = %q, want the required server version", first.Summary())
+	}
+	if !strings.Contains(first.Detail(), "1.1.1") {
+		t.Errorf("detail = %q, want the detected server version", first.Detail())
+	}
+	if posts != 0 {
+		t.Errorf("the function must not be registered, got %d POST requests", posts)
+	}
+}
+
 // TestFunctionResourceCreate_RejectsExternalTypeOnOlderServer asserts an external
 // function data type is refused with a version diagnostic before the function is
 // sent to a Gravitino 1.3.0 server, which has no ExternalType variant.

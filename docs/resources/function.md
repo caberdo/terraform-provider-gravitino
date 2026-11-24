@@ -3,12 +3,15 @@ page_title: "gravitino_function Resource - terraform-provider-gravitino"
 subcategory: ""
 description: |-
   Manages a Gravitino function within a metalake, catalog and schema.
+  Requires Gravitino >= 1.2.0, which introduced the functions API.
   A function is registered with one or more definitions (the parameters plus the return type, or the return columns for table functions) and each definition holds one implementation per runtime. Gravitino can update the comment, add and remove definitions and add, update and remove implementations; every other change replaces the function.
 ---
 
 # gravitino_function Resource
 
 Manages a Gravitino function within a metalake, catalog and schema.
+
+Requires Gravitino >= 1.2.0, which introduced the functions API.
 
 A function is registered with one or more definitions (the parameters plus the return type, or the return columns for table functions) and each definition holds one implementation per runtime. Gravitino can update the comment, add and remove definitions and add, update and remove implementations; every other change replaces the function.
 

@@ -38,7 +38,7 @@ Include, as far as you can determine:
 
 - The provider version (and the release tag) you tested.
 - The Terraform CLI version and the operating system.
-- The Gravitino server version (`1.3.0` or `1.3.1` are the supported servers).
+- The Gravitino server version (`1.1.1`, `1.2.0`, `1.2.1`, `1.3.0` or `1.3.1` are supported).
 - A description of the impact: credential exposure, privilege escalation,
   integrity loss, denial of service.
 - Reproduction steps, ideally a minimal Terraform configuration and the exact
@@ -121,7 +121,9 @@ Secure-design principles mapped to the code that implements them:
   `CheckIndexesSupported` in `internal/client/version.go`) short-circuit on a
   value that exists only from 1.3.1 on and then return an error, so a
   version-restricted value is never sent to a server of unknown version. The
-  deliberately permissive gates (`AtLeast` and `SupportsExternalType`, used by
+  permissive `CheckMinimumVersion` gate covers resources and endpoints a later
+  release introduced, and the deliberately permissive gates (`AtLeast` and
+  `SupportsExternalType`, used by
   `CheckExternalTypesSupported` and `CheckFunctionExternalTypesSupported` in
   `internal/client/server_version.go`) treat an unknown version as recent enough
   so a transient probe failure cannot reject a configuration the server would

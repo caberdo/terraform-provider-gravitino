@@ -168,6 +168,55 @@ func TestPrincipalDataSource_ReadSpecExample(t *testing.T) {
 	}
 }
 
+// TestPrincipalDataSource_RejectsServerBefore130 asserts /authn/me is refused
+// with a version diagnostic on Gravitino 1.2.1.
+func TestPrincipalDataSource_RejectsServerBefore130(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.URL.Path == "/api/version" {
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.2.1"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to build client: %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	d := ds.New()
+	d.(*ds.PrincipalDataSource).SetClient(c)
+
+	resp, _ := readPrincipal(t, d)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a version diagnostic")
+	}
+	var detail strings.Builder
+	for _, diag := range resp.Diagnostics.Errors() {
+		detail.WriteString(diag.Summary())
+		detail.WriteString(": ")
+		detail.WriteString(diag.Detail())
+		detail.WriteString("\n")
+	}
+	for _, want := range []string{"1.3.0", "1.2.1"} {
+		if !strings.Contains(detail.String(), want) {
+			t.Errorf("diagnostics must mention %q, got:\n%s", want, detail.String())
+		}
+	}
+	for _, path := range requests {
+		if path != "/api/version" {
+			t.Errorf("unexpected request %q before the version gate", path)
+		}
+	}
+}
+
 // TestPrincipalDataSource_ReadServiceAdmin covers the Gravitino 1.3.1 response,
 // whose spec example sets serviceAdmin to true.
 func TestPrincipalDataSource_ReadServiceAdmin(t *testing.T) {

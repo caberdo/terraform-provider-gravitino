@@ -2,12 +2,12 @@
 page_title: "gravitino_readiness Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  
+  Reports the Gravitino readiness status. Requires Gravitino >= 1.3.0, which introduced the health endpoints.
 ---
 
 # gravitino_readiness Data Source
 
-
+Reports the Gravitino readiness status. Requires Gravitino >= 1.3.0, which introduced the health endpoints.
 
 ## Example Usage
 

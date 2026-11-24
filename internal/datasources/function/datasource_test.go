@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -311,6 +312,119 @@ func TestFunctionsDataSourceRead(t *testing.T) {
 	}
 	if len(impls) != 1 || impls[0].SQL.ValueString() != "x + 1" || impls[0].Runtime.ValueString() != "SPARK" {
 		t.Errorf("impls = %+v, want the SQL implementation of the spec example", impls)
+	}
+}
+
+// TestFunctionDataSources_RejectServerBefore120 asserts the functions API is
+// refused with a version diagnostic on Gravitino 1.1.1, before any function
+// endpoint is called.
+func TestFunctionDataSources_RejectServerBefore120(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.URL.Path == "/api/version" {
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.1.1"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("client.New() error = %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	ctx := context.Background()
+
+	t.Run("get", func(t *testing.T) {
+		d := dsfunction.NewFunctionDataSource()
+		d.(*dsfunction.FunctionDataSource).SetClient(c)
+
+		schemaResponse := &datasource.SchemaResponse{}
+		d.Schema(ctx, datasource.SchemaRequest{}, schemaResponse)
+		schemaObj := schemaResponse.Schema
+
+		config := dsfunction.FunctionDataSourceModel{
+			Metalake:      types.StringValue("probe_ml"),
+			Catalog:       types.StringValue("probe_cat"),
+			Schema:        types.StringValue("probe_sch"),
+			Name:          types.StringValue("add_one"),
+			FunctionType:  types.StringNull(),
+			Deterministic: types.BoolNull(),
+			Comment:       types.StringNull(),
+			Definitions:   types.ListNull(models.FunctionDefinitionObjectType()),
+			Audit:         types.ObjectNull(auditAttrTypes(t, schemaObj)),
+		}
+		configValue, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), config)
+		if diags.HasError() {
+			t.Fatalf("ObjectValueFrom() diagnostics = %v", diags)
+		}
+		raw, err := configValue.ToTerraformValue(ctx)
+		if err != nil {
+			t.Fatalf("ToTerraformValue() error = %v", err)
+		}
+
+		response := &datasource.ReadResponse{State: tfsdk.State{Schema: schemaObj}}
+		d.Read(ctx, datasource.ReadRequest{Config: tfsdk.Config{Schema: schemaObj, Raw: raw}}, response)
+		assertBefore120(t, response.Diagnostics)
+	})
+
+	t.Run("list", func(t *testing.T) {
+		d := dsfunction.NewFunctionsDataSource()
+		d.(*dsfunction.FunctionsDataSource).SetClient(c)
+
+		schemaResponse := &datasource.SchemaResponse{}
+		d.Schema(ctx, datasource.SchemaRequest{}, schemaResponse)
+		schemaObj := schemaResponse.Schema
+
+		listType, ok := schemaObj.Attributes["functions"].GetType().(types.ListType)
+		if !ok {
+			t.Fatalf("functions attribute type = %T, want types.ListType", schemaObj.Attributes["functions"].GetType())
+		}
+		config := dsfunction.FunctionsDataSourceModel{
+			Metalake:  types.StringValue("probe_ml"),
+			Catalog:   types.StringValue("probe_cat"),
+			Schema:    types.StringValue("probe_sch"),
+			Functions: types.ListNull(listType.ElemType),
+		}
+		configValue, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), config)
+		if diags.HasError() {
+			t.Fatalf("ObjectValueFrom() diagnostics = %v", diags)
+		}
+		raw, err := configValue.ToTerraformValue(ctx)
+		if err != nil {
+			t.Fatalf("ToTerraformValue() error = %v", err)
+		}
+
+		response := &datasource.ReadResponse{State: tfsdk.State{Schema: schemaObj}}
+		d.Read(ctx, datasource.ReadRequest{Config: tfsdk.Config{Schema: schemaObj, Raw: raw}}, response)
+		assertBefore120(t, response.Diagnostics)
+	})
+
+	for _, path := range requests {
+		if path == "/api/version" {
+			continue
+		}
+		t.Errorf("unexpected request %q before the version gate", path)
+	}
+}
+
+func assertBefore120(t *testing.T, diags diag.Diagnostics) {
+	t.Helper()
+	if !diags.HasError() {
+		t.Fatal("expected a version diagnostic")
+	}
+	first := diags.Errors()[0]
+	if !strings.Contains(first.Summary(), "1.2.0") {
+		t.Errorf("summary = %q, want the required server version", first.Summary())
+	}
+	if !strings.Contains(first.Detail(), "1.1.1") {
+		t.Errorf("detail = %q, want the detected server version", first.Detail())
 	}
 }
 

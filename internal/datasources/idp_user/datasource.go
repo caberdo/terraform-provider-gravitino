@@ -22,7 +22,9 @@ var _ datasource.DataSourceWithConfigure = &IdpUserDataSource{}
 // `gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`
 // and a service admin from `gravitino.authorization.serviceAdmins`. Without
 // that configuration every IDP endpoint answers HTTP 404.
-const IdpUserDataSourceDescription = "Gets a built-in IDP user; the built-in IDP REST API needs " +
+const IdpUserDataSourceDescription = "Gets a built-in IDP user. " +
+	"Requires Gravitino >= 1.3.0, which introduced the built-in identity provider. " +
+	"The built-in IDP REST API also needs " +
 	"`gravitino.authenticators = basic` (without `simple`) and " +
 	"`gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`, " +
 	"and calls must come from a `gravitino.authorization.serviceAdmins` service admin, " +
@@ -66,6 +68,10 @@ func (d *IdpUserDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	var config IdpUserDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !checkServerVersion(d.Client, &resp.Diagnostics) {
 		return
 	}
 

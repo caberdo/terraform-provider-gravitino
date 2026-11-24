@@ -42,7 +42,7 @@ func (d *FunctionsDataSource) Metadata(_ context.Context, _ datasource.MetadataR
 
 func (d *FunctionsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Lists all functions within a Gravitino metalake, catalog and schema.",
+		Description: "Lists all functions within a Gravitino metalake, catalog and schema. Requires Gravitino >= 1.2.0.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -94,6 +94,10 @@ func (d *FunctionsDataSource) Read(ctx context.Context, req datasource.ReadReque
 	var config FunctionsDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !checkServerVersion(d.Client, &resp.Diagnostics) {
 		return
 	}
 

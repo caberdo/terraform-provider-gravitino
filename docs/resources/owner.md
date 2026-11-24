@@ -63,7 +63,7 @@ terraform import gravitino_owner.example my_metalake.CATALOG.my_catalog
 - `object_full_name` (String) The name of the metadata object, relative to the metalake (the API rejects a metalake prefix with HTTP 400 IllegalNamespaceException): METALAKE = the metalake name, CATALOG = the catalog name, SCHEMA = 'catalog.schema', TABLE = 'catalog.schema.table', and likewise for FILESET, TOPIC and ROLE. Changing it forces a new owner binding: the Gravitino API only has PUT /owners/{type}/{fullName}, it cannot move an owner between objects.
 - `object_type` (String) The metadata object type. One of: METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE (upper case singular, as required by the API path). Changing it forces a new owner binding: the Gravitino API only has PUT /owners/{type}/{fullName}, it cannot move an owner between objects.
 - `owner_name` (String) The owner name.
-- `owner_type` (String) The owner type (USER or GROUP). Gravitino matches this case-insensitively and always answers in lowercase; the provider normalises responses back to upper case.
+- `owner_type` (String) The owner type (USER or GROUP). `GROUP` requires Gravitino >= 1.3.0; 1.1.1 and 1.2.x accept only `USER`. Gravitino matches this case-insensitively and always answers in lowercase; the provider normalises responses back to upper case.
 
 ### Read-Only
 

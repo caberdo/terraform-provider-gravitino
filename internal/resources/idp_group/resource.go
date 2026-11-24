@@ -29,7 +29,9 @@ var _ resource.ResourceWithConfigure = &IdpGroupResource{}
 // `gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`
 // and a service admin from `gravitino.authorization.serviceAdmins`. Without
 // that configuration every IDP endpoint answers HTTP 404.
-const IdpGroupResourceDescription = "Manages a built-in IDP group for local authentication; the built-in IDP REST API needs " +
+const IdpGroupResourceDescription = "Manages a built-in IDP group for local authentication. " +
+	"Requires Gravitino >= 1.3.0, which introduced the built-in identity provider. " +
+	"The built-in IDP REST API also needs " +
 	"`gravitino.authenticators = basic` (without `simple`) and " +
 	"`gravitino.server.rest.extensionPackages = org.apache.gravitino.idp.web.rest.feature`, " +
 	"and calls must come from a `gravitino.authorization.serviceAdmins` service admin, " +
@@ -86,10 +88,25 @@ func (r *IdpGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 	}
 }
 
+// checkServerVersion rejects a server that predates Gravitino 1.3.0, which
+// introduced the built-in identity provider. An unknown version stays
+// permissive, matching client.AtLeast.
+func (r *IdpGroupResource) checkServerVersion(diags *diag.Diagnostics) bool {
+	if err := r.Client.CheckMinimumVersion(1, 3, 0, "the gravitino_idp_group resource"); err != nil {
+		diags.AddError("Gravitino 1.3.0 or newer required", err.Error())
+		return false
+	}
+	return true
+}
+
 func (r *IdpGroupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdpGroupResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !r.checkServerVersion(&resp.Diagnostics) {
 		return
 	}
 
@@ -131,6 +148,10 @@ func (r *IdpGroupResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	if !r.checkServerVersion(&resp.Diagnostics) {
+		return
+	}
+
 	tflog.Debug(ctx, "Reading IDP group", map[string]interface{}{"name": state.Name.ValueString()})
 
 	result, err := r.Client.GetIdpGroup(ctx, state.Name.ValueString())
@@ -157,6 +178,10 @@ func (r *IdpGroupResource) Update(ctx context.Context, req resource.UpdateReques
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !r.checkServerVersion(&resp.Diagnostics) {
 		return
 	}
 

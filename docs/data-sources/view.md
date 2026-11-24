@@ -2,12 +2,12 @@
 page_title: "gravitino_view Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Retrieves a single Gravitino view by name.
+  Retrieves a single Gravitino view by name. Requires Gravitino >= 1.3.0.
 ---
 
 # gravitino_view Data Source
 
-Retrieves a single Gravitino view by name.
+Retrieves a single Gravitino view by name. Requires Gravitino >= 1.3.0.
 
 ## Example Usage
 

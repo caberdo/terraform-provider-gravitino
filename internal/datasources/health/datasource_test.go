@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	ds "github.com/gravitino/terraform-provider-gravitino/internal/datasources/health"
@@ -146,6 +147,75 @@ func TestHealthDataSource_Read(t *testing.T) {
 			t.Logf("diag error: %s: %s", diag.Summary(), diag.Detail())
 		}
 		t.Fatal("unexpected diagnostics errors")
+	}
+}
+
+// TestHealthDataSource_RejectsServerBefore130 asserts the health endpoints are
+// refused with a version diagnostic on Gravitino 1.2.1. The liveness and
+// readiness data sources share the same gate.
+func TestHealthDataSource_RejectsServerBefore130(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.URL.Path == "/api/version" {
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.2.1"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to build client: %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	d := ds.NewHealthDataSource()
+	d.(*ds.HealthDataSource).SetClient(c)
+
+	ctx := context.Background()
+	schemaResp := &datasource.SchemaResponse{}
+	d.Schema(ctx, datasource.SchemaRequest{}, schemaResp)
+	schemaObj := schemaResp.Schema
+
+	configObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), ds.HealthDataSourceModel{
+		Status: types.StringNull(),
+		Checks: nil,
+	})
+	if diags.HasError() {
+		t.Fatalf("failed to create config object: %v", diags)
+	}
+	tfVal, err := configObj.ToTerraformValue(ctx)
+	if err != nil {
+		t.Fatalf("failed to convert to terraform value: %v", err)
+	}
+
+	resp := &datasource.ReadResponse{State: tfsdk.State{Schema: schemaObj}}
+	d.Read(ctx, datasource.ReadRequest{Config: tfsdk.Config{Schema: schemaObj, Raw: tfVal}}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a version diagnostic")
+	}
+	var detail strings.Builder
+	for _, diag := range resp.Diagnostics.Errors() {
+		detail.WriteString(diag.Summary())
+		detail.WriteString(": ")
+		detail.WriteString(diag.Detail())
+		detail.WriteString("\n")
+	}
+	for _, want := range []string{"1.3.0", "1.2.1"} {
+		if !strings.Contains(detail.String(), want) {
+			t.Errorf("diagnostics must mention %q, got:\n%s", want, detail.String())
+		}
+	}
+	for _, path := range requests {
+		if path != "/api/version" {
+			t.Errorf("unexpected request %q before the version gate", path)
+		}
 	}
 }
 

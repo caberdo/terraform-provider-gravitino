@@ -12,6 +12,7 @@ import (
 func TestLiveAccMetalakeResource(t *testing.T) {
 	mlName := acceptance.UniqueName("metalive")
 	renamedName := mlName + "_renamed"
+	principal := acceptance.ExpectedPrincipal(t)
 
 	cfgCreate := fmt.Sprintf(`
 resource "gravitino_metalake" "this" {
@@ -19,8 +20,6 @@ resource "gravitino_metalake" "this" {
   comment    = "live acceptance metalake"
   properties = { "env" = "dev" }
 }
-
-data "gravitino_principal" "me" {}
 `, mlName)
 
 	// The second step also renames the metalake in place: the id is the name, so
@@ -32,8 +31,6 @@ resource "gravitino_metalake" "this" {
   comment    = "live acceptance metalake (updated)"
   properties = { "env" = "prod" }
 }
-
-data "gravitino_principal" "me" {}
 `, renamedName)
 
 	resource.Test(t, resource.TestCase{
@@ -47,9 +44,7 @@ data "gravitino_principal" "me" {}
 					resource.TestCheckResourceAttr("gravitino_metalake.this", "comment", "live acceptance metalake"),
 					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.%", "1"),
 					resource.TestCheckResourceAttr("gravitino_metalake.this", "properties.env", "dev"),
-					resource.TestCheckResourceAttrPair(
-						"gravitino_metalake.this", "audit.creator",
-						"data.gravitino_principal.me", "name"),
+					resource.TestCheckResourceAttr("gravitino_metalake.this", "audit.creator", principal),
 					resource.TestCheckResourceAttrSet("gravitino_metalake.this", "audit.create_time"),
 				),
 			},

@@ -92,7 +92,8 @@ func (r *ViewResource) Metadata(_ context.Context, _ resource.MetadataRequest, r
 
 func (r *ViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a Gravitino view within a metalake, catalog, and schema.",
+		Description: "Manages a Gravitino view within a metalake, catalog, and schema. " +
+			"Requires Gravitino >= 1.3.0, which introduced the views API.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Compound identifier in the format metalake.catalog.schema.view.",
@@ -234,6 +235,17 @@ func (r *ViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 	}
 }
 
+// checkServerVersion rejects a server that predates Gravitino 1.3.0, which
+// introduced the views API. An unknown version stays permissive, matching
+// client.AtLeast.
+func (r *ViewResource) checkServerVersion(diags *diag.Diagnostics) bool {
+	if err := r.Client.CheckMinimumVersion(1, 3, 0, "the gravitino_view resource"); err != nil {
+		diags.AddError("Gravitino 1.3.0 or newer required", err.Error())
+		return false
+	}
+	return true
+}
+
 func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var tfPlan models.ViewResourceTFModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &tfPlan)...)
@@ -242,6 +254,10 @@ func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 	plan := viewResourceModelFromTF(ctx, tfPlan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !r.checkServerVersion(&resp.Diagnostics) {
 		return
 	}
 
@@ -304,6 +320,10 @@ func (r *ViewResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	if !r.checkServerVersion(&resp.Diagnostics) {
+		return
+	}
+
 	tflog.Debug(ctx, "Reading view", map[string]interface{}{"metalake": state.Metalake.ValueString(), "catalog": state.Catalog.ValueString(), "schema": state.Schema.ValueString(), "name": state.Name.ValueString()})
 
 	viewResp, err := r.Client.GetView(ctx, state.Metalake.ValueString(), state.Catalog.ValueString(), state.Schema.ValueString(), state.Name.ValueString())
@@ -340,6 +360,10 @@ func (r *ViewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	plan := viewResourceModelFromTF(ctx, tfPlan, &resp.Diagnostics)
 	state := viewResourceModelFromTF(ctx, tfState, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !r.checkServerVersion(&resp.Diagnostics) {
 		return
 	}
 

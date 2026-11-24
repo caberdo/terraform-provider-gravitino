@@ -94,41 +94,48 @@ resource "gravitino_role" "this" {
 }
 `, mlName, catName, roleName)
 
+	steps := []resource.TestStep{
+		{
+			Config: cfg,
+			Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr("gravitino_role.this", "name", roleName),
+				resource.TestCheckResourceAttr("gravitino_role.this", "id", mlName+"."+roleName),
+				resource.TestCheckResourceAttr("gravitino_role.this", "securable_objects.#", "1"),
+				// securable_objects is a set: index order is not stable, so match on
+				// the element contents instead of on an index.
+				resource.TestCheckTypeSetElemNestedAttrs("gravitino_role.this", "securable_objects.*", map[string]string{
+					"type":      "METALAKE",
+					"full_name": mlName,
+				}),
+				resource.TestCheckResourceAttrSet("gravitino_role.this", "audit.creator"),
+			),
+		},
+	}
+
+	// Gravitino 1.2.0 added the privilege-override endpoint; 1.1.1 can create the
+	// role but cannot update its securable objects.
+	if acceptance.ServerVersionAtLeast(t, 1, 2, 0) {
+		steps = append(steps, resource.TestStep{
+			// Adding a second securable object goes through the privilege override
+			// endpoint and must survive the server's lowercase serialisation.
+			Config: cfgWithPrivilege,
+			Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr("gravitino_role.this", "securable_objects.#", "2"),
+				resource.TestCheckTypeSetElemNestedAttrs("gravitino_role.this", "securable_objects.*", map[string]string{
+					"type":      "METALAKE",
+					"full_name": mlName,
+				}),
+				resource.TestCheckTypeSetElemNestedAttrs("gravitino_role.this", "securable_objects.*", map[string]string{
+					"type":      "CATALOG",
+					"full_name": catName,
+				}),
+			),
+		})
+	}
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 acceptance.LivePreCheck(t),
 		ProtoV6ProviderFactories: acceptance.ProtoV6ProviderFactories(),
-		Steps: []resource.TestStep{
-			{
-				Config: cfg,
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("gravitino_role.this", "name", roleName),
-					resource.TestCheckResourceAttr("gravitino_role.this", "id", mlName+"."+roleName),
-					resource.TestCheckResourceAttr("gravitino_role.this", "securable_objects.#", "1"),
-					// securable_objects is a set: index order is not stable, so match on
-					// the element contents instead of on an index.
-					resource.TestCheckTypeSetElemNestedAttrs("gravitino_role.this", "securable_objects.*", map[string]string{
-						"type":      "METALAKE",
-						"full_name": mlName,
-					}),
-					resource.TestCheckResourceAttrSet("gravitino_role.this", "audit.creator"),
-				),
-			},
-			{
-				// Adding a second securable object goes through the privilege override
-				// endpoint and must survive the server's lowercase serialisation.
-				Config: cfgWithPrivilege,
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("gravitino_role.this", "securable_objects.#", "2"),
-					resource.TestCheckTypeSetElemNestedAttrs("gravitino_role.this", "securable_objects.*", map[string]string{
-						"type":      "METALAKE",
-						"full_name": mlName,
-					}),
-					resource.TestCheckTypeSetElemNestedAttrs("gravitino_role.this", "securable_objects.*", map[string]string{
-						"type":      "CATALOG",
-						"full_name": catName,
-					}),
-				),
-			},
-		},
+		Steps:                    steps,
 	})
 }

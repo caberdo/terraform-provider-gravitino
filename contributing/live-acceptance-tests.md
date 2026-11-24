@@ -9,13 +9,17 @@ the `TestLiveAcc` prefix.
 ```bash
 make testacc-live                                       # all live tests against 1.3.0
 make testacc-live-filter F=TestLiveAccMetalakeResource  # a single test
-GRAVITINO_VERSION=1.3.1 make testacc-live               # against 1.3.1
+GRAVITINO_VERSION=1.1.1 make testacc-live               # against 1.1.1
 ```
 
 `GRAVITINO_VERSION` selects the `apache/gravitino` image tag in `docker-compose.yml` and is
 mirrored into `GRAVITINO_EXPECT_VERSION`, so the precheck asserts the version that was
-requested. Both supported versions (1.3.0 and 1.3.1) must pass the same suite; the CI
-acceptance job runs it as a matrix over both.
+requested. Every supported version (`1.1.1`, `1.2.0`, `1.2.1`, `1.3.0`, `1.3.1`) must pass the
+same suite; the CI acceptance job runs it as a matrix over the whole file.
+
+Apache published no final `apache/gravitino:1.2.1` image, only `1.2.1-rc1`/`1.2.1-rc2`. The rc2
+image reports version `1.2.1`, so `make testacc-matrix` and CI alias it to `1.2.1` locally before
+the compose run.
 
 The supported list is single-sourced in `.github/gravitino-versions.txt`: `make testacc-matrix`
 iterates it, and the CI workflow turns it into its matrix with `jq`. Adding a server version is
@@ -34,9 +38,12 @@ live test is picked up without editing the script.
    `http://gravitino:8090` is the real container.
 
 A live test that needs a capability added after the server's version skips itself instead of
-failing, so the same suite passes on every supported version (for example
-`TestLiveAccCatalogConnectionTestExisting` needs Gravitino 1.3.1 and therefore skips on 1.3.0).
-Run the version that has the capability:
+failing, so the same suite passes on every supported version. `acceptance.SkipBefore` skips a
+whole test (the principal and health data sources on < 1.3.0, group ownership on < 1.3.0);
+`acceptance.ServerVersionAtLeast` chooses a version-specific step (the role
+privilege-override step on >= 1.2.0). The audit assertion uses `acceptance.ExpectedPrincipal`,
+which calls `GET /api/authn/me` on 1.3.0+ and falls back to `anonymous` on an older no-auth
+server. Run the version that has the capability:
 
 ```bash
 GRAVITINO_VERSION=1.3.1 make testacc-live-filter F=TestLiveAccCatalogConnectionTest
@@ -46,7 +53,7 @@ GRAVITINO_VERSION=1.3.1 make testacc-live-filter F=TestLiveAccCatalogConnectionT
 
 | Test (function) | Resource / data source | Steps against a real server | Key assertions |
 |---|---|---|---|
-| `TestLiveAccMetalakeResource` | `gravitino_metalake` | create → update → import → (teardown: delete) | name/comment/properties; `audit.creator` == `gravitino_principal`; `audit.create_time` set; no drift after refresh (properties contain only the configured keys; the provider filters `in-use` out) |
+| `TestLiveAccMetalakeResource` | `gravitino_metalake` | create → update → import → (teardown: delete) | name/comment/properties; `audit.creator` == the expected principal; `audit.create_time` set; no drift after refresh (properties contain only the configured keys; the provider filters `in-use` out) |
 | `TestLiveAccCatalogResource`, `...UpdateProperties` | `gravitino_catalog` (+ metalake) | create (hive, dummy `metastore.uris`) → read → update properties → (teardown: delete with `force=true`) | name/type `relational`/`catalog_provider` `hive`/comment/id; `properties.metastore.uris`; server-added properties (`in-use`, `gravitino.bypass.*`) do not reach state; `audit.creator` == principal |
 | `TestLiveAccCatalogConnectionTestProposedConfig` | `gravitino_catalog_connection_test` (+ metalake) | read a proposed fileset catalog (with `location`) and a proposed hive catalog (dead `metastore.uris`) | fileset probe `success` == `true` with an empty `message`; hive probe `success` == `false` with the server's `ConnectionFailedException` message |
 | `TestLiveAccCatalogConnectionTestExisting` | `gravitino_catalog_connection_test` + `gravitino_catalog` | create a fileset catalog (with `location`) → test its stored configuration | `success` == `true` and an empty `message`; **skips** against a server older than 1.3.1 (the endpoint was added in 1.3.1, so the default `apache/gravitino:1.3.0` image skips it) |

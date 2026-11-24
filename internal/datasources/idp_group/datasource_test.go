@@ -161,6 +161,54 @@ func TestIdpGroupDataSource_ReadSpecExample(t *testing.T) {
 	}
 }
 
+// TestIdpGroupDataSource_RejectsServerBefore130 asserts the built-in IDP API
+// is refused with a version diagnostic on Gravitino 1.2.1.
+func TestIdpGroupDataSource_RejectsServerBefore130(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.URL.Path == "/api/version" {
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.2.1"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to build client: %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	d := NewDataSource()
+	d.(*IdpGroupDataSource).SetClient(c)
+	resp, _ := readIdpGroup(t, d, "engineers")
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a version diagnostic")
+	}
+	var detail strings.Builder
+	for _, diag := range resp.Diagnostics.Errors() {
+		detail.WriteString(diag.Summary())
+		detail.WriteString(": ")
+		detail.WriteString(diag.Detail())
+		detail.WriteString("\n")
+	}
+	for _, want := range []string{"1.3.0", "1.2.1"} {
+		if !strings.Contains(detail.String(), want) {
+			t.Errorf("diagnostics must mention %q, got:\n%s", want, detail.String())
+		}
+	}
+	for _, path := range requests {
+		if path != "/api/version" {
+			t.Errorf("unexpected request %q before the version gate", path)
+		}
+	}
+}
+
 func TestIdpGroupDataSource_ReadNotFound(t *testing.T) {
 	d := newIdpGroupDataSourceWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")

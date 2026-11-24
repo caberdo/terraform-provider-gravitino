@@ -19,6 +19,8 @@ import (
 // A metalake-prefixed value is rejected by the server with HTTP 400
 // IllegalNamespaceException.
 func TestLiveAccOwnerResource(t *testing.T) {
+	acceptance.SkipBefore(t, 1, 3, 0, "group ownership")
+
 	mlName := acceptance.UniqueName("ownml")
 	catName := acceptance.UniqueName("owncat")
 	groupName := acceptance.UniqueName("owngrp")

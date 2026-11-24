@@ -100,8 +100,8 @@ terraform import gravitino_role.example my_metalake.my_role
 
 ### Optional
 
-- `properties` (Map of String) A map of key-value properties for the role. Gravitino v1.3.0 only exposes PUT /metalakes/{metalake}/permissions/roles/{role} (privilege override) for roles, so changing the properties recreates the role.
-- `securable_objects` (Attributes Set) The securable objects and the privileges granted on them. The create request must contain this array (Gravitino rejects a request without it), and it may be empty. Updates are applied with the privilege override endpoint. `full_name` values are relative to the metalake: 'my_catalog' for a CATALOG, 'my_catalog.my_schema.my_table' for a TABLE, and the metalake name itself for a METALAKE. (see [below for nested schema](#nestedatt--securable_objects))
+- `properties` (Map of String) A map of key-value properties for the role. Gravitino exposes PUT /metalakes/{metalake}/permissions/roles/{role} (privilege override) only from 1.2.0, so changing the properties recreates the role.
+- `securable_objects` (Attributes Set) The securable objects and the privileges granted on them. The create request must contain this array (Gravitino rejects a request without it), and it may be empty. Updates are applied with the privilege override endpoint, which requires Gravitino >= 1.2.0. `full_name` values are relative to the metalake: 'my_catalog' for a CATALOG, 'my_catalog.my_schema.my_table' for a TABLE, and the metalake name itself for a METALAKE. (see [below for nested schema](#nestedatt--securable_objects))
 
 ### Read-Only
 
@@ -115,7 +115,7 @@ Required:
 
 - `full_name` (String) The full name of the securable object, relative to the metalake (without the metalake prefix): the metalake name itself for a METALAKE (e.g. 'my_metalake'), 'my_catalog' for a CATALOG, 'my_catalog.my_schema' for a SCHEMA and 'my_catalog.my_schema.my_table' for a TABLE. Gravitino rejects a metalake prefix on anything but a METALAKE with HTTP 400 IllegalNamespaceException (e.g. 'my_metalake.my_catalog' for a CATALOG).
 - `privileges` (Attributes Set) The privileges for the securable object. Gravitino requires at least one privilege per securable object. (see [below for nested schema](#nestedatt--securable_objects--privileges))
-- `type` (String) The type of the securable object: METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE, MODEL, FUNCTION, TAG, POLICY or JOB_TEMPLATE. Gravitino is case-insensitive on input but always serialises lower case, so this provider reports the canonical upper-case spelling in the state.
+- `type` (String) The type of the securable object: METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE, MODEL, FUNCTION, TAG, POLICY or JOB_TEMPLATE. FUNCTION requires Gravitino >= 1.3.0. Gravitino is case-insensitive on input but always serialises lower case, so this provider reports the canonical upper-case spelling in the state.
 
 <a id="nestedatt--securable_objects--privileges"></a>
 ### Nested Schema for `securable_objects.privileges`
@@ -123,7 +123,7 @@ Required:
 Required:
 
 - `condition` (String) The privilege condition, ALLOW or DENY. Gravitino always serialises it lower case; this provider reports the canonical upper-case spelling in the state.
-- `name` (String) The privilege name, e.g. SELECT_TABLE. Gravitino is case-insensitive on input but always serialises lower case, so this provider reports the canonical upper-case spelling in the state.
+- `name` (String) The privilege name, e.g. SELECT_TABLE. The function privileges REGISTER_FUNCTION, EXECUTE_FUNCTION and MODIFY_FUNCTION require Gravitino >= 1.3.0. Gravitino is case-insensitive on input but always serialises lower case, so this provider reports the canonical upper-case spelling in the state.
 
 
 

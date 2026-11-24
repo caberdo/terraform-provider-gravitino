@@ -149,7 +149,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `static_analysis_common_vulnerabilities` | Met | gosec's rule set targets the common Go/CWE classes (G101 secrets, G107 URL injection, G304 file inclusion, G4xx TLS), on top of staticcheck's correctness rules. | `blob/.github/workflows/test.yml` |
 | `static_analysis_fixed` | Met | The gosec step uploads its SARIF to code scanning and then fails the job, so a finding is visible in two places rather than merged past unnoticed; the maintainer fixes findings before merging. The ruleset does not yet require the check (§5 item 10). | `blob/.github/workflows/test.yml` |
 | `static_analysis_often` | Met | Both tools run on every pull request and every push to `main`, far more often than once per six months. | `blob/.github/workflows/test.yml` |
-| `dynamic_analysis` | Met | Every `main` build runs the acceptance suite against real Gravitino **1.3.0 and 1.3.1** containers and the unit suite under `-race`. | `blob/.github/workflows/test.yml` |
+| `dynamic_analysis` | Met | Every `main` build runs the acceptance suite against real Gravitino **1.1.1, 1.2.0, 1.2.1, 1.3.0 and 1.3.1** containers and the unit suite under `-race`. | `blob/.github/workflows/test.yml` |
 | `dynamic_analysis_unsafe` | N/A | The provider is Go, a memory-safe language, and `CGO_ENABLED=0` keeps C out of the released binary. | `blob/.github/goreleaser.yml` |
 | `dynamic_analysis_enable_assertions` | Met | CI runs the suite with `-race` and no build tags that disable checks, so a data race or panic fails the job. | `blob/.github/workflows/test.yml` |
 | `dynamic_analysis_fixed` | Met | No exploitable vulnerability has been reported by the acceptance suite or the race detector; if one were, it would be treated as a release blocker by the same policy as static findings (the `Test` job fails, and a red run is not merged — §5 item 10 covers making that mechanical). | `blob/.github/workflows/test.yml` |
@@ -168,7 +168,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `test_most` | Met | `make test` needs no server; the acceptance layers are one `make` target away. |
 | `warnings_strict` | Met | See §4.1. |
 | `crypto_algorithm_agility` | Met | TLS cipher suites and the Kerberos enctype negotiation come from the libraries, so a broken algorithm is replaced by a dependency update rather than a code change. |
-| `interfaces_current` | Met | The provider targets the current Gravitino REST API (1.3.0/1.3.1) and documents the version gates for both; the Terraform plugin protocol is 6.0, the current version. |
+| `interfaces_current` | Met | The provider targets the current Gravitino REST API (1.3.0, with the 1.3.1 additions and gates for 1.1.1/1.2.x) and documents the version gates; the Terraform plugin protocol is 6.0, the current version. |
 
 ### 4.3 Silver (level 1) — MUST criteria
 
@@ -218,7 +218,7 @@ already ignores such external hosts, so a missing project cannot break `Validate
 | `crypto_tls12` (SHOULD at this level) | Met | Go's TLS client default minimum is TLS 1.2; the provider adds no configuration that could lower it. | `blob/internal/client/client.go` |
 | `signed_releases` | Met | Releases are cryptographically signed and the verification path is documented: the tag is GPG-signed by the release key (GitHub shows it **Verified**), every release carries `terraform-provider-gravitino_<version>_SHA256SUMS.sig`, and the public key is committed at `.github/release-signing-key.asc` with the `gpg --import` / `gpg --verify` steps in the README. The private key exists only as an encrypted Actions secret (`GPG_PRIVATE_KEY`, `PASSPHRASE`), used by `release.yml`, never committed and never uploaded with the artifacts. | `blob/README.md#verifying-a-release`, `blob/.github/release-signing-key.asc` |
 | `version_tags_signed` (SUGGESTED) | Met | `release.yml` signs the tag (`git tag -s`), verifies it (`git tag -v`) before pushing, and uses the signing key's identity so GitHub can map the signature to an account. | `blob/.github/workflows/release.yml` |
-| `input_validation` | Met | Inputs are typed and allow-listed: the framework decodes plan/state into concrete Go types, 30 attributes validate against explicit `OneOf` allow-lists, the provider `uri` must be a parseable `http`/`https` URL with a host, and the 1.3.1-only values are rejected with a version diagnostic rather than forwarded. Server-side names are validated by Gravitino, whose errors are surfaced verbatim. | `blob/internal/provider/provider.go`, `blob/internal/models/version.go` |
+| `input_validation` | Met | Inputs are typed and allow-listed: the framework decodes plan/state into concrete Go types, 30 attributes validate against explicit `OneOf` allow-lists, the provider `uri` must be a parseable `http`/`https` URL with a host, and values or endpoints a newer release introduced are rejected with a version diagnostic rather than forwarded. Server-side names are validated by Gravitino, whose errors are surfaced verbatim. | `blob/internal/provider/provider.go`, `blob/internal/models/version.go` |
 | `hardening` | Met | Documented hardening: no shell/SQL/template evaluation, typed JSON decoding, single mediated request path, request timeout, truncated error bodies, no way to disable TLS verification, `-trimpath`/`CGO_ENABLED=0` release builds, gosec + staticcheck + golangci-lint in CI. | `blob/.github/SECURITY.md#hardening-in-place` |
 
 ### 4.4 Gold (level 2) — MUST criteria
@@ -250,7 +250,7 @@ true.
 | `hardened_site` | Met | GitHub and the Terraform Registry send `strict-transport-security: max-age=31536000; includeSubdomains; preload`, `x-frame-options: deny`, `x-content-type-options: nosniff` and a restrictive `content-security-policy` (measured with `curl -sI` on 2026-10-18). | `https://github.com/caberdo/terraform-provider-gravitino` |
 | `security_review` | **Unmet — see §5** | `SECURITY.md` defines the requirements and the boundary, but no dated security review against a released version has been performed yet. This is the one Gold item that a solo maintainer can close without help. | `blob/.github/SECURITY.md#security-review-status` |
 | `hardening` | Met | See §4.3. | `blob/.github/SECURITY.md#hardening-in-place` |
-| `dynamic_analysis` | Met | The acceptance suite executes the provider against real Gravitino 1.3.0 and 1.3.1 before every release, and the unit suite runs under the race detector. | `blob/.github/workflows/test.yml` |
+| `dynamic_analysis` | Met | The acceptance suite executes the provider against real Gravitino 1.1.1, 1.2.0, 1.2.1, 1.3.0 and 1.3.1 before every release, and the unit suite runs under the race detector. | `blob/.github/workflows/test.yml` |
 | `dynamic_analysis_enable_assertions` | Met | `-race` plus the framework's own validation run in CI; a panic fails the job. | `blob/.github/workflows/test.yml` |
 
 ## 5. Open items — what is not met yet, and who can fix it

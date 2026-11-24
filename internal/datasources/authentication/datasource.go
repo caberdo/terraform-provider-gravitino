@@ -37,7 +37,7 @@ func (d *PrincipalDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 	resp.Schema = schema.Schema{
 		Description: "Gets the server-resolved principal of the authenticated user (GET /api/authn/me) and, " +
 			"on Gravitino 1.3.1 and later, whether that credential is a Gravitino service administrator. " +
-			"The endpoint returns no roles.",
+			"Requires Gravitino >= 1.3.0, which introduced the endpoint. The endpoint returns no roles.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Computed:    true,
@@ -56,6 +56,11 @@ func (d *PrincipalDataSource) Read(ctx context.Context, req datasource.ReadReque
 	var config PrincipalDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := d.Client.CheckMinimumVersion(1, 3, 0, "the gravitino_principal data source"); err != nil {
+		resp.Diagnostics.AddError("Gravitino 1.3.0 or newer required", err.Error())
 		return
 	}
 

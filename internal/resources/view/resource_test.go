@@ -245,6 +245,66 @@ func TestViewResourceCreatePayload(t *testing.T) {
 	}
 }
 
+// TestViewResourceCreate_RejectsServerBefore130 asserts the views API is
+// refused with a version diagnostic on Gravitino 1.2.1, before the view is
+// created.
+func TestViewResourceCreate_RejectsServerBefore130(t *testing.T) {
+	var posts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/version":
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.2.1"}}`))
+		case r.Method == http.MethodPost:
+			posts++
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("client.New() error = %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	r := resourceview.NewViewResource().(*resourceview.ViewResource)
+	r.SetClient(c)
+	ctx := context.Background()
+	schemaObj := viewSchema(t, r)
+
+	planModel := viewCreateModel()
+	planObj, diags := types.ObjectValueFrom(ctx, viewObjectType(t, schemaObj).AttributeTypes(), planModel)
+	if diags.HasError() {
+		t.Fatalf("failed to build plan: %v", diags)
+	}
+	tfVal, err := planObj.ToTerraformValue(ctx)
+	if err != nil {
+		t.Fatalf("failed to convert plan: %v", err)
+	}
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan{Schema: schemaObj, Raw: tfVal}}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a version diagnostic before the views API is called")
+	}
+	first := resp.Diagnostics[0]
+	if !strings.Contains(first.Summary(), "1.3.0") {
+		t.Errorf("summary = %q, want the required server version", first.Summary())
+	}
+	if !strings.Contains(first.Detail(), "1.2.1") {
+		t.Errorf("detail = %q, want the detected server version", first.Detail())
+	}
+	if posts != 0 {
+		t.Errorf("the view must not be created, got %d POST requests", posts)
+	}
+}
+
 // TestViewResourceUpdatePayload asserts the exact update request body for an
 // in-place rename plus property changes.
 func TestViewResourceUpdatePayload(t *testing.T) {

@@ -85,7 +85,7 @@ func (d *ViewsDataSource) Metadata(_ context.Context, _ datasource.MetadataReque
 
 func (d *ViewsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Lists all views within a Gravitino metalake, catalog, and schema.",
+		Description: "Lists all views within a Gravitino metalake, catalog, and schema. Requires Gravitino >= 1.3.0.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -199,6 +199,10 @@ func (ds *ViewsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		Metalake: tfConfig.Metalake,
 		Catalog:  tfConfig.Catalog,
 		Schema:   tfConfig.Schema,
+	}
+
+	if !checkServerVersion(ds.Client, &resp.Diagnostics) {
+		return
 	}
 
 	views, err := ds.Client.ListViewsDetails(ctx, config.Metalake.ValueString(), config.Catalog.ValueString(), config.Schema.ValueString())

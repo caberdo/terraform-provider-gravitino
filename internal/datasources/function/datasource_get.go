@@ -48,7 +48,7 @@ func (d *FunctionDataSource) Metadata(_ context.Context, _ datasource.MetadataRe
 
 func (d *FunctionDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Retrieves a single Gravitino function by name.",
+		Description: "Retrieves a single Gravitino function by name. Requires Gravitino >= 1.2.0.",
 		Attributes: map[string]schema.Attribute{
 			"metalake": schema.StringAttribute{
 				Description: "The metalake name.",
@@ -95,6 +95,10 @@ func (d *FunctionDataSource) Read(ctx context.Context, req datasource.ReadReques
 	var config FunctionDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !checkServerVersion(d.Client, &resp.Diagnostics) {
 		return
 	}
 

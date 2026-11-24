@@ -82,7 +82,8 @@ type Client struct {
   `url.PathEscape`, so callers pass raw names.
 * One file per API area (`catalog.go`, `table.go`, `policy.go`, …) holds that area's REST methods;
   the wire types live in `internal/models` (41 files), written against the Gravitino
-  **v1.3.0** OpenAPI specification and extended with the v1.3.1 additions.
+  **v1.3.0** OpenAPI specification, extended with the v1.3.1 additions and gated for the
+  1.1.1/1.2.x releases.
 * `FromProviderData` converts the framework's `any` provider data back into `*Client` and returns
   no diagnostics while the provider is not configured yet.
 * No exported `*Client` method may be left without a call site: `scripts/dead-client-methods.sh`
@@ -154,16 +155,18 @@ Conventions that make the CRUD paths uniform (counted in the working tree):
 
 ## Server-version detection and the version gates
 
-One provider build supports Gravitino **1.3.0 and 1.3.1** (`.github/gravitino-versions.txt`).
+One provider build supports Gravitino **1.1.1, 1.2.0, 1.2.1, 1.3.0 and 1.3.1**
+(`.github/gravitino-versions.txt`).
 `provider.Configure` calls `client.DetectServerVersion` once (`GET /api/version`, best effort) and
 keeps the result on the client. `client.ResolveServerVersion` returns that value and only probes
 again when no version is known, so a gate normally costs no request of its own. Every comparison
 goes through `models.ServerVersionAtLeast`, which treats an unparseable version as *too old*.
 
-Four gate shapes are in use, and the difference between them is deliberate:
+Five gate shapes are in use, and the difference between them is deliberate:
 
 | Shape | Entry points | Unknown server version | Behaviour |
 |---|---|---|---|
+| Permissive existence | `CheckMinimumVersion` | treated as current | Used by a resource or endpoint a later release introduced (functions at 1.2.0; views, IdP, health, the principal endpoint, group owners, role privilege override and function authorization at 1.3.0). Compares with `AtLeast`; a blocked version endpoint does not remove a resource the server may serve. |
 | Fail closed, short-circuiting | `CheckMetadataObjectTypeSupported`, `CheckPolicyObjectTypesSupported`, `CheckIndexesSupported` | rejected | Return without a version lookup unless the value itself is 1.3.1-only (`models.ObjectTypeRequiresGravitino131`, `models.IndexTypeRequiresGravitino131`), then reject when the version cannot be resolved. |
 | Permissive | `AtLeast`, `SupportsExternalType` (used by `CheckExternalTypesSupported` / `CheckFunctionExternalTypesSupported`) | treated as current | An external data type is the only signal the provider has; a blocked version endpoint must not remove the ability to manage such a column. An explicit diagnostic is still produced when the detected version predates 1.3.1. |
 | Fail open on the endpoint's own answer | `gravitino_iceberg_rest_service` | calls the 1.3.1-only endpoint, maps its 404 to the version diagnostic | Used only where the endpoint response is itself authoritative. |
@@ -208,7 +211,7 @@ Change `templates/` or `examples/`, never `docs/` directly.
 | Unit | over 900 `Test*` functions | `internal/**/*_test.go` | no — `httptest.NewServer` in more than 90 files | request shape, payload decoding, schema, plan modifiers, error mapping |
 | Acceptance (`TestAcc*`) | roughly 75 | `*_test.go` | no — an `httptest` server, driven by `TF_ACC=1` through Terraform Core (`providerserver.NewProtocol6WithError`) | that the provider produces consistent state end to end, which direct framework calls miss |
 | Live acceptance (`TestLiveAcc*`) | 26 | `*_test.go` + `internal/acceptance` | yes — real Gravitino via podman | that real server behaviour matches the spec; `LivePreCheck` refuses to run against a mock (`contributing/live-acceptance-tests.md`) |
-| Version matrix | 2 server versions | `.github/gravitino-versions.txt` | yes — Docker | the same suite passes on 1.3.0 and 1.3.1 (`make testacc-matrix`) |
+| Version matrix | 5 server versions | `.github/gravitino-versions.txt` | yes — Docker | the same suite passes on 1.1.1, 1.2.0, 1.2.1, 1.3.0 and 1.3.1 (`make testacc-matrix`) |
 
 Coverage (59 of the 60 packages under `./internal/...` have tests; the counts move as packages
 change). `make coverage` writes the unit profile, `make coverage-merge` merges it with the profile
@@ -224,7 +227,7 @@ acceptance-matrix cell only, because the older cells skip the version-gated test
 |---|---|
 | `make coverage` (unit only, per package) | printed by the command |
 | `make coverage-merge` (unit + acceptance; the profile the gate enforces) | printed by the command |
-| `make coverage-gate` floors | `.github/coverage-baseline.txt` (82.5 total, plus a floor per scope such as `internal/provider` 94.0, `internal/datasources/schema` 94.0, `internal/datasources/partition` 91.5, `internal/client` 79.0) |
+| `make coverage-gate` floors | `.github/coverage-baseline.txt` (84.5 total, plus a floor per scope such as `internal/provider` 95.0, `internal/datasources/schema` 96.5, `internal/datasources/partition` 93.5, `internal/client` 90.5) |
 
 The merged profile is the number to quote, and the gate is the number that blocks a pull request; a
 bare `-coverprofile` measures each package against its own statements only. Statement counts depend

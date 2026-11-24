@@ -2,6 +2,8 @@ package role
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -108,17 +110,18 @@ func (r *RoleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 					// Only a configured (and changed) value forces a replacement.
 					mapplanmodifier.RequiresReplaceIfConfigured(),
 				},
-				Description: "A map of key-value properties for the role. Gravitino v1.3.0 only exposes PUT " +
-					"/metalakes/{metalake}/permissions/roles/{role} (privilege override) for roles, so changing " +
-					"the properties recreates the role.",
+				Description: "A map of key-value properties for the role. Gravitino exposes PUT " +
+					"/metalakes/{metalake}/permissions/roles/{role} (privilege override) only from 1.2.0, so " +
+					"changing the properties recreates the role.",
 			},
 			"securable_objects": schema.SetNestedAttribute{
 				Optional: true,
 				Computed: true,
 				Description: "The securable objects and the privileges granted on them. The create request must contain this array " +
 					"(Gravitino rejects a request without it), and it may be empty. Updates are applied with the privilege " +
-					"override endpoint. `full_name` values are relative to the metalake: 'my_catalog' for a CATALOG, " +
-					"'my_catalog.my_schema.my_table' for a TABLE, and the metalake name itself for a METALAKE.",
+					"override endpoint, which requires Gravitino >= 1.2.0. `full_name` values are relative to the metalake: " +
+					"'my_catalog' for a CATALOG, 'my_catalog.my_schema.my_table' for a TABLE, and the metalake name itself " +
+					"for a METALAKE.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"full_name": schema.StringAttribute{
@@ -131,7 +134,7 @@ func (r *RoleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						},
 						"type": schema.StringAttribute{
 							Required:    true,
-							Description: "The type of the securable object: METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE, MODEL, FUNCTION, TAG, POLICY or JOB_TEMPLATE. Gravitino is case-insensitive on input but always serialises lower case, so this provider reports the canonical upper-case spelling in the state.",
+							Description: "The type of the securable object: METALAKE, CATALOG, SCHEMA, TABLE, FILESET, TOPIC, ROLE, MODEL, FUNCTION, TAG, POLICY or JOB_TEMPLATE. FUNCTION requires Gravitino >= 1.3.0. Gravitino is case-insensitive on input but always serialises lower case, so this provider reports the canonical upper-case spelling in the state.",
 							Validators: []validator.String{
 								stringvalidator.OneOf(models.AllObjectTypes...),
 							},
@@ -143,7 +146,7 @@ func (r *RoleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 								Attributes: map[string]schema.Attribute{
 									"name": schema.StringAttribute{
 										Required:    true,
-										Description: "The privilege name, e.g. SELECT_TABLE. Gravitino is case-insensitive on input but always serialises lower case, so this provider reports the canonical upper-case spelling in the state.",
+										Description: "The privilege name, e.g. SELECT_TABLE. The function privileges REGISTER_FUNCTION, EXECUTE_FUNCTION and MODIFY_FUNCTION require Gravitino >= 1.3.0. Gravitino is case-insensitive on input but always serialises lower case, so this provider reports the canonical upper-case spelling in the state.",
 										Validators: []validator.String{
 											stringvalidator.OneOf(models.AllPrivileges...),
 										},
@@ -173,6 +176,26 @@ func (r *RoleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 	}
 }
 
+// checkFunctionAuthorization rejects FUNCTION securable objects and the
+// function privileges on a server that predates Gravitino 1.3.0, which added
+// function authorization. Gravitino 1.2.0 introduced the function resource
+// itself, but not these privilege names and object type.
+func (r *RoleResource) checkFunctionAuthorization(objects []models.SecurableObject) error {
+	for _, object := range objects {
+		if strings.EqualFold(object.Type, models.ObjectTypeFunction) {
+			return r.Client.CheckMinimumVersion(1, 3, 0, "role securable object type FUNCTION")
+		}
+		for _, privilege := range object.Privileges {
+			name := strings.ToUpper(strings.TrimSpace(privilege.Name))
+			switch name {
+			case models.PrivilegeRegisterFunction, models.PrivilegeExecuteFunction, models.PrivilegeModifyFunction:
+				return r.Client.CheckMinimumVersion(1, 3, 0, fmt.Sprintf("the %s privilege", name))
+			}
+		}
+	}
+	return nil
+}
+
 func (r *RoleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan RoleResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -185,10 +208,16 @@ func (r *RoleResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	tflog.Debug(ctx, "Creating role", map[string]interface{}{"metalake": metalake, "name": name})
 
+	objects := securableObjectsFromTF(ctx, plan.SecurableObjects)
+	if err := r.checkFunctionAuthorization(objects); err != nil {
+		resp.Diagnostics.AddError("Gravitino 1.3.0 or newer required for function authorization", err.Error())
+		return
+	}
+
 	createReq := &models.RoleCreateRequest{
 		Name:             name,
 		Properties:       mapFromTF(plan.Properties),
-		SecurableObjects: securableObjectsFromTF(ctx, plan.SecurableObjects),
+		SecurableObjects: objects,
 	}
 
 	result, err := r.Client.CreateRole(ctx, metalake, createReq)
@@ -258,6 +287,15 @@ func (r *RoleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// Gravitino updates with PUT /metalakes/{metalake}/permissions/roles/{role}.
 	if securableObjectsChanged(ctx, plan, state) {
 		overrides := securableObjectsFromTF(ctx, plan.SecurableObjects)
+
+		if err := r.Client.CheckMinimumVersion(1, 2, 0, "updating a role's securable objects"); err != nil {
+			resp.Diagnostics.AddError("Gravitino 1.2.0 or newer required to update role privileges", err.Error())
+			return
+		}
+		if err := r.checkFunctionAuthorization(overrides); err != nil {
+			resp.Diagnostics.AddError("Gravitino 1.3.0 or newer required for function authorization", err.Error())
+			return
+		}
 
 		tflog.Debug(ctx, "Overriding role privileges", map[string]interface{}{"metalake": metalake, "name": roleName, "securable_objects": len(overrides)})
 

@@ -64,6 +64,7 @@ func (r *FunctionResource) Metadata(_ context.Context, _ resource.MetadataReques
 func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Manages a Gravitino function within a metalake, catalog and schema.\n\n" +
+			"Requires Gravitino >= 1.2.0, which introduced the functions API.\n\n" +
 			"A function is registered with one or more definitions (the parameters plus the return type, " +
 			"or the return columns for table functions) and each definition holds one implementation per " +
 			"runtime. Gravitino can update the comment, add and remove definitions and add, update and " +
@@ -276,10 +277,25 @@ func (r *FunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 	}
 }
 
+// checkServerVersion rejects a server that predates Gravitino 1.2.0, which
+// introduced the functions API. An unknown version stays permissive, matching
+// client.AtLeast.
+func (r *FunctionResource) checkServerVersion(diags *diag.Diagnostics) bool {
+	if err := r.Client.CheckMinimumVersion(1, 2, 0, "the gravitino_function resource"); err != nil {
+		diags.AddError("Gravitino 1.2.0 or newer required", err.Error())
+		return false
+	}
+	return true
+}
+
 func (r *FunctionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan FunctionResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !r.checkServerVersion(&resp.Diagnostics) {
 		return
 	}
 
@@ -339,6 +355,10 @@ func (r *FunctionResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	if !r.checkServerVersion(&resp.Diagnostics) {
+		return
+	}
+
 	tflog.Debug(ctx, "Reading function", map[string]interface{}{
 		"metalake": state.Metalake.ValueString(),
 		"catalog":  state.Catalog.ValueString(),
@@ -392,6 +412,10 @@ func (r *FunctionResource) Update(ctx context.Context, req resource.UpdateReques
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !r.checkServerVersion(&resp.Diagnostics) {
 		return
 	}
 

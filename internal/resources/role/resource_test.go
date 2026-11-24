@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/models"
@@ -441,6 +442,114 @@ func TestRoleResource_Update_OverridePayload(t *testing.T) {
 	}
 	if newState.Audit.IsNull() || newState.Audit.IsUnknown() {
 		t.Fatalf("audit must be populated from the read-back response, got %s", newState.Audit.String())
+	}
+}
+
+// TestRoleResource_Create_RejectsFunctionPrivilegesBefore130 asserts function
+// authorization is refused with a version diagnostic on Gravitino 1.2.0, which
+// has the functions API but not the function privilege names.
+func TestRoleResource_Create_RejectsFunctionPrivilegesBefore130(t *testing.T) {
+	var posts int
+	r, schemaObj, c := newResource(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch req.URL.Path {
+		case "/api/version":
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.2.0"}}`))
+		default:
+			posts++
+			http.NotFound(w, req)
+		}
+	}))
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	plan := res.RoleResourceModel{
+		ID:         types.StringNull(),
+		Metalake:   types.StringValue("ml"),
+		Name:       types.StringValue("role1"),
+		Properties: types.MapNull(types.StringType),
+		SecurableObjects: securableObjectsValue(t, []models.SecurableObject{{
+			FullName:   "ml",
+			Type:       "METALAKE",
+			Privileges: []models.Privilege{{Name: "REGISTER_FUNCTION", Condition: "ALLOW"}},
+		}}),
+		Audit: types.ObjectNull(res.AuditAttrTypes),
+	}
+
+	ctx := context.Background()
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan{Schema: schemaObj, Raw: rawValue(t, schemaObj, plan)}}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a version diagnostic")
+	}
+	first := resp.Diagnostics[0]
+	if !strings.Contains(first.Summary(), "1.3.0") || !strings.Contains(first.Detail(), "1.2.0") {
+		t.Errorf("diagnostics = %v, want Gravitino 1.3.0 and the detected 1.2.0", resp.Diagnostics)
+	}
+	if posts != 0 {
+		t.Errorf("the role must not be created, got %d requests", posts)
+	}
+}
+
+// TestRoleResource_Update_RejectsSecurablesBefore120 asserts a securable-object
+// update is refused with a version diagnostic on Gravitino 1.1.1, which has no
+// privilege-override endpoint.
+func TestRoleResource_Update_RejectsSecurablesBefore120(t *testing.T) {
+	var puts int
+	r, schemaObj, c := newResource(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		switch req.URL.Path {
+		case "/api/version":
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.1.1"}}`))
+		default:
+			puts++
+			http.NotFound(w, req)
+		}
+	}))
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	state := res.RoleResourceModel{
+		ID:         types.StringValue("ml.role1"),
+		Metalake:   types.StringValue("ml"),
+		Name:       types.StringValue("role1"),
+		Properties: types.MapNull(types.StringType),
+		SecurableObjects: securableObjectsValue(t, []models.SecurableObject{{
+			FullName:   "catalog1.schema1.table1",
+			Type:       "TABLE",
+			Privileges: []models.Privilege{{Name: "SELECT_TABLE", Condition: "ALLOW"}},
+		}}),
+		Audit: types.ObjectNull(res.AuditAttrTypes),
+	}
+	plan := state
+	plan.SecurableObjects = securableObjectsValue(t, []models.SecurableObject{{
+		FullName: "catalog1.schema1.table1",
+		Type:     "TABLE",
+		Privileges: []models.Privilege{
+			{Name: "SELECT_TABLE", Condition: "ALLOW"},
+			{Name: "MODIFY_TABLE", Condition: "ALLOW"},
+		},
+	}})
+
+	ctx := context.Background()
+	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: schemaObj}}
+	r.Update(ctx, resource.UpdateRequest{
+		Plan:  tfsdk.Plan{Schema: schemaObj, Raw: rawValue(t, schemaObj, plan)},
+		State: tfsdk.State{Schema: schemaObj, Raw: rawValue(t, schemaObj, state)},
+	}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a version diagnostic")
+	}
+	first := resp.Diagnostics[0]
+	if !strings.Contains(first.Summary(), "1.2.0") || !strings.Contains(first.Detail(), "1.1.1") {
+		t.Errorf("diagnostics = %v, want Gravitino 1.2.0 and the detected 1.1.1", resp.Diagnostics)
+	}
+	if puts != 0 {
+		t.Errorf("the privileges must not be overridden, got %d requests", puts)
 	}
 }
 

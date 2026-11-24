@@ -2,12 +2,12 @@
 page_title: "gravitino_views Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Lists all views within a Gravitino metalake, catalog, and schema.
+  Lists all views within a Gravitino metalake, catalog, and schema. Requires Gravitino >= 1.3.0.
 ---
 
 # gravitino_views Data Source
 
-Lists all views within a Gravitino metalake, catalog, and schema.
+Lists all views within a Gravitino metalake, catalog, and schema. Requires Gravitino >= 1.3.0.
 
 ## Example Usage
 
