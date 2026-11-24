@@ -39,6 +39,8 @@ func (d *HealthDataSource) Metadata(_ context.Context, _ datasource.MetadataRequ
 
 func (d *HealthDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Reports the aggregate Gravitino health status. " +
+			"Requires Gravitino >= 1.3.0, which introduced the health endpoints.",
 		Attributes: map[string]schema.Attribute{
 			"status": schema.StringAttribute{
 				Computed:    true,
@@ -74,6 +76,10 @@ func (d *HealthDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	var state HealthDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !checkServerVersion(d.Client, &resp.Diagnostics) {
 		return
 	}
 

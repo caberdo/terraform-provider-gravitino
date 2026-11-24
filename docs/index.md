@@ -87,19 +87,34 @@ FAQ.
 ## Requirements and compatibility
 
 - Terraform 1.0 or later is required (plugin protocol 6.0).
-- One provider build serves Apache Gravitino **v1.3.0** and **v1.3.1**. The provider asks the
-  server for its version once, when it is configured (`GET /api/version`); CI runs the acceptance
-  suite against both, from [`.github/gravitino-versions.txt`](https://github.com/caberdo/terraform-provider-gravitino/blob/main/.github/gravitino-versions.txt).
-- The schema accepts the union of both versions and a runtime gate refuses a 1.3.1-only value
-  against an older server with a diagnostic naming the required version (`Gravitino >= 1.3.1`)
-  instead of the server's opaque `400`. Restricted attributes say so in their schema description.
+- One provider build serves Apache Gravitino **v1.1.1**, **v1.2.0**, **v1.2.1**, **v1.3.0** and
+  **v1.3.1**. The provider asks the server for its version once, when it is configured
+  (`GET /api/version`); CI runs the acceptance suite against every release, from
+  [`.github/gravitino-versions.txt`](https://github.com/caberdo/terraform-provider-gravitino/blob/main/.github/gravitino-versions.txt).
+- The schema accepts the union of the supported versions and a runtime gate refuses a value or an
+  endpoint an older server does not have with a diagnostic naming the required version
+  (`Gravitino >= 1.2.0`, `>= 1.3.0` or `>= 1.3.1`) instead of the server's opaque `400`/`404`.
+  Restricted attributes say so in their schema description.
 - Some resources need server-side configuration: `gravitino_role`, `gravitino_owner`,
   `gravitino_user` and `gravitino_group` require `gravitino.authorization.enable=true`;
   `gravitino_idp_user` and `gravitino_idp_group` require the built-in IDP plugin with the `basic`
   authenticator; jobs require a configured job executor; tables, views, functions, partitions and
   statistics require a lakehouse catalog (Hive or Iceberg).
 
-### Gravitino 1.3.0 vs 1.3.1
+### Gravitino 1.1.1 to 1.3.1
+
+| Capability | 1.1.1 | 1.2.0 | 1.2.1 | 1.3.0 | 1.3.1 |
+|---|---|---|---|---|---|
+| `gravitino_function`, `gravitino_function`/`gravitino_functions` data sources | rejected | supported | supported | supported | supported |
+| `gravitino_view`, `gravitino_view`/`gravitino_views` data sources | rejected | rejected | rejected | supported | supported |
+| `gravitino_idp_user`, `gravitino_idp_group` and their data sources | rejected | rejected | rejected | supported when the IDP plugin is enabled | supported when the IDP plugin is enabled |
+| `gravitino_principal` data source | rejected | rejected | rejected | supported | supported (`service_admin`) |
+| `gravitino_health`, `gravitino_liveness`, `gravitino_readiness` data sources | rejected | rejected | rejected | supported | supported |
+| `gravitino_role` update of `securable_objects` | rejected (create/read/delete still work) | supported | supported | supported | supported |
+| `gravitino_owner.owner_type = GROUP` | rejected | rejected | rejected | supported | supported |
+| `gravitino_role` `FUNCTION` object type and the function privileges | rejected | rejected | rejected | supported | supported |
+
+### Gravitino 1.3.1 additions
 
 | Capability | 1.3.0 | 1.3.1 |
 |---|---|---|

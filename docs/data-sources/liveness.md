@@ -2,12 +2,12 @@
 page_title: "gravitino_liveness Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  
+  Reports the Gravitino liveness status. Requires Gravitino >= 1.3.0, which introduced the health endpoints.
 ---
 
 # gravitino_liveness Data Source
 
-
+Reports the Gravitino liveness status. Requires Gravitino >= 1.3.0, which introduced the health endpoints.
 
 ## Example Usage
 

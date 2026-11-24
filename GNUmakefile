@@ -3,7 +3,7 @@ default: build
 BINARY_NAME=terraform-provider-gravitino
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 # Gravitino server version the acceptance tests run against; docker-compose.yml and the live
-# precheck both read it. Override on the command line to test 1.3.1.
+# precheck both read it. Override on the command line to test any supported version.
 GRAVITINO_VERSION ?= 1.3.0
 # Supported versions, single-sourced with the CI matrix in .github/workflows/test.yml.
 GRAVITINO_VERSIONS := $(shell tr '\n' ' ' < .github/gravitino-versions.txt)
@@ -78,10 +78,18 @@ testacc-docker:
 # Run the docker-based acceptance suite against every supported Gravitino server version.
 # Each version runs and tears down independently so one failure still lets the others run;
 # the overall exit status is non-zero if any version failed.
+#
+# Apache published no final `1.2.1` image, only `1.2.1-rc1`/`1.2.1-rc2`. The rc2 image
+# reports version 1.2.1, so alias it locally: the suite then runs the requested release
+# and the live precheck's version assertion still holds.
 testacc-matrix:
 	@status=0; \
 	for v in $(GRAVITINO_VERSIONS); do \
 		echo "==> Acceptance tests against Gravitino $$v"; \
+		if [ "$$v" = "1.2.1" ]; then \
+			docker pull apache/gravitino:1.2.1-rc2 || status=1; \
+			docker tag apache/gravitino:1.2.1-rc2 apache/gravitino:1.2.1 || status=1; \
+		fi; \
 		$(MAKE) testacc-docker GRAVITINO_VERSION=$$v || status=1; \
 		docker compose down || true; \
 	done; \

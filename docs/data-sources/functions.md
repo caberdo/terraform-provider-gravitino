@@ -2,12 +2,12 @@
 page_title: "gravitino_functions Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Lists all functions within a Gravitino metalake, catalog and schema.
+  Lists all functions within a Gravitino metalake, catalog and schema. Requires Gravitino >= 1.2.0.
 ---
 
 # gravitino_functions Data Source
 
-Lists all functions within a Gravitino metalake, catalog and schema.
+Lists all functions within a Gravitino metalake, catalog and schema. Requires Gravitino >= 1.2.0.
 
 ## Example Usage
 

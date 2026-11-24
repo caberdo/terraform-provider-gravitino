@@ -87,7 +87,7 @@ func (r *OwnerResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"owner_type": schema.StringAttribute{
 				Required:    true,
-				Description: "The owner type (USER or GROUP). Gravitino matches this case-insensitively and always answers in lowercase; the provider normalises responses back to upper case.",
+				Description: "The owner type (USER or GROUP). `GROUP` requires Gravitino >= 1.3.0; 1.1.1 and 1.2.x accept only `USER`. Gravitino matches this case-insensitively and always answers in lowercase; the provider normalises responses back to upper case.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(models.OwnerTypeUser, models.OwnerTypeGroup),
 				},
@@ -96,10 +96,25 @@ func (r *OwnerResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 	}
 }
 
+// checkOwnerType rejects a GROUP owner on a server that predates Gravitino
+// 1.3.0, which introduced group-aware ownership. USER owners work on every
+// supported release.
+func (r *OwnerResource) checkOwnerType(ownerType string) error {
+	if !strings.EqualFold(ownerType, models.OwnerTypeGroup) {
+		return nil
+	}
+	return r.Client.CheckMinimumVersion(1, 3, 0, "owner_type = GROUP")
+}
+
 func (r *OwnerResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan OwnerResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := r.checkOwnerType(plan.OwnerType.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Gravitino 1.3.0 or newer required for group owners", err.Error())
 		return
 	}
 
@@ -178,6 +193,11 @@ func (r *OwnerResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	var plan OwnerResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := r.checkOwnerType(plan.OwnerType.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Gravitino 1.3.0 or newer required for group owners", err.Error())
 		return
 	}
 

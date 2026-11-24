@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/gravitino/terraform-provider-gravitino/internal/client"
@@ -200,6 +201,55 @@ func TestIdpUserResource_Create(t *testing.T) {
 	}
 	if n := len(state.Groups.Elements()); n != 0 {
 		t.Errorf("expected 0 groups, got %d", n)
+	}
+}
+
+// TestIdpUserResource_CreateRejectsServerBefore130 asserts the built-in IDP
+// API is refused with a version diagnostic on Gravitino 1.2.1.
+func TestIdpUserResource_CreateRejectsServerBefore130(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.URL.Path == "/api/version" {
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.2.1"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to build client: %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	r := New()
+	r.(*IdpUserResource).SetClient(c)
+	ctx := context.Background()
+	s := idpUserSchema(t, r)
+	plan := IdpUserResourceModel{
+		ID:       types.StringNull(),
+		Name:     types.StringValue("alice"),
+		Password: types.StringValue("Passw0rd-1234"),
+		Groups:   types.SetNull(types.StringType),
+	}
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: s}}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan{Schema: s, Raw: idpUserRaw(t, s, plan)}}, resp)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a version diagnostic")
+	}
+	if !strings.Contains(resp.Diagnostics[0].Summary(), "1.3.0") || !strings.Contains(resp.Diagnostics[0].Detail(), "1.2.1") {
+		t.Errorf("diagnostics = %v, want Gravitino 1.3.0 and the detected 1.2.1", resp.Diagnostics)
+	}
+	for _, path := range requests {
+		if path != "/api/version" {
+			t.Errorf("unexpected request %q before the version gate", path)
+		}
 	}
 }
 

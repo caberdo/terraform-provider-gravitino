@@ -110,10 +110,28 @@ Resources are aligned against the Apache Gravitino **v1.3.0** OpenAPI specificat
 Always check that spec before adding or changing a field: field names, enum values and
 update request types are not guessable.
 
+### Gravitino 1.1.1–1.3.1
+
+A single provider build supports **v1.1.1, v1.2.0, v1.2.1, v1.3.0 and v1.3.1** servers. The
+schemas are the union of those releases and the runtime gates a value or an endpoint on the
+detected server version. The v1.3.0 OpenAPI document remains the reference for the shape of every
+resource that exists there; the older releases are checked against their own specs.
+
+| Capability (Gravitino API) | Provider surface | 1.1.1 | 1.2.0 | 1.2.1 | 1.3.0 | 1.3.1 |
+|---|---|---|---|---|---|---|
+| Functions API (`functions.yaml`) | `gravitino_function`, `gravitino_function(s)` data sources | rejected: explicit diagnostic | supported | supported | supported | supported |
+| Views API (`views.yaml`) | `gravitino_view`, `gravitino_view(s)` data sources | rejected | rejected | rejected | supported | supported |
+| Built-in IdP API (`idp/`) | `gravitino_idp_user`, `gravitino_idp_group` and their data sources | rejected | rejected | rejected | supported when the extension is enabled | supported when the extension is enabled |
+| `GET /authn/me` (`authn.yaml`) | `gravitino_principal` | rejected | rejected | rejected | supported | supported (`serviceAdmin`) |
+| Health endpoints (`health.yaml`) | `gravitino_health`, `gravitino_liveness`, `gravitino_readiness` | rejected | rejected | rejected | supported | supported |
+| `PUT /permissions/roles/{role}` (`permissions.yaml`) | `gravitino_role` update of `securable_objects` | rejected; create/read/delete still work | supported | supported | supported | supported |
+| Group owners (`owners.yaml` server behaviour) | `gravitino_owner.owner_type = GROUP` | rejected | rejected | rejected | supported | supported |
+| Function authorization (`roles.yaml`) | `gravitino_role` `type = FUNCTION`, `REGISTER_FUNCTION`/`EXECUTE_FUNCTION`/`MODIFY_FUNCTION` | rejected | rejected | rejected | supported | supported |
+
 ### Gravitino 1.3.0 vs 1.3.1
 
-A single provider build supports **v1.3.0 and v1.3.1** servers. Schema validators accept the
-union of both versions; the runtime then gates 1.3.1-only values on the detected server
+Within that window, the 1.3.1 additions are the last distinct gate. Schema validators accept the
+union of every supported version; the runtime then gates 1.3.1-only values on the detected server
 version. Compare a spec such as
 `https://github.com/apache/gravitino/compare/v1.3.0...v1.3.1` before adding a
 version-restricted field.
@@ -138,7 +156,13 @@ Gravitino 1.4 or newer.
 probe failed, so a gate normally costs no request of its own; every comparison goes through
 `models.ServerVersionAtLeast` (an unparseable version counts as "too old"). A restricted value
 MUST fail with a diagnostic naming the required version, never with the server's opaque `400`.
-Four shapes are in use:
+Five shapes are in use:
+
+- `client.CheckMinimumVersion` is the permissive existence gate used by a resource or endpoint a
+  later release introduced (functions at 1.2.0; views, IdP, health, the principal endpoint, group
+  owners, role privilege override and function authorization at 1.3.0). It compares with
+  `client.AtLeast`, so an unknown version is treated as current and a blocked version endpoint
+  does not remove a resource the server may serve.
 
 - `client.CheckMetadataObjectTypeSupported`, `client.CheckPolicyObjectTypesSupported` and
   `client.CheckIndexesSupported` fail closed: they short-circuit on the 1.3.1-only values
@@ -162,14 +186,15 @@ Four shapes are in use:
 
 Version-restricted API surface therefore follows a **union schema + runtime version gate**: the
 schema validator accepts the union of every supported server version and a `client.Check*` method
-refuses a 1.3.1-only value against an older server with an explicit "requires Gravitino >= 1.3.1"
-diagnostic instead of the endpoint's opaque 400.
+refuses a value or endpoint an older server does not have with an explicit "requires Gravitino >=
+x.y.z" diagnostic instead of the endpoint's opaque 400.
 
 **Marking restricted fields.** Every attribute, data source or endpoint that needs a newer
-server MUST carry the restriction in its schema description — `Requires Gravitino >= 1.3.1`
-for rejected values/endpoints, `Always false on Gravitino versions before 1.3.1` for fields the
-older server simply omits — and MUST fail with a diagnostic naming the required version, never
-an opaque server `400`.
+server MUST carry the restriction in its schema description — `Requires Gravitino >= 1.2.0` for the
+functions API, `Requires Gravitino >= 1.3.0` for views, IdP, health, the principal endpoint and
+group owners, `Requires Gravitino >= 1.3.1` for rejected values/endpoints, and `Always false on
+Gravitino versions before 1.3.1` for fields the older server simply omits — and MUST fail with a
+diagnostic naming the required version, never an opaque server `400`.
 
 ## Conventions
 
@@ -247,7 +272,7 @@ tflog.Debug(ctx, "Created catalog", map[string]interface{}{"metalake": m, "name"
 ### Commands
 - **Build**: `make build` (`go build ./...` for a compile check)
 - **Test (unit)**: `make test` (`go test -v -cover ./internal/...`)
-- **Test (acceptance)**: `make testacc` (`TF_ACC=1`), `make testacc-docker` (Gravitino 1.3.0 in Docker; `GRAVITINO_VERSION=1.3.1` for the other), `make testacc-matrix` (every version in `.github/gravitino-versions.txt`)
+- **Test (acceptance)**: `make testacc` (`TF_ACC=1`), `make testacc-docker` (Gravitino 1.3.0 in Docker; `GRAVITINO_VERSION=<version>` for any supported release), `make testacc-matrix` (every version in `.github/gravitino-versions.txt`: 1.1.1, 1.2.0, 1.2.1, 1.3.0, 1.3.1)
 - **Live acceptance (real server via podman)**: `make testacc-live` / `make testacc-live-filter F=<TestLiveAcc...>`
 - **Coverage**: `make coverage`, `make coverage-merge`, `make coverage-gate` (fails when the merged profile is below `.github/coverage-baseline.txt`); see [Coverage](#coverage)
 - **Lint**: `golangci-lint run --config .github/golangci.yml ./...`
@@ -319,13 +344,13 @@ number is always the merged one.
 | `make coverage` (unit only, per package) | printed by the command (roughly two thirds of `./internal/...` today) |
 | `make coverage-merge` (unit + acceptance, the profile `make coverage-gate` enforces) | printed by the command; the gated total is `measured_total` in `.github/coverage-baseline.txt` |
 
-Scopes the gate enforces, with the floors currently committed: `internal/client` 79.0,
-`internal/models` 85.5, `internal/provider` 94.0, `internal/client/auth` 76.0,
-`internal/datasources/schema` 94.0, `internal/datasources/policy` 85.5,
-`internal/datasources/role` 85.0, `internal/datasources/fileset` 86.0,
-`internal/datasources/partition` 91.5, `internal/resources/partition` 91.5, `total` 82.5.
+Scopes the gate enforces, with the floors currently committed: `internal/client` 90.5,
+`internal/models` 86.0, `internal/provider` 95.0, `internal/client/auth` 76.0,
+`internal/datasources/schema` 96.5, `internal/datasources/policy` 86.5,
+`internal/datasources/role` 86.5, `internal/datasources/fileset` 86.5,
+`internal/datasources/partition` 93.5, `internal/resources/partition` 91.5, `total` 84.5.
 `internal/datasources/secrets` is deliberately not a scope: it wraps the Gravitino 1.4 secrets API,
-which the supported 1.3.0/1.3.1 servers cannot serve.
+which no supported server (1.1.1–1.3.1) can serve.
 
 Statement counts come straight from the cover profile, so they depend on the Go patch release that
 produced it: the same block set sums differently under the `go.mod` toolchain (which CI installs)

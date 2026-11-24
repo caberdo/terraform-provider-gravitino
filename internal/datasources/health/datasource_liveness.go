@@ -33,6 +33,8 @@ func (d *LivenessDataSource) Metadata(_ context.Context, _ datasource.MetadataRe
 
 func (d *LivenessDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Reports the Gravitino liveness status. " +
+			"Requires Gravitino >= 1.3.0, which introduced the health endpoints.",
 		Attributes: map[string]schema.Attribute{
 			"status": schema.StringAttribute{
 				Computed:    true,
@@ -68,6 +70,10 @@ func (d *LivenessDataSource) Read(ctx context.Context, req datasource.ReadReques
 	var state LivenessDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !checkServerVersion(d.Client, &resp.Diagnostics) {
 		return
 	}
 

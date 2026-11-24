@@ -33,6 +33,8 @@ func (d *ReadinessDataSource) Metadata(_ context.Context, _ datasource.MetadataR
 
 func (d *ReadinessDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Reports the Gravitino readiness status. " +
+			"Requires Gravitino >= 1.3.0, which introduced the health endpoints.",
 		Attributes: map[string]schema.Attribute{
 			"status": schema.StringAttribute{
 				Computed:    true,
@@ -68,6 +70,10 @@ func (d *ReadinessDataSource) Read(ctx context.Context, req datasource.ReadReque
 	var state ReadinessDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !checkServerVersion(d.Client, &resp.Diagnostics) {
 		return
 	}
 

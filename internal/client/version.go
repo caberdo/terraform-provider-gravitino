@@ -15,6 +15,18 @@ func (c *Client) GetVersion(ctx context.Context) (*models.VersionResponse, error
 	return &result, err
 }
 
+// CheckMinimumVersion returns an error when the detected server predates
+// major.minor.patch. It is the permissive counterpart to the value gates:
+// AtLeast treats an unknown version as current, so a failed version probe does
+// not reject a resource the server may still serve.
+func (c *Client) CheckMinimumVersion(major, minor, patch int, feature string) error {
+	if c.AtLeast(major, minor, patch) {
+		return nil
+	}
+	return fmt.Errorf("%s requires Gravitino >= %d.%d.%d, but the server reports version %q",
+		feature, major, minor, patch, c.ServerVersion())
+}
+
 // CheckMetadataObjectTypeSupported returns an error when objectType is one of
 // the metadata object types that Gravitino 1.3.1 added to the shared
 // `metadataObjectType` path parameter (VIEW, FUNCTION, used by the statistics,

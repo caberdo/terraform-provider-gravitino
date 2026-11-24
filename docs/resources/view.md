@@ -2,12 +2,12 @@
 page_title: "gravitino_view Resource - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Manages a Gravitino view within a metalake, catalog, and schema.
+  Manages a Gravitino view within a metalake, catalog, and schema. Requires Gravitino >= 1.3.0, which introduced the views API.
 ---
 
 # gravitino_view Resource
 
-Manages a Gravitino view within a metalake, catalog, and schema.
+Manages a Gravitino view within a metalake, catalog, and schema. Requires Gravitino >= 1.3.0, which introduced the views API.
 
 ## Example Usage
 

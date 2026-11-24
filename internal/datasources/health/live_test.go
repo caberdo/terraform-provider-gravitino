@@ -9,6 +9,8 @@ import (
 )
 
 func TestLiveAccHealthDataSources(t *testing.T) {
+	acceptance.SkipBefore(t, 1, 3, 0, "the health data sources")
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 acceptance.LivePreCheck(t),
 		ProtoV6ProviderFactories: acceptance.ProtoV6ProviderFactories(),

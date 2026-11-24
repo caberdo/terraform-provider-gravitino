@@ -12,6 +12,7 @@ import (
 func TestLiveAccTagResource(t *testing.T) {
 	mlName := acceptance.UniqueName("tagml")
 	tagName := acceptance.UniqueName("tag")
+	principal := acceptance.ExpectedPrincipal(t)
 
 	cfg := fmt.Sprintf(`
 resource "gravitino_metalake" "this" {
@@ -25,8 +26,6 @@ resource "gravitino_tag" "this" {
   comment   = "live acceptance tag"
   properties = {}
 }
-
-data "gravitino_principal" "me" {}
 `, mlName, tagName)
 
 	resource.Test(t, resource.TestCase{
@@ -38,9 +37,7 @@ data "gravitino_principal" "me" {}
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("gravitino_tag.this", "name", tagName),
 					resource.TestCheckResourceAttr("gravitino_tag.this", "comment", "live acceptance tag"),
-					resource.TestCheckResourceAttrPair(
-						"gravitino_tag.this", "audit.creator",
-						"data.gravitino_principal.me", "name"),
+					resource.TestCheckResourceAttr("gravitino_tag.this", "audit.creator", principal),
 					resource.TestCheckResourceAttrSet("gravitino_tag.this", "audit.create_time"),
 				),
 			},

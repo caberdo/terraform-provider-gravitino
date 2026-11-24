@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/caberdo/terraform-provider-gravitino/test.yml?branch=main&label=CI)](https://github.com/caberdo/terraform-provider-gravitino/actions/workflows/test.yml)
 <!-- coverage-badge:start -->
-[![Coverage](https://img.shields.io/badge/coverage-83.4%25-green)](#testing-and-coverage)
+[![Coverage](https://img.shields.io/badge/coverage-85.2%25-green)](#testing-and-coverage)
 <!-- coverage-badge:end -->
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/caberdo/terraform-provider-gravitino/badge)](https://scorecard.dev/viewer/?uri=github.com/caberdo/terraform-provider-gravitino)
 [![Release](https://img.shields.io/github/v/release/caberdo/terraform-provider-gravitino?label=release)](https://github.com/caberdo/terraform-provider-gravitino/releases)
@@ -22,8 +22,8 @@ Terraform state as the rest of your infrastructure.
 | | |
 |---|---|
 | 🎯 **Broad Gravitino coverage** | Metalakes, catalogs, schemas, tables and partitions, views, filesets, topics, functions, models and model versions, tags, policies and their object associations, roles, users, groups, ownership, statistics and partition statistics, job templates and job runs, IDP users and groups |
-| 🧪 **Tested against real servers** | 665 tests run by `make test` and 761 in the container suite, which runs against Gravitino `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
-| 🧱 **Version gates, not opaque 400s** | One build serves both server versions: the schema accepts the union and a runtime gate refuses a 1.3.1-only value against an older server with a diagnostic naming the required version (`Gravitino >= 1.3.1`) |
+| 🧪 **Tested against real servers** | The container acceptance suite runs against Gravitino `1.1.1`, `1.2.0`, `1.2.1`, `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
+| 🧱 **Version gates, not opaque 400s** | One build serves every supported server version: the schema accepts the union and a runtime gate refuses a value or an endpoint an older server does not have with a diagnostic naming the required version (`Gravitino >= 1.2.0` or `>= 1.3.1`) |
 | 🔐 **Verifiable supply chain** | GPG-signed release tags, signed `SHA256SUMS`, SLSA build provenance, SPDX SBOM and the Terraform registry manifest in every release |
 | ⚡ **Modern internals** | terraform-plugin-framework v1.19.0 (plugin protocol 6.0), Go 1.27.4, Docker/Podman acceptance harness against a real server |
 
@@ -129,7 +129,7 @@ export GRAVITINO_PASSWORD="admin"
 | | |
 |---|---|
 | Terraform | 1.0 or later (plugin protocol 6.0, see [`terraform-registry-manifest.json`](./terraform-registry-manifest.json)) |
-| Gravitino | API v1.3.0, and v1.3.1 from the same build; acceptance-tested against `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
+| Gravitino | API v1.3.0, with the v1.3.1 additions and runtime gates for the older releases; acceptance-tested against `1.1.1`, `1.2.0`, `1.2.1`, `1.3.0` and `1.3.1` (`.github/gravitino-versions.txt`) |
 | Go (to build from source) | 1.27.4 |
 
 Some capabilities depend on server-side configuration and only work once the matching Gravitino
@@ -140,12 +140,24 @@ its own error (HTTP 405 or 404), which the provider surfaces. See
 
 ### Supported Gravitino versions
 
-The provider targets the Apache Gravitino **v1.3.0** REST API and supports **v1.3.1** from the
-same build. It asks the server for its version once, when it is configured (`GET /api/version`),
-and against a server older than 1.3.1 a value that only exists on 1.3.1 fails with an explicit
-diagnostic naming the required version (`requires Gravitino >= 1.3.1`, or `requires Gravitino
-1.3.1 or newer` for the metadata object types) instead of the server's opaque `400`.
-Version-restricted attributes and data sources say so in their schema description.
+One provider build supports Gravitino **1.1.1, 1.2.0, 1.2.1, 1.3.0 and 1.3.1**. The provider asks
+the server for its version once, when it is configured (`GET /api/version`). A resource or data
+source that a later release introduced fails on an older server with an explicit diagnostic naming
+the required version (`requires Gravitino >= 1.2.0` or `>= 1.3.0`), never with the server's opaque
+`404`/`400`. Version-restricted attributes and data sources say so in their schema description.
+
+| Capability | 1.1.1 | 1.2.0 | 1.2.1 | 1.3.0 | 1.3.1 |
+|---|---|---|---|---|---|
+| `gravitino_function`, `gravitino_function`/`gravitino_functions` data sources | rejected | supported | supported | supported | supported |
+| `gravitino_view`, `gravitino_view`/`gravitino_views` data sources | rejected | rejected | rejected | supported | supported |
+| `gravitino_idp_user`, `gravitino_idp_group` and their data sources | rejected | rejected | rejected | supported when the IDP plugin is enabled | supported when the IDP plugin is enabled |
+| `gravitino_principal` data source | rejected | rejected | rejected | supported | supported (`service_admin`) |
+| `gravitino_health`, `gravitino_liveness`, `gravitino_readiness` data sources | rejected | rejected | rejected | supported | supported |
+| `gravitino_role` update of `securable_objects` | rejected (create/read/delete still work) | supported | supported | supported | supported |
+| `gravitino_owner.owner_type = GROUP` | rejected | rejected | rejected | supported | supported |
+| `gravitino_role` `FUNCTION` object type and the function privileges | rejected | rejected | rejected | supported | supported |
+
+The v1.3.1 additions are gated the same way:
 
 | Capability | 1.3.0 | 1.3.1 |
 |---|---|---|
@@ -369,16 +381,16 @@ Every data source links to its documentation on the Terraform Registry.
 | [`gravitino_user`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/user) | One user |
 | [`gravitino_groups`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/groups) | Groups of a metalake |
 | [`gravitino_group`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/group) | One group |
-| [`gravitino_idp_user`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/idp_user) | A user of the built-in identity provider |
-| [`gravitino_idp_group`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/idp_group) | A group of the built-in identity provider |
+| [`gravitino_idp_user`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/idp_user) | A user of the built-in identity provider (Gravitino 1.3.0+ and the IDP plugin) |
+| [`gravitino_idp_group`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/idp_group) | A group of the built-in identity provider (Gravitino 1.3.0+ and the IDP plugin) |
 | [`gravitino_jobs`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/jobs) | Job runs of a metalake |
 | [`gravitino_job`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/job) | One job run by id |
 | [`gravitino_job_templates`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/job_templates) | Job templates of a metalake |
 | [`gravitino_job_template`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/job_template) | One job template |
-| [`gravitino_principal`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/principal) | The authenticated principal (and `service_admin` on Gravitino 1.3.1+) |
-| [`gravitino_health`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/health) | Aggregate server health |
-| [`gravitino_liveness`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/liveness) | Server liveness |
-| [`gravitino_readiness`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/readiness) | Server readiness |
+| [`gravitino_principal`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/principal) | The authenticated principal (Gravitino 1.3.0+; `service_admin` on 1.3.1+) |
+| [`gravitino_health`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/health) | Aggregate server health (Gravitino 1.3.0+) |
+| [`gravitino_liveness`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/liveness) | Server liveness (Gravitino 1.3.0+) |
+| [`gravitino_readiness`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/readiness) | Server readiness (Gravitino 1.3.0+) |
 | [`gravitino_iceberg_rest_service`](https://registry.terraform.io/providers/caberdo/gravitino/latest/docs/data-sources/iceberg_rest_service) | The advertised Iceberg REST endpoint (Gravitino 1.3.1+) |
 
 ## Examples
@@ -450,8 +462,8 @@ registered to the releasing account.
 |---|---|
 | `make test` | The unit and schema suite plus the mock acceptance tests, which skip themselves without `TF_ACC`: 609 tests run, 91 skipped |
 | `make testacc` | The same suite with `TF_ACC=1`, so the `TestAcc*` mock acceptance tests run too |
-| `make testacc-docker` | The full 700-test suite in a Go container against Gravitino in Docker on `GRAVITINO_VERSION` (default `1.3.0`); the 1.3.1-only tests skip themselves on a 1.3.0 server |
-| `make testacc-matrix` | `testacc-docker` once per supported server version (`.github/gravitino-versions.txt`, currently `1.3.0` and `1.3.1`) |
+| `make testacc-docker` | The full suite in a Go container against Gravitino in Docker on `GRAVITINO_VERSION` (default `1.3.0`); tests for a newer-only feature skip themselves on an older server |
+| `make testacc-matrix` | `testacc-docker` once per supported server version (`.github/gravitino-versions.txt`: `1.1.1`, `1.2.0`, `1.2.1`, `1.3.0` and `1.3.1`) |
 | `make testacc-live` | Starts Gravitino with `podman compose` and runs the 26 `TestLiveAcc*` tests against it — a real server, no HTTP mock |
 | `make testacc-live-filter F=<TestName>` | One live test, e.g. `F=TestLiveAccMetalakeResource` |
 
@@ -473,7 +485,7 @@ The live tests do not trust that address blindly: `acceptance.LivePreCheck` refu
 ```bash
 make test                                        # unit + mock suite
 make testacc-docker                              # container suite, Gravitino 1.3.0
-GRAVITINO_VERSION=1.3.1 make testacc-docker      # same suite, Gravitino 1.3.1
+GRAVITINO_VERSION=1.1.1 make testacc-docker      # same suite, Gravitino 1.1.1
 make testacc-matrix                              # every supported version
 make testacc-live                                # live suite via podman
 make testacc-live-filter F=TestLiveAccRoleResource
@@ -500,23 +512,23 @@ The `test` job publishes the unit table in its job summary, the `acceptance` job
 
 <!-- coverage:start -->
 ```
-internal/client                 ████████████████░░░░  79.7%   floor 79.0%
-internal/models                 █████████████████░░░  86.3%   floor 85.5%
-internal/provider               ███████████████████░  94.6%   floor 94.0%
+internal/client                 ██████████████████░░  91.3%   floor 90.5%
+internal/models                 █████████████████░░░  86.5%   floor 86.0%
+internal/provider               ███████████████████░  95.8%   floor 95.0%
 internal/client/auth            ███████████████░░░░░  76.7%   floor 76.0%
-internal/datasources/schema     ███████████████████░  94.6%   floor 94.0%
-internal/datasources/policy     █████████████████░░░  86.1%   floor 85.5%
-internal/datasources/role       █████████████████░░░  85.6%   floor 85.0%
-internal/datasources/fileset    █████████████████░░░  86.5%   floor 86.0%
-internal/datasources/partition  ██████████████████░░  92.2%   floor 91.5%
-internal/resources/partition    ██████████████████░░  92.4%   floor 91.5%
-total                           █████████████████░░░  83.4%   floor 82.5%   -> 80%, then 90%
+internal/datasources/schema     ███████████████████░  97.0%   floor 96.5%
+internal/datasources/policy     █████████████████░░░  87.1%   floor 86.5%
+internal/datasources/role       █████████████████░░░  87.0%   floor 86.5%
+internal/datasources/fileset    █████████████████░░░  87.3%   floor 86.5%
+internal/datasources/partition  ███████████████████░  94.0%   floor 93.5%
+internal/resources/partition    ██████████████████░░  92.2%   floor 91.5%
+total                           █████████████████░░░  85.2%   floor 84.5%   -> 80%, then 90%
 ```
 
 Merged statement coverage from `coverage.out` (unit) and `coverage-acceptance.out`
 (acceptance, `-covermode=atomic -coverpkg=./internal/...`) via `make coverage-merge`.
 
-Measured on `c2fc783` (unit + acceptance) on 2026-10-19.
+Measured on `d000380` (unit + acceptance) on 2026-11-24.
 <!-- coverage:end -->
 
 The block above is generated from `.github/coverage-baseline.txt` by
@@ -564,15 +576,15 @@ Those endpoints need `gravitino.authorization.enable=true` on the server. The pr
 paper over it; it reports the server's response.
 
 **`gravitino_idp_user` or `gravitino_idp_group` returns 404.**
-`/api/idp/*` only exists when the built-in IDP plugin is loaded
+`/api/idp/*` only exists on Gravitino 1.3.0 or newer and only when the built-in IDP plugin is loaded
 (`gravitino.server.rest.extensionPackages=org.apache.gravitino.idp.web.rest.feature`) and the
 `basic` authenticator is configured. On a default server the route is not there.
 
-**A 1.3.1-only value is rejected with a diagnostic naming the required version.**
+**A newer-release value or resource is rejected with a diagnostic naming the required version.**
 That is the version gate, not the server. The schema accepts every supported value and the runtime
 compares the server version, so the diagnostic names the version instead of passing the value
-through for an opaque `400`. Upgrade the server, or drop the value — see
-[Supported Gravitino versions](#supported-gravitino-versions).
+through for an opaque `400` (or calling an endpoint that does not exist yet). Upgrade the server,
+or drop the value — see [Supported Gravitino versions](#supported-gravitino-versions).
 
 **`gravitino_secrets` fails on my server.**
 The secrets API only exists on Gravitino 1.4 or newer; the data source needs that server.
@@ -593,8 +605,8 @@ Read and delete are idempotent: an object that disappeared out of band is remove
 instead of erroring.
 
 **Which server version should I run?**
-CI exercises `1.3.0` and `1.3.1`; `.github/gravitino-versions.txt` is the single source of truth
-and is read by both the CI matrix and `make testacc-matrix`.
+CI exercises `1.1.1`, `1.2.0`, `1.2.1`, `1.3.0` and `1.3.1`; `.github/gravitino-versions.txt` is
+the single source of truth and is read by both the CI matrix and `make testacc-matrix`.
 
 ## Security, contributing and support
 

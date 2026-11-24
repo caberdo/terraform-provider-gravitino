@@ -12,6 +12,7 @@ import (
 func TestLiveAccCatalogResource(t *testing.T) {
 	mlName := acceptance.UniqueName("catml")
 	catName := acceptance.UniqueName("hive")
+	principal := acceptance.ExpectedPrincipal(t)
 
 	cfg := fmt.Sprintf(`
 resource "gravitino_metalake" "this" {
@@ -29,8 +30,6 @@ resource "gravitino_catalog" "this" {
     "metastore.uris" = "thrift://live-dummy:9083"
   }
 }
-
-data "gravitino_principal" "me" {}
 `, mlName, catName)
 
 	resource.Test(t, resource.TestCase{
@@ -46,9 +45,7 @@ data "gravitino_principal" "me" {}
 					resource.TestCheckResourceAttr("gravitino_catalog.this", "comment", "live hive catalog"),
 					resource.TestCheckResourceAttr("gravitino_catalog.this", "id", mlName+"."+catName),
 					resource.TestCheckResourceAttr("gravitino_catalog.this", "properties.metastore.uris", "thrift://live-dummy:9083"),
-					resource.TestCheckResourceAttrPair(
-						"gravitino_catalog.this", "audit.creator",
-						"data.gravitino_principal.me", "name"),
+					resource.TestCheckResourceAttr("gravitino_catalog.this", "audit.creator", principal),
 					resource.TestCheckResourceAttrSet("gravitino_catalog.this", "audit.create_time"),
 				),
 			},

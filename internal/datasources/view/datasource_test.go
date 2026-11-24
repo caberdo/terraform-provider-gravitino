@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -289,6 +291,114 @@ func TestViewsDataSourceReadSkipsDeletedViews(t *testing.T) {
 	}
 	if entry.Properties.IsNull() {
 		t.Error("properties must be populated")
+	}
+}
+
+// TestViewDataSources_RejectServerBefore130 asserts the views API is refused
+// with a version diagnostic on Gravitino 1.2.1, before any view endpoint is
+// called.
+func TestViewDataSources_RejectServerBefore130(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.URL.Path == "/api/version" {
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.2.1"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("client.New() error = %v", err)
+	}
+	if err := c.DetectServerVersion(context.Background()); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	ctx := context.Background()
+
+	t.Run("get", func(t *testing.T) {
+		d := dsview.NewViewDataSource()
+		d.(*dsview.ViewDataSource).SetClient(c)
+
+		schemaResp := &datasource.SchemaResponse{}
+		d.Schema(ctx, datasource.SchemaRequest{}, schemaResp)
+		schemaObj := schemaResp.Schema
+
+		configModel := dsview.ViewDataSourceModel{
+			Metalake:       types.StringValue("ml"),
+			Catalog:        types.StringValue("cat"),
+			Schema:         types.StringValue("sch"),
+			Name:           types.StringValue("view1"),
+			Comment:        types.StringNull(),
+			DefaultCatalog: types.StringNull(),
+			DefaultSchema:  types.StringNull(),
+			Properties:     types.MapNull(types.StringType),
+			Audit:          types.ObjectNull(models.AuditAttrTypes),
+		}
+		configObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), configModel)
+		if diags.HasError() {
+			t.Fatalf("failed to build config: %v", diags)
+		}
+		tfVal, err := configObj.ToTerraformValue(ctx)
+		if err != nil {
+			t.Fatalf("failed to convert config: %v", err)
+		}
+
+		resp := &datasource.ReadResponse{State: tfsdk.State{Schema: schemaObj}}
+		d.Read(ctx, datasource.ReadRequest{Config: tfsdk.Config{Schema: schemaObj, Raw: tfVal}}, resp)
+		assertViewBefore130(t, resp.Diagnostics)
+	})
+
+	t.Run("list", func(t *testing.T) {
+		d := dsview.NewViewsDataSource()
+		d.(*dsview.ViewsDataSource).SetClient(c)
+
+		schemaResp := &datasource.SchemaResponse{}
+		d.Schema(ctx, datasource.SchemaRequest{}, schemaResp)
+		schemaObj := schemaResp.Schema
+
+		configModel := dsview.ViewsDataSourceModel{
+			Metalake: types.StringValue("ml"),
+			Catalog:  types.StringValue("cat"),
+			Schema:   types.StringValue("sch"),
+		}
+		configObj, diags := types.ObjectValueFrom(ctx, schemaObj.Type().(types.ObjectType).AttributeTypes(), configModel)
+		if diags.HasError() {
+			t.Fatalf("failed to build config: %v", diags)
+		}
+		tfVal, err := configObj.ToTerraformValue(ctx)
+		if err != nil {
+			t.Fatalf("failed to convert config: %v", err)
+		}
+
+		resp := &datasource.ReadResponse{State: tfsdk.State{Schema: schemaObj}}
+		d.Read(ctx, datasource.ReadRequest{Config: tfsdk.Config{Schema: schemaObj, Raw: tfVal}}, resp)
+		assertViewBefore130(t, resp.Diagnostics)
+	})
+
+	for _, path := range requests {
+		if path == "/api/version" {
+			continue
+		}
+		t.Errorf("unexpected request %q before the version gate", path)
+	}
+}
+
+func assertViewBefore130(t *testing.T, diags diag.Diagnostics) {
+	t.Helper()
+	if !diags.HasError() {
+		t.Fatal("expected a version diagnostic")
+	}
+	first := diags.Errors()[0]
+	if !strings.Contains(first.Summary(), "1.3.0") {
+		t.Errorf("summary = %q, want the required server version", first.Summary())
+	}
+	if !strings.Contains(first.Detail(), "1.2.1") {
+		t.Errorf("detail = %q, want the detected server version", first.Detail())
 	}
 }
 

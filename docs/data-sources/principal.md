@@ -2,20 +2,20 @@
 page_title: "gravitino_principal Data Source - terraform-provider-gravitino"
 subcategory: ""
 description: |-
-  Gets the server-resolved principal of the authenticated user (GET /api/authn/me) and, on Gravitino 1.3.1 and later, whether that credential is a Gravitino service administrator. The endpoint returns no roles.
+  Gets the server-resolved principal of the authenticated user (GET /api/authn/me) and, on Gravitino 1.3.1 and later, whether that credential is a Gravitino service administrator. Requires Gravitino >= 1.3.0, which introduced the endpoint. The endpoint returns no roles.
 ---
 
 # gravitino_principal Data Source
 
-Gets the server-resolved principal of the authenticated user (GET /api/authn/me) and, on Gravitino 1.3.1 and later, whether that credential is a Gravitino service administrator. The endpoint returns no roles.
+Gets the server-resolved principal of the authenticated user (GET /api/authn/me) and, on Gravitino 1.3.1 and later, whether that credential is a Gravitino service administrator. Requires Gravitino >= 1.3.0, which introduced the endpoint. The endpoint returns no roles.
 
 ## Example Usage
 
 ```terraform
 # The authenticated principal and service-admin status, as resolved by the
-# server (GET /api/authn/me). `name` is the principal; `service_admin` is
-# `true` only when the server (Gravitino 1.3.1+) reports the credential as a
-# service administrator. The endpoint returns no roles here.
+# server (GET /api/authn/me, Gravitino 1.3.0+). `name` is the principal;
+# `service_admin` is `true` only when the server (Gravitino 1.3.1+) reports the
+# credential as a service administrator. The endpoint returns no roles here.
 data "gravitino_principal" "current" {}
 ```
 

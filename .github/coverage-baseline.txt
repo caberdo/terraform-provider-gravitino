@@ -36,36 +36,36 @@
 # is never lowered: raising one is a deliberate line in a pull request.
 #
 # Deliberately not a scope: internal/datasources/secrets. It wraps the Gravitino
-# 1.4 secrets API, which cannot be exercised against the 1.3.0/1.3.1 servers this
+# 1.4 secrets API, which cannot be exercised against the 1.1.1–1.3.1 servers this
 # provider supports, so a floor there would measure the fake only.
 
 # Last measurement: merged unit + acceptance on Go 1.27.2, 7,661 statements.
-measured_internal_client=79.7
-measured_internal_models=86.3
-measured_internal_provider=94.6
+measured_internal_client=91.3
+measured_internal_models=86.5
+measured_internal_provider=95.8
 measured_internal_client_auth=76.7
-measured_internal_datasources_schema=94.6
-measured_internal_datasources_policy=86.1
-measured_internal_datasources_role=85.6
-measured_internal_datasources_fileset=86.5
-measured_internal_datasources_partition=92.2
-measured_internal_resources_partition=92.4
-measured_total=83.4
-measured_commit=c2fc783
-measured_date=2026-10-19
+measured_internal_datasources_schema=97.0
+measured_internal_datasources_policy=87.1
+measured_internal_datasources_role=87.0
+measured_internal_datasources_fileset=87.3
+measured_internal_datasources_partition=94.0
+measured_internal_resources_partition=92.2
+measured_total=85.2
+measured_commit=d000380
+measured_date=2026-11-24
 
 # Enforced floor.
-floor_internal_client=79.0
-floor_internal_models=85.5
-floor_internal_provider=94.0
+floor_internal_client=90.5
+floor_internal_models=86.0
+floor_internal_provider=95.0
 floor_internal_client_auth=76.0
-floor_internal_datasources_schema=94.0
-floor_internal_datasources_policy=85.5
-floor_internal_datasources_role=85.0
-floor_internal_datasources_fileset=86.0
-floor_internal_datasources_partition=91.5
+floor_internal_datasources_schema=96.5
+floor_internal_datasources_policy=86.5
+floor_internal_datasources_role=86.5
+floor_internal_datasources_fileset=86.5
+floor_internal_datasources_partition=93.5
 floor_internal_resources_partition=91.5
-floor_total=82.5
+floor_total=84.5
 
 # Milestones tracked in the issue tracker.
 target=80

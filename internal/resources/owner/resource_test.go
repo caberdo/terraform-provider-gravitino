@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	res "github.com/gravitino/terraform-provider-gravitino/internal/resources/owner"
@@ -169,6 +170,54 @@ func TestOwnerResource_Create(t *testing.T) {
 	}
 	if state.ID.ValueString() != "authz_ml.CATALOG.c1" {
 		t.Fatalf("unexpected id: %s", state.ID.ValueString())
+	}
+}
+
+// TestOwnerResource_CreateRejectsGroupBefore130 asserts a GROUP owner is
+// refused with a version diagnostic on Gravitino 1.2.1, before the owner is
+// set. USER owners remain available on every supported release.
+func TestOwnerResource_CreateRejectsGroupBefore130(t *testing.T) {
+	ctx := context.Background()
+	s := ownerSchema(t)
+
+	var ownerRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.gravitino.v1+json")
+		if r.URL.Path == "/api/version" {
+			_, _ = w.Write([]byte(`{"code":0,"version":{"version":"1.2.1"}}`))
+			return
+		}
+		ownerRequests++
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	c, err := client.New(server.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to build client: %v", err)
+	}
+	if err := c.DetectServerVersion(ctx); err != nil {
+		t.Fatalf("DetectServerVersion() error = %v", err)
+	}
+
+	r := res.NewOwnerResource()
+	r.(*res.OwnerResource).SetClient(c)
+
+	model := baseModel()
+	model.OwnerType = types.StringValue("GROUP")
+	model.OwnerName = types.StringValue("group1")
+
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: s}}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan{Schema: s, Raw: tfValue(t, ctx, s, model)}}, resp)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a version diagnostic")
+	}
+	first := resp.Diagnostics[0]
+	if !strings.Contains(first.Summary(), "1.3.0") || !strings.Contains(first.Detail(), "1.2.1") {
+		t.Errorf("diagnostics = %v, want Gravitino 1.3.0 and the detected 1.2.1", resp.Diagnostics)
+	}
+	if ownerRequests != 0 {
+		t.Errorf("the owner must not be set, got %d requests", ownerRequests)
 	}
 }
 

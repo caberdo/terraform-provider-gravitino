@@ -22,7 +22,7 @@
 
 <!-- If this change needs a Gravitino server newer than the default, say so: -->
 
-- [ ] Requires Gravitino >= 1.3.1 (leave unchecked if the default 1.3.0 image is enough)
+- [ ] Requires Gravitino >= 1.2.0 or >= 1.3.0 (name the floor; leave unchecked if the default 1.3.0 image is enough and the change also works on 1.1.1/1.2.x)
 
 ## Documentation
 
