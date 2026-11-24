@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   freshness:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-freshness.yml@v0.16.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-freshness.yml@v0.17.0
     # `issues: write` opens or updates one labelled issue per category;
     # `actions: read` lets the canary report read the failing job's log.
     permissions:
