@@ -10,7 +10,21 @@ services:
       # Roles, owners and permissions are only served when authorization is enabled.
       GRAVITINO_AUTHORIZATION_ENABLE: "true"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      # The health API only exists from Gravitino 1.3.0. An older server
+      # answers /api/health with 404, so probing it alone leaves the container
+      # unhealthy and every acceptance leg for 1.1.1-1.2.1 dies before the
+      # tests start. Use the canonical readiness endpoint when the server has
+      # it and fall back to /api/version, which every supported release serves
+      # from the same Jetty instance, otherwise.
+      test:
+        - CMD-SHELL
+        - |
+          status=$$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8090/api/health)
+          if [ "$$status" = "404" ]; then
+            curl -fsS -o /dev/null http://localhost:8090/api/version
+          else
+            [ "$$status" = "200" ]
+          fi
       interval: 10s
       timeout: 5s
       retries: 20

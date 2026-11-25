@@ -4,10 +4,12 @@ set -euo pipefail
 URI="${GRAVITINO_URI:-http://gravitino:8090}"
 FILTER="${GO_TEST_FILTER:-TestLiveAcc}"
 
-echo "Waiting for Gravitino at ${URI}/api/health ..."
+# /api/health only exists from Gravitino 1.3.0; /api/version is served by every
+# supported release, so it is the readiness signal the whole matrix shares.
+echo "Waiting for Gravitino at ${URI}/api/version ..."
 ready=""
 for i in $(seq 1 60); do
-  if curl -fsS -m 3 "${URI}/api/health" >/dev/null 2>&1; then
+  if curl -fsS -m 3 "${URI}/api/version" >/dev/null 2>&1; then
     ready=1
     break
   fi
@@ -19,11 +21,6 @@ if [ -z "${ready}" ]; then
   exit 1
 fi
 echo "Gravitino is ready."
-
-curl -fsS -m 5 "${URI}/api/version" >/dev/null || {
-  echo "version endpoint unreachable at ${URI}" >&2
-  exit 1
-}
 
 go mod download && go mod verify
 
